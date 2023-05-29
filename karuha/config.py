@@ -7,7 +7,7 @@ from .logger import logger
 
 
 class Server(BaseModel):
-    host: Annotated[str, AnyUrl] = "localhost:6060"
+    host: Annotated[str, AnyUrl] = "localhost:16060"
     ssl: bool = False
     ssl_host: Optional[str] = None
     listen: Annotated[str, AnyUrl] = "0.0.0.0:40051"
@@ -87,8 +87,8 @@ def init_config(
 ) -> Config:
     global _config
     _config = Config(
-        server=server,
-        bots=bots,
+        server=server,  # type: ignore
+        bots=bots,  # type: ignore
         log_level=log_level
     )
     return _config
