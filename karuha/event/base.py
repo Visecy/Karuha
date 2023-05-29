@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 
-from ..bot import Bot
+from .. import bot
 
 
 class BaseEvent(ABC):
     __slots__ = ["bot"]
 
-    def __init__(self, bot: Bot) -> None:
+    def __init__(self, bot: "bot.Bot") -> None:
         self.bot = bot
 
     @abstractmethod

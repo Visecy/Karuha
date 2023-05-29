@@ -3,6 +3,7 @@ from asyncio.queues import Queue
 from enum import IntEnum
 from typing import Any, AsyncGenerator, Dict, Literal, Optional
 from google.protobuf.message import Message
+import grpc
 from tinode_grpc import pb
 
 from .config import LoginSecret, Server, get_config
@@ -52,18 +53,29 @@ class Bot(object):
 
     async def async_run(self, server: Server) -> None:
         assert self.state == State.stopped
-        async with get_channel(server.host, server.ssl, server.ssl_host) as channel:
-            stream = get_stream(channel)
-            self.client = stream(self._message_generator())
-            await self._loop()
+        while True:
+            try:
+                async with get_channel(server.host, server.ssl, server.ssl_host) as channel:
+                    stream = get_stream(channel)  # type: ignore
+                    self.client = stream(self._message_generator())
+                    await self._loop()
+            except grpc.RpcError:
+                logger.error("disconnected, retrying")
+                await asyncio.sleep(0.2)
+            except KeyboardInterrupt:
+                break
     
     def run(self, server: Optional[Server] = None) -> None:
         server = server or get_config().server
-        asyncio.run(self.async_run(server))
+        try:
+            asyncio.run(self.async_run(server))
+        except KeyboardInterrupt:
+            pass
     
     def cancel(self) -> None:
         if self.state != State.running:
             return
+        logger.info(f"canceling the bot {self.name}")
         for i in self._wait_list.values():
             i.cancel()
         self.state = State.stopped
@@ -80,6 +92,7 @@ class Bot(object):
     
     async def _loop(self) -> None:
         self.state = State.running
+        logger.info(f"starting the bot {self.name}")
         try:
             message: pb.ServerMsg
             async for message in self.client:  # type: ignore

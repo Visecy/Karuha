@@ -3,7 +3,7 @@ from typing import List, Type
 from google.protobuf.message import Message
 from tinode_grpc import pb
 
-from ..bot import Bot
+from .. import bot
 from .base import BaseEvent
 
 
@@ -13,7 +13,7 @@ _server_event = defaultdict(list)
 class ServerEvent(BaseEvent):
     __slots__ = ["raw_message"]
 
-    def __init__(self, bot: Bot, message: Message) -> None:
+    def __init__(self, bot: "bot.Bot", message: Message) -> None:
         super().__init__(bot)
         self.raw_message = message
 

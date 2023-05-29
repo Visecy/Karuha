@@ -38,6 +38,7 @@ def add_log_file(stream: Union[str, TextIO]) -> None:
 
 add_log_file(sys.stdout)
 add_log_file(f"{WORKDIR}/log/lastest.log")
+logger.setLevel(logging.INFO)
 
 
 __all__ = [
