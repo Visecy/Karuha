@@ -153,7 +153,7 @@ class Bot(object):
             except grpc.RpcError:
                 logger.error(f"disconnected from {server.host}, retrying...")
                 await asyncio.sleep(0.2)
-            except KeyboardInterrupt:
+            except (asyncio.CancelledError, KeyboardInterrupt):
                 break
     
     def run(self, server: Optional[Server] = None) -> None:
