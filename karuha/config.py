@@ -13,16 +13,18 @@ class Server(BaseModel):
     listen: Annotated[str, AnyUrl] = "0.0.0.0:40051"
 
 
-class LoginSecret(BaseModel):
+class LoginInfo(BaseModel):
     name: str = "chatbot"
     schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
     secret: str
+    user: Optional[str] = None
+    authlvl: Optional[str] = None
 
 
 class Config(BaseModel):
     log_level: str = "INFO"
     server: Server = Server()
-    bots: List[LoginSecret] = []
+    bots: List[LoginInfo] = []
     __path__: Union[str, Path] = PrivateAttr()
 
     @validator("log_level", always=True)
@@ -30,7 +32,7 @@ class Config(BaseModel):
         logger.setLevel(val)
         return val
 
-    def get_bot(self, name: str = "chatbot") -> LoginSecret:
+    def get_bot(self, name: str = "chatbot") -> LoginInfo:
         for i in self.bots:
             if i.name == name:
                 return i
@@ -82,7 +84,7 @@ def load_config(
 
 def init_config(
     server: Union[dict, Server] = Server(),
-    bots: Optional[List[Union[dict, LoginSecret]]] = None,
+    bots: Optional[List[Union[dict, LoginInfo]]] = None,
     log_level: str = "INFO"
 ) -> Config:
     global _config

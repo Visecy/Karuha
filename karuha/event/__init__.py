@@ -1,5 +1,5 @@
 from .base import BaseEvent
-from .server import DataEvent, CtrlEvent, MetaEvent, PresEvent, InfoEvent, get_server_event
+from .server import DataEvent, CtrlEvent, MetaEvent, PresEvent, InfoEvent, _get_server_event
 
 
 __all__ = [

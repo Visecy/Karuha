@@ -1,7 +1,7 @@
 .PHONY: build build_cython install build_dist test docs clean
 
 MODULE := karuha
-PIP_MODULE := Karuha-Bot
+PIP_MODULE := KaruhaBot
 
 all: clean build lint build_dist
 refresh: clean install lint

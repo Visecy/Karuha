@@ -68,5 +68,5 @@ class InfoEvent(ServerEvent, on_field="info"):
         ...
 
 
-def get_server_event(field_name: str) -> List[Type[ServerEvent]]:
+def _get_server_event(field_name: str) -> List[Type[ServerEvent]]:
     return _server_event[field_name]

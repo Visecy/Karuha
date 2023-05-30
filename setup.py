@@ -37,7 +37,7 @@ except Exception as e:
     raise ValueError("fail to read karuha version") from e
 
 setup(
-    name="Karuha-Bot",
+    name="KaruhaBot",
     version=version,
     description=description,
     long_description=long_description,
