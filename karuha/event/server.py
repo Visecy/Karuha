@@ -59,6 +59,7 @@ class PresEvent(ServerEvent, on_field="pres"):
     async def __call__(self) -> None:
         ...
 
+
 class InfoEvent(ServerEvent, on_field="info"):
     __slots__ = []
 
