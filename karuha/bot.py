@@ -15,7 +15,7 @@ from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from . import WORKDIR
-from .config import Bot as BotConfig, Config, Server as ServerConfig, get_config
+from .config import Bot as BotConfig, Config, Server as ServerConfig
 from .event import _get_server_event
 from .exception import KaruhaConnectError
 from .logger import get_logger
@@ -30,7 +30,7 @@ class State(IntEnum):
 
 class Bot(object):
     __slots__ = [
-        "queue", "state", "client", "logger", "config", "server",
+        "queue", "state", "client", "logger", "config", "server", "subscriptions",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
     
@@ -76,6 +76,7 @@ class Bot(object):
         elif not isinstance(server, ServerConfig):
             server = ServerConfig.parse_obj(server)
         self.server = server
+        self.subscriptions = set()
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()
@@ -135,6 +136,8 @@ class Bot(object):
             self.config.secret = json.loads(params["token"].decode())
     
     async def subscribe(self, /, topic: str) -> None:
+        if topic in self.subscriptions:
+            return
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -152,9 +155,12 @@ class Bot(object):
                 else:
                     self.cancel()
         else:
+            self.subscriptions.add(topic)
             self.logger.info(f"subscribe topic {topic}")
     
     async def leave(self, /, topic: str) -> None:
+        if topic not in self.subscriptions:
+            return
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -172,6 +178,7 @@ class Bot(object):
                 else:
                     self.cancel()
         else:
+            self.subscriptions.remove(topic)
             self.logger.info(f"leave topic {topic}")
     
     async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> None:
@@ -229,7 +236,9 @@ class Bot(object):
             try:
                 async with self._get_channel(server.host, server.ssl, server.ssl_host) as channel:
                     stream = get_stream(channel)  # type: ignore
-                    self.client = stream(self._message_generator())
+                    msg_gen = self._message_generator()
+                    self._tasks.add(msg_gen)
+                    self.client = stream(msg_gen)
                     await self._loop()
             except grpc.RpcError:
                 self.logger.error(f"disconnected from {server.host}, retrying...")
@@ -255,6 +264,7 @@ class Bot(object):
                 self.queue.get_nowait()
             except QueueEmpty:
                 break
+        self.subscriptions.clear()
         for i in self._wait_list.values():
             i.cancel()
         map(asyncio.Task.cancel, self._tasks)
@@ -342,7 +352,7 @@ class Bot(object):
 
                 for desc, msg in message.ListFields():
                     for e in _get_server_event(desc.name):
-                        e(self, msg).process(self._create_task)
+                        e(self, msg).trigger(self._create_task)
 
 
 def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:

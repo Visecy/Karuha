@@ -33,29 +33,24 @@ def add_bot(bot: Bot) -> None:
     _bot_cache[bot.name] = bot
 
 
-def run() -> None:
-    loop = asyncio.new_event_loop()
+async def async_run() -> None:
     config = get_config()
-    for bot in _bot_cache.values():
-        loop.create_task(bot.async_run())
+    tasks = [asyncio.create_task(bot.async_run()) for bot in _bot_cache.values()]
     for i in config.bots:
         if i.name in _bot_cache:
             continue
         bot = Bot.from_config(i, config)
-        loop.create_task(bot.async_run())
+        tasks.append(asyncio.create_task(bot.async_run()))
+    await asyncio.gather(*tasks)
+    
+
+def run() -> None:
     try:
-        loop.run_forever()
+        asyncio.run(async_run())
     except KeyboardInterrupt:
         pass
     except asyncio.CancelledError:
         raise KaruhaConnectError("the connection was closed by remote") from None
-    finally:
-        asyncio.runners._cancel_all_tasks(loop)  # type: ignore
-        try:
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.run_until_complete(loop.shutdown_default_executor())
-        finally:
-            loop.close()
 
 
 __all__ = [

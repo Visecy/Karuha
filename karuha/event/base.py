@@ -12,9 +12,17 @@ class BaseEvent(object):
     def __init__(self, bot: "bot.Bot") -> None:
         self.bot = bot
     
-    def process(self, task_creator: Callable[[Coroutine], asyncio.Task] = asyncio.create_task) -> None:
+    def trigger(self, task_creator: Callable[[Coroutine], asyncio.Task] = asyncio.create_task) -> None:
         for i in self.__handlers__:
             task_creator(i(self))
+    
+    @classmethod
+    def add_handler(cls, handler: Callable[["BaseEvent"], Coroutine]) -> None:
+        cls.__handlers__.append(handler)
+    
+    @classmethod
+    def remove_handler(cls, handler: Callable[["BaseEvent"], Coroutine]) -> None:
+        cls.__handlers__.remove(handler)
     
     def __init_subclass__(cls) -> None:
         if "__handlers__" not in cls.__dict__:
