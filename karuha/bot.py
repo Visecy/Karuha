@@ -9,15 +9,15 @@ from typing import (Any, AsyncGenerator, Coroutine, Dict, Literal, Optional,
 from weakref import WeakSet, ref
 
 import grpc
+from grpc import aio as grpc_aio
 from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from . import WORKDIR
-from .config import LoginInfo, Server, get_config
+from .config import Bot as BotConfig, Server as ServerConfig, get_config
 from .event import _get_server_event
 from .exception import KaruhaConnectError
 from .logger import get_logger
-from .stream import get_channel, get_stream
 from .version import APP_VERSION, LIB_VERSION
 
 
@@ -29,26 +29,41 @@ class State(IntEnum):
 
 class Bot(object):
     __slots__ = [
-        "queue", "state", "client", "logger", "login_info",
+        "queue", "state", "client", "logger", "config", "server",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
     
+    @overload
+    def __init__(self, config: BotConfig, /, *, server: Union[ServerConfig, Any, None] = None) -> None: ...
+    @overload  # noqa: E301
     def __init__(
+        self, name: str, /,
+        schema: Literal["basic", "token", "cookie"],
+        secret: str,
+        server: Union[ServerConfig, Any, None] = None
+    ) -> None: ...
+    def __init__(  # noqa: E301
         self,
-        name: Union[str, LoginInfo],
+        name: Union[str, BotConfig],
         /,
         schema: Optional[Literal["basic", "token", "cookie"]] = None,
-        secret: Optional[str] = None
+        secret: Optional[str] = None,
+        server: Union[ServerConfig, Any, None] = None
     ) -> None:
-        if isinstance(name, LoginInfo):
-            self.login_info = name
+        if isinstance(name, BotConfig):
+            self.config = name
         elif schema is None or secret is None:
             raise ValueError("authentication scheme not defined")
         else:
-            self.login_info = LoginInfo(name=name, schema=schema, secret=secret)
+            self.config = BotConfig(name=name, schema=schema, secret=secret)
         self.queue = Queue()
         self.state = State.stopped
         self.logger = get_logger(f"KARUHA/{self.name}", WORKDIR / self.name / "log")
+        if server is None:
+            server = ServerConfig()
+        elif not isinstance(server, ServerConfig):
+            server = ServerConfig.parse_obj(server)
+        self.server = server
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()
@@ -83,8 +98,8 @@ class Bot(object):
             tid,
             login=pb.ClientLogin(
                 id=tid,
-                scheme=self.login_info.schema_,
-                secret=self.login_info.secret.encode("ascii")
+                scheme=self.config.schema_,
+                secret=self.config.secret.encode("ascii")
             )
         )
         assert isinstance(ctrl, pb.ServerCtrl)
@@ -102,10 +117,10 @@ class Bot(object):
         if not params:
             return
         if "user" in params:
-            self.login_info.user = json.loads(params["user"].decode())
+            self.config.user = json.loads(params["user"].decode())
         if "token" in params:
-            self.login_info.schema_ = "token"
-            self.login_info.secret = json.loads(params["token"].decode())
+            self.config.schema_ = "token"
+            self.config.secret = json.loads(params["token"].decode())
     
     async def subscribe(self, topic: str) -> None:
         tid = self._get_tid()
@@ -195,24 +210,26 @@ class Bot(object):
             assert self._wait_list.pop(wait_tid) == future
         return rsp_msg
 
-    async def async_run(self, server: Server) -> None:
+    async def async_run(self) -> None:
         assert self.state == State.stopped
+        server = self.server
         while True:
             try:
-                async with get_channel(server.host, server.ssl, server.ssl_host) as channel:
+                async with self._get_channel(server.host, server.ssl, server.ssl_host) as channel:
                     stream = get_stream(channel)  # type: ignore
                     self.client = stream(self._message_generator())
                     await self._loop()
             except grpc.RpcError:
                 self.logger.error(f"disconnected from {server.host}, retrying...")
                 await asyncio.sleep(0.2)
-            except (asyncio.CancelledError, KeyboardInterrupt):
+            except KeyboardInterrupt:
                 break
+            except asyncio.CancelledError:
+                raise KaruhaConnectError("the connection was closed by remote") from None
     
-    def run(self, server: Optional[Server] = None) -> None:
-        server = server or get_config().server
+    def run(self) -> None:
         try:
-            asyncio.run(self.async_run(server))
+            asyncio.run(self.async_run())
         except KeyboardInterrupt:
             pass
     
@@ -242,11 +259,11 @@ class Bot(object):
 
     @property
     def name(self) -> str:
-        return self.login_info.name
+        return self.config.name
     
     @property
     def uid(self) -> str:
-        uid = self.login_info.user
+        uid = self.config.user
         if uid is None:
             raise ValueError(f"cannot fetch the uid of bot {self.name}")
         return uid
@@ -260,6 +277,14 @@ class Bot(object):
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
+    
+    def _get_channel(self, host: str, secure: bool = False, ssl_host: Optional[str] = None) -> grpc_aio.Channel:
+        if not secure:
+            self.logger.info(f"connecting to server at {host}")
+            return grpc_aio.insecure_channel(host)
+        opts = (('grpc.ssl_target_name_override', ssl_host),) if ssl_host else None
+        self.logger.info(f"connecting to secure server at {host} SNI={ssl_host or host}")
+        return grpc_aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
     
     @contextmanager
     def _run_context(self):
@@ -291,3 +316,11 @@ class Bot(object):
                 for desc, msg in message.ListFields():
                     for e in _get_server_event(desc.name):
                         e(self, msg).process(self._create_task)
+
+
+def get_stream(channel: grpc_aio.Channel) -> grpc_aio.StreamStreamMultiCallable:
+    return channel.stream_stream(
+        '/pbx.Node/MessageLoop',
+        request_serializer=pb.ClientMsg.SerializeToString,
+        response_deserializer=pb.ServerMsg.FromString
+    )

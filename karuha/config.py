@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional, Tuple, Union
 from pydantic import AnyUrl, BaseModel, Field, PrivateAttr, validator
 from typing_extensions import Annotated
 
@@ -13,18 +13,17 @@ class Server(BaseModel):
     listen: Annotated[str, AnyUrl] = "0.0.0.0:40051"
 
 
-class LoginInfo(BaseModel):
+class Bot(BaseModel):
     name: str = "chatbot"
     schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
     secret: str
     user: Optional[str] = None
-    authlvl: Optional[str] = None
 
 
 class Config(BaseModel):
     log_level: str = "INFO"
     server: Server = Server()
-    bots: List[LoginInfo] = []
+    bots: Tuple[Bot, ...] = ()
     __path__: Union[str, Path] = PrivateAttr()
 
     @validator("log_level", always=True)
@@ -32,12 +31,6 @@ class Config(BaseModel):
         logger.setLevel(val)
         return val
 
-    def get_bot(self, name: str = "chatbot") -> LoginInfo:
-        for i in self.bots:
-            if i.name == name:
-                return i
-        raise ValueError(f"no bot named '{name}'")
-    
     def save(
         self,
         path: Union[str, Path, None] = None,
@@ -48,7 +41,9 @@ class Config(BaseModel):
         path = path or self.__path__
         try:
             with open(path, 'w', encoding=encoding) as f:
-                f.write(self.json())
+                f.write(self.json(
+                    indent=4, by_alias=True, exclude_defaults=False
+                ))
         except OSError:
             if not ignore_error:
                 raise
@@ -72,19 +67,19 @@ def load_config(
     global _config
     try:
         config = Config.parse_file(path, encoding=encoding)
-        config.__path__ = path
     except Exception:
         logger.warn(f"failed to load config from '{path}'")
         config = Config(__path__=path)
         if auto_create:
-            config.save(encoding=encoding, ignore_error=True)
+            config.save(path, encoding=encoding, ignore_error=True)
+    config.__path__ = path
     _config = config
     return config
 
 
 def init_config(
     server: Union[dict, Server] = Server(),
-    bots: Optional[List[Union[dict, LoginInfo]]] = None,
+    bots: Optional[List[Union[dict, Bot]]] = None,
     log_level: str = "INFO"
 ) -> Config:
     global _config
