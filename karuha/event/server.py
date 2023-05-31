@@ -36,7 +36,7 @@ class DataEvent(ServerEvent, on_field="data"):
 
     async def default_handler(self) -> None:
         msg = self.raw_message
-        self.bot.logger.info(f"=> {msg.content.decode()} ({msg.topic})")
+        self.bot.logger.info(f"({msg.topic})=> {msg.content.decode()}")
         await self.bot.note_read(msg.topic, msg.seq_id)
 
 

@@ -101,6 +101,7 @@ class Bot(object):
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
             self.logger.error(f"fail to init chatbot: {ctrl.text}")
+            return
         build = ctrl.params["build"].decode()
         ver = ctrl.params["ver"].decode()
         self.logger.info(f"server: {build} {ver}")
@@ -137,6 +138,7 @@ class Bot(object):
     
     async def subscribe(self, /, topic: str) -> None:
         if topic in self.subscriptions:
+            self.logger.info(f"topic {topic} already subscribed, request ignored")
             return
         tid = self._get_tid()
         ctrl = await self.send_message(
@@ -160,6 +162,7 @@ class Bot(object):
     
     async def leave(self, /, topic: str) -> None:
         if topic not in self.subscriptions:
+            self.logger.info(f"topic {topic} not subscribed, request ignored")
             return
         tid = self._get_tid()
         ctrl = await self.send_message(
@@ -187,7 +190,8 @@ class Bot(object):
         else:
             head = {k: json.dumps(v).encode() for k, v in head.items()}
         tid = self._get_tid()
-        await self.send_message(
+        ctrl = await self.send_message(
+            tid,
             pub=pb.ClientPub(
                 id=tid,
                 topic=topic,
@@ -196,7 +200,11 @@ class Bot(object):
                 content=json.dumps(text).encode()
             )
         )
-        self.logger.info(f"<= {text} ({topic})")
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:
+            self.logger.error(f"fail to publish message to {topic}: {ctrl.text}")
+        else:
+            self.logger.info(f"({topic})<= {text}")
     
     async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))

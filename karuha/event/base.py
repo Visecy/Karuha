@@ -1,5 +1,6 @@
 import asyncio
 from typing import Callable, ClassVar, Coroutine, List
+from typing_extensions import Self
 
 from .. import bot
 
@@ -7,7 +8,7 @@ from .. import bot
 class BaseEvent(object):
     __slots__ = ["bot"]
 
-    __handlers__: ClassVar[List[Callable[["BaseEvent"], Coroutine]]] = []
+    __handlers__: ClassVar[List[Callable[[Self], Coroutine]]] = []
 
     def __init__(self, bot: "bot.Bot") -> None:
         self.bot = bot
@@ -17,11 +18,11 @@ class BaseEvent(object):
             task_creator(i(self))
     
     @classmethod
-    def add_handler(cls, handler: Callable[["BaseEvent"], Coroutine]) -> None:
+    def add_handler(cls, handler: Callable[[Self], Coroutine]) -> None:
         cls.__handlers__.append(handler)
     
     @classmethod
-    def remove_handler(cls, handler: Callable[["BaseEvent"], Coroutine]) -> None:
+    def remove_handler(cls, handler: Callable[[Self], Coroutine]) -> None:
         cls.__handlers__.remove(handler)
     
     def __init_subclass__(cls) -> None:

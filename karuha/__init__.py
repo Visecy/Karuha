@@ -12,6 +12,7 @@ from .version import __version__
 from .config import get_config, load_config, init_config, save_config, Config
 from .config import Server as ServerConfig, Bot as BotConfig
 from .bot import Bot
+from .event import on, BaseEvent, DataEvent, CtrlEvent, PresEvent, MetaEvent, InfoEvent
 from .exception import KaruhaException, KaruhaConnectError
 
 
@@ -62,5 +63,12 @@ __all__ = [
     "BotConfig",
     "ServerConfig",
     "Bot",
+    "on",
+    "BaseEvent",
+    "DataEvent",
+    "CtrlEvent",
+    "PresEvent",
+    "MetaEvent",
+    "InfoEvent",
     "KaruhaException"
 ]
