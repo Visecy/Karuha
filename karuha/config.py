@@ -24,7 +24,7 @@ class Config(BaseModel):
     log_level: str = "INFO"
     server: Server = Server()
     bots: Tuple[Bot, ...] = ()
-    __path__: Union[str, Path] = PrivateAttr()
+    __path__: Path = PrivateAttr()
 
     @validator("log_level", always=True)
     def validate_log_level(cls, val: str) -> str:
@@ -69,10 +69,10 @@ def load_config(
         config = Config.parse_file(path, encoding=encoding)
     except Exception:
         logger.warn(f"failed to load config from '{path}'")
-        config = Config(__path__=path)
+        config = Config(__path__=path)  # type: ignore
         if auto_create:
             config.save(path, encoding=encoding, ignore_error=True)
-    config.__path__ = path
+    config.__path__ = path  # type: ignore
     _config = config
     return config
 
@@ -89,3 +89,9 @@ def init_config(
         log_level=log_level
     )
     return _config
+
+
+def save_config() -> Path:
+    config = get_config()
+    config.save()
+    return config.__path__

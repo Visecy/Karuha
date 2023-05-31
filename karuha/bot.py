@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Coroutine, Dict, Literal, Optional,
                     Union, overload)
+from typing_extensions import Self
 from weakref import WeakSet, ref
 
 import grpc
@@ -14,7 +15,7 @@ from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from . import WORKDIR
-from .config import Bot as BotConfig, Server as ServerConfig, get_config
+from .config import Bot as BotConfig, Config, Server as ServerConfig, get_config
 from .event import _get_server_event
 from .exception import KaruhaConnectError
 from .logger import get_logger
@@ -34,13 +35,21 @@ class Bot(object):
     ]
     
     @overload
-    def __init__(self, config: BotConfig, /, *, server: Union[ServerConfig, Any, None] = None) -> None: ...
+    def __init__(
+        self,
+        config: BotConfig,
+        /, *,
+        server: Union[ServerConfig, Any, None] = None,
+        log_level: str = ...
+    ) -> None: ...
     @overload  # noqa: E301
     def __init__(
         self, name: str, /,
         schema: Literal["basic", "token", "cookie"],
         secret: str,
-        server: Union[ServerConfig, Any, None] = None
+        *,
+        server: Union[ServerConfig, Any, None] = None,
+        log_level: str = ...
     ) -> None: ...
     def __init__(  # noqa: E301
         self,
@@ -48,7 +57,9 @@ class Bot(object):
         /,
         schema: Optional[Literal["basic", "token", "cookie"]] = None,
         secret: Optional[str] = None,
-        server: Union[ServerConfig, Any, None] = None
+        *,
+        server: Union[ServerConfig, Any, None] = None,
+        log_level: str = "INFO"
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
@@ -59,6 +70,7 @@ class Bot(object):
         self.queue = Queue()
         self.state = State.stopped
         self.logger = get_logger(f"KARUHA/{self.name}", WORKDIR / self.name / "log")
+        self.logger.setLevel(log_level)
         if server is None:
             server = ServerConfig()
         elif not isinstance(server, ServerConfig):
@@ -69,7 +81,7 @@ class Bot(object):
         self._tasks = WeakSet()
         self._loop_task_ref = lambda: None
     
-    async def hello(self, lang: str = "EN") -> None:
+    async def hello(self, /, lang: str = "EN") -> None:
         tid = self._get_tid()
         user_agent = ' '.join((
             f"KaruhaBot/{APP_VERSION}",
@@ -122,7 +134,7 @@ class Bot(object):
             self.config.schema_ = "token"
             self.config.secret = json.loads(params["token"].decode())
     
-    async def subscribe(self, topic: str) -> None:
+    async def subscribe(self, /, topic: str) -> None:
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -142,7 +154,7 @@ class Bot(object):
         else:
             self.logger.info(f"subscribe topic {topic}")
     
-    async def leave(self, topic: str) -> None:
+    async def leave(self, /, topic: str) -> None:
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -162,7 +174,7 @@ class Bot(object):
         else:
             self.logger.info(f"leave topic {topic}")
     
-    async def publish(self, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> None:
+    async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> None:
         if head is None:
             head = {"auto": b"true"}
         else:
@@ -179,15 +191,15 @@ class Bot(object):
         )
         self.logger.info(f"<= {text} ({topic})")
     
-    async def note_read(self, topic: str, seq: int) -> None:
+    async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
     
     @overload
-    async def send_message(self, wait_tid: str, **kwds: Message) -> Message: ...
+    async def send_message(self, wait_tid: str, /, **kwds: Message) -> Message: ...
     @overload
-    async def send_message(self, wait_tid: None = None, **kwds: Message) -> None: ...
+    async def send_message(self, wait_tid: None = None, /, **kwds: Message) -> None: ...
 
-    async def send_message(self, wait_tid: Optional[str] = None, **kwds: Message) -> Optional[Message]:
+    async def send_message(self, wait_tid: Optional[str] = None, /, **kwds: Message) -> Optional[Message]:
         """set a message to Tinode server
 
         :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
@@ -224,14 +236,14 @@ class Bot(object):
                 await asyncio.sleep(0.2)
             except KeyboardInterrupt:
                 break
-            except asyncio.CancelledError:
-                raise KaruhaConnectError("the connection was closed by remote") from None
     
     def run(self) -> None:
         try:
             asyncio.run(self.async_run())
         except KeyboardInterrupt:
             pass
+        except asyncio.CancelledError:
+            raise KaruhaConnectError("the connection was closed by remote") from None
     
     def cancel(self, cancel_loop: bool = True) -> None:
         if self.state != State.running:
@@ -256,6 +268,21 @@ class Bot(object):
             loop_task.set_exception(
                 KaruhaConnectError("restart chatbot")
             )
+    
+    @classmethod
+    def from_config(cls, name: Union[str, BotConfig], /, config: Config) -> Self:
+        if not isinstance(name, BotConfig):
+            for i in config.bots:
+                if i.name == name:
+                    name = i
+                    break
+            else:
+                raise ValueError(f"bot '{name}' is not in the configuration list")
+        return cls(
+            name,
+            server=config.server,
+            log_level=config.log_level
+        )
 
     @property
     def name(self) -> str:
@@ -273,12 +300,12 @@ class Bot(object):
         self._tid_counter += 1
         return tid
     
-    def _create_task(self, coro: Coroutine) -> asyncio.Task:
+    def _create_task(self, coro: Coroutine, /) -> asyncio.Task:
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
     
-    def _get_channel(self, host: str, secure: bool = False, ssl_host: Optional[str] = None) -> grpc_aio.Channel:
+    def _get_channel(self, /, host: str, secure: bool = False, ssl_host: Optional[str] = None) -> grpc_aio.Channel:
         if not secure:
             self.logger.info(f"connecting to server at {host}")
             return grpc_aio.insecure_channel(host)
@@ -318,7 +345,7 @@ class Bot(object):
                         e(self, msg).process(self._create_task)
 
 
-def get_stream(channel: grpc_aio.Channel) -> grpc_aio.StreamStreamMultiCallable:
+def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:
     return channel.stream_stream(
         '/pbx.Node/MessageLoop',
         request_serializer=pb.ClientMsg.SerializeToString,
