@@ -42,6 +42,8 @@ async def async_run() -> None:
             continue
         bot = Bot.from_config(i, config)
         tasks.append(asyncio.create_task(bot.async_run()))
+    if not tasks:
+        raise ValueError("no bot loaded")
     await asyncio.gather(*tasks)
     
 

@@ -33,7 +33,7 @@ def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> Non
             m_time.tm_mon != n_time.tm_mon or
             m_time.tm_year != n_time.tm_year
         ):
-            os.rename(log_dir, log_dir / f"{asctime(m_time).replace(':', '-')}.log")
+            os.rename(file_path, log_dir / f"{asctime(m_time).replace(':', '-')}.log")
     add_log_stream(logger, cast(TextIO, s_open(file_path, "a", encoding="utf-8")))
 
 

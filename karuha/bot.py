@@ -1,23 +1,26 @@
 import asyncio
 import json
 import platform
+import sys
 from asyncio.queues import Queue, QueueEmpty
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Coroutine, Dict, Literal, Optional,
                     Union, overload)
-from typing_extensions import Self
 from weakref import WeakSet, ref
 
 import grpc
-from grpc import aio as grpc_aio
 from google.protobuf.message import Message
+from grpc import aio as grpc_aio
 from tinode_grpc import pb
+from typing_extensions import Self
 
 from . import WORKDIR
-from .config import Bot as BotConfig, Config, Server as ServerConfig
+from .config import Bot as BotConfig
+from .config import Config
+from .config import Server as ServerConfig
 from .event import _get_server_event
-from .exception import KaruhaConnectError
+from .exception import KaruhaConnectError, KaruhaRuntimeError
 from .logger import get_logger
 from .version import APP_VERSION, LIB_VERSION
 
@@ -242,15 +245,15 @@ class Bot(object):
         server = self.server
         while True:
             try:
-                async with self._get_channel(server.host, server.ssl, server.ssl_host) as channel:
+                async with self._run_context() as channel:
                     stream = get_stream(channel)  # type: ignore
                     msg_gen = self._message_generator()
                     self._tasks.add(msg_gen)
-                    self.client = stream(msg_gen)
-                    await self._loop()
+                    client = stream(msg_gen)
+                    await self._loop(client)
             except grpc.RpcError:
-                self.logger.error(f"disconnected from {server.host}, retrying...")
-                await asyncio.sleep(0.2)
+                self.logger.error(f"disconnected from {server.host}, retrying...", exc_info=sys.exc_info())
+                await asyncio.sleep(0.5)
             except KeyboardInterrupt:
                 break
     
@@ -323,7 +326,10 @@ class Bot(object):
         self._tasks.add(task)
         return task
     
-    def _get_channel(self, /, host: str, secure: bool = False, ssl_host: Optional[str] = None) -> grpc_aio.Channel:
+    def _get_channel(self) -> grpc_aio.Channel:
+        host = self.server.host
+        secure = self.server.ssl
+        ssl_host = self.server.ssl_host
         if not secure:
             self.logger.info(f"connecting to server at {host}")
             return grpc_aio.insecure_channel(host)
@@ -331,15 +337,20 @@ class Bot(object):
         self.logger.info(f"connecting to secure server at {host} SNI={ssl_host or host}")
         return grpc_aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
     
-    @contextmanager
-    def _run_context(self):
-        assert self.state == State.stopped
+    @asynccontextmanager
+    async def _run_context(self):
+        if self.state == State.running:
+            raise KaruhaRuntimeError(f"try to rerun bot {self.name}")
+        elif self.state != State.stopped:
+            raise KaruhaRuntimeError(f"fail to run bot {self.name} (state: {self.state})")
         self.state = State.running
         self._loop_task_ref = ref(asyncio.current_task())
         self.logger.info(f"starting the bot {self.name}")
+        channel = self._get_channel()
         try:
-            yield self
+            yield channel
         except:  # noqa: E722
+            await channel.close()
             self.cancel(cancel_loop=False)
             raise
     
@@ -349,18 +360,23 @@ class Bot(object):
             self.logger.debug(f"out: {msg}")
             yield msg
     
-    async def _loop(self) -> None:
-        with self._run_context():
-            self._create_task(self.hello())
-            self._create_task(self.login())
-            
-            message: pb.ServerMsg
-            async for message in self.client:  # type: ignore
-                self.logger.debug(f"in {message}")
+    async def _loop(self, client: grpc_aio.StreamStreamCall) -> None:
+        self._create_task(self.hello())
+        self._create_task(self.login())
+        
+        message: pb.ServerMsg
+        async for message in client:  # type: ignore
+            self.logger.debug(f"in: {message}")
 
-                for desc, msg in message.ListFields():
-                    for e in _get_server_event(desc.name):
-                        e(self, msg).trigger(self._create_task)
+            for desc, msg in message.ListFields():
+                for e in _get_server_event(desc.name):
+                    e(self, msg).trigger(self._create_task)
+    
+    def __repr__(self) -> str:
+        state = self.state.name
+        uid = self.config.user or ''
+        host = self.server.host
+        return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
 
 def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:
