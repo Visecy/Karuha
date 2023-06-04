@@ -241,7 +241,6 @@ class Bot(object):
         return rsp_msg
 
     async def async_run(self) -> None:
-        assert self.state == State.stopped
         server = self.server
         while True:
             try:

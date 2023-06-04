@@ -163,6 +163,9 @@ cython_debug/
 test.*
 disabled.*
 
+# vscode config
+.vscode/
+
 # Karuha data file
 .bot/
 config.json

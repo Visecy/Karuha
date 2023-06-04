@@ -1,9 +1,17 @@
+import ujson
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
-from pydantic import AnyUrl, BaseModel, Field, PrivateAttr, validator
+from pydantic import BaseModel as _BaseModel
+from pydantic import AnyUrl, BaseConfig, Field, PrivateAttr, validator
 from typing_extensions import Annotated
 
 from .logger import logger
+
+
+class BaseModel(_BaseModel):
+    class Config(BaseConfig):
+        json_dumps = ujson.dumps
+        json_loads = ujson.loads
 
 
 class Server(BaseModel):

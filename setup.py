@@ -56,11 +56,12 @@ setup(
             else "typing_extensions>=4.0,<4.2",
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
-        "pydantic"
+        "pydantic",
+        "ujson"
     ],
 
     classifiers=[
-        "DDevelopment Status :: 2 - Pre-Alpha",
+        "Development Status :: 2 - Pre-Alpha",
         "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3 :: Only",
