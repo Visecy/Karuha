@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 import json
 import platform
 import sys
@@ -19,7 +20,6 @@ from . import WORKDIR
 from .config import Bot as BotConfig
 from .config import Config, init_config, get_config
 from .config import Server as ServerConfig
-from .event import _get_server_event
 from .exception import KaruhaConnectError, KaruhaRuntimeError
 from .logger import get_logger, Level
 from .version import APP_VERSION, LIB_VERSION
@@ -33,9 +33,11 @@ class State(IntEnum):
 
 class Bot(object):
     __slots__ = [
-        "queue", "state", "client", "logger", "config", "server", "subscriptions",
+        "queue", "state", "client", "logger", "config", "server",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
+
+    server_event_map: Dict[str, list] = defaultdict(list)
     
     @overload
     def __init__(
@@ -79,7 +81,7 @@ class Bot(object):
         elif not isinstance(server, ServerConfig):
             server = ServerConfig.parse_obj(server)
         self.server = server
-        self.subscriptions = set()
+        # self.subscriptions = set()
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()
@@ -140,9 +142,9 @@ class Bot(object):
             self.config.secret = json.loads(params["token"].decode())
     
     async def subscribe(self, /, topic: str) -> None:
-        if topic in self.subscriptions:
-            self.logger.info(f"topic {topic} already subscribed, request ignored")
-            return
+        # if topic in self.subscriptions:
+        #     self.logger.info(f"topic {topic} already subscribed, request ignored")
+        #     return
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -160,13 +162,13 @@ class Bot(object):
                 else:
                     self.cancel()
         else:
-            self.subscriptions.add(topic)
+            # self.subscriptions.add(topic)
             self.logger.info(f"subscribe topic {topic}")
     
     async def leave(self, /, topic: str) -> None:
-        if topic not in self.subscriptions:
-            self.logger.info(f"topic {topic} not subscribed, request ignored")
-            return
+        # if topic not in self.subscriptions:
+        #     self.logger.info(f"topic {topic} not subscribed, request ignored")
+        #     return
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -184,7 +186,7 @@ class Bot(object):
                 else:
                     self.cancel()
         else:
-            self.subscriptions.remove(topic)
+            # self.subscriptions.remove(topic)
             self.logger.info(f"leave topic {topic}")
     
     async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> None:
@@ -283,7 +285,7 @@ class Bot(object):
                 self.queue.get_nowait()
             except QueueEmpty:
                 break
-        self.subscriptions.clear()
+        # self.subscriptions.clear()
         for i in self._wait_list.values():
             i.cancel()
         map(asyncio.Task.cancel, self._tasks)
@@ -377,8 +379,8 @@ class Bot(object):
             self.logger.debug(f"in: {message}")
 
             for desc, msg in message.ListFields():
-                for e in _get_server_event(desc.name):
-                    e(self, msg).trigger(self._create_task)
+                for e in self.server_event_map[desc.name]:
+                    e(self, msg).trigger()
     
     def __repr__(self) -> str:
         state = self.state.name

@@ -1,7 +1,7 @@
 from typing import Any, Callable, Type, TypeVar
 
 from .base import BaseEvent
-from .server import DataEvent, CtrlEvent, MetaEvent, PresEvent, InfoEvent, _get_server_event
+from .server import DataEvent, CtrlEvent, MetaEvent, PresEvent, InfoEvent
 
 
 T_Event = TypeVar("T_Event", bound=BaseEvent)

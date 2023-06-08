@@ -1,14 +1,9 @@
-import asyncio
-from collections import defaultdict
-from typing import Callable, Coroutine, List, Type
 from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from .. import bot
 from .base import BaseEvent
-
-
-_server_event = defaultdict(list)
+from .client import SubscribeEvent, LeaveEvent
 
 
 class ServerEvent(BaseEvent):
@@ -21,13 +16,13 @@ class ServerEvent(BaseEvent):
     async def default_handler(self) -> None:
         pass
     
-    def trigger(self, task_creator: Callable[[Coroutine], asyncio.Task] = asyncio.create_task) -> None:
-        task_creator(self.default_handler())
-        return super().trigger(task_creator)
+    def trigger(self) -> None:
+        self.bot._create_task(self.default_handler())
+        return super().trigger()
 
     def __init_subclass__(cls, on_field: str) -> None:
         super().__init_subclass__()
-        _server_event[on_field].append(cls)
+        bot.Bot.server_event_map[on_field].append(cls)
     
 
 class DataEvent(ServerEvent, on_field="data"):
@@ -68,16 +63,12 @@ class PresEvent(ServerEvent, on_field="pres"):
         if msg.topic != "me":
             return
         if msg.what in [pb.ServerPres.ON, pb.ServerPres.MSG]:
-            await self.bot.subscribe(msg.src)
+            SubscribeEvent(self.bot, msg.src).trigger()
         elif msg.what == pb.ServerPres.OFF:
-            await self.bot.leave(msg.src)
+            LeaveEvent(self.bot, msg.src).trigger()
 
 
 class InfoEvent(ServerEvent, on_field="info"):
     __slots__ = []
 
     server_message: pb.ServerInfo
-
-
-def _get_server_event(field_name: str) -> List[Type[ServerEvent]]:
-    return _server_event[field_name]

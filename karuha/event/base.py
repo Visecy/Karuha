@@ -1,4 +1,3 @@
-import asyncio
 from typing import Callable, ClassVar, Coroutine, List
 from typing_extensions import Self
 
@@ -13,9 +12,10 @@ class BaseEvent(object):
     def __init__(self, bot: "bot.Bot") -> None:
         self.bot = bot
     
-    def trigger(self, task_creator: Callable[[Coroutine], asyncio.Task] = asyncio.create_task) -> None:
+    def trigger(self) -> None:
+        self.bot.logger.debug(f"trigger event {self.__class__.__name__}")
         for i in self.__handlers__:
-            task_creator(i(self))
+            self.bot._create_task(i(self))
     
     @classmethod
     def add_handler(cls, handler: Callable[[Self], Coroutine]) -> None:
