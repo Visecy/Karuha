@@ -4,9 +4,9 @@ Tinode Drafty Message Support
 For details see: https://github.com/tinode/chat/blob/master/docs/drafty.md
 """
 
+from pydantic import Field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from typing_extensions import Self
-from pydantic import Field
 
 from ..config import BaseModel
 
@@ -21,7 +21,8 @@ class DraftyFormat(BaseModel):
         obj = self.copy()
         if self.at != -1:
             obj.at += offset
-        obj.key += k_base
+        if obj.tp is None:
+            obj.key += k_base
         return obj
     
     def split(self, pos: int) -> Tuple[Self, Self]:
@@ -33,6 +34,9 @@ class DraftyFormat(BaseModel):
         back.at += pos
         back.len -= pos
         return front, back
+    
+    def dict(self, *, exclude_defaults: Literal[True] = True, **kwds) -> Dict:
+        return super().dict(exclude_defaults=True, **kwds)
 
 
 class DraftyExtend(BaseModel):

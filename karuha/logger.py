@@ -5,6 +5,7 @@ from pathlib import Path
 from time import asctime, localtime
 from typing import IO, TextIO, Union, cast
 
+Level = Union[int, str]
 formatter = logging.Formatter('[%(asctime)s %(name)s][%(levelname)s] %(message)s')
 
 

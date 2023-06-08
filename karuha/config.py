@@ -1,11 +1,11 @@
 import ujson
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Iterable, Literal, Optional, Tuple, Union
 from pydantic import BaseModel as _BaseModel
 from pydantic import AnyUrl, BaseConfig, Field, PrivateAttr, validator
 from typing_extensions import Annotated
 
-from .logger import logger
+from .logger import logger, Level
 
 
 class BaseModel(_BaseModel):
@@ -29,7 +29,7 @@ class Bot(BaseModel):
 
 
 class Config(BaseModel):
-    log_level: str = "INFO"
+    log_level: Level = "INFO"
     server: Server = Server()
     bots: Tuple[Bot, ...] = ()
     __path__: Path = PrivateAttr()
@@ -87,13 +87,13 @@ def load_config(
 
 def init_config(
     server: Union[dict, Server] = Server(),
-    bots: Optional[List[Union[dict, Bot]]] = None,
-    log_level: str = "INFO"
+    bots: Optional[Iterable[Union[dict, Bot]]] = None,
+    log_level: Level = "INFO"
 ) -> Config:
     global _config
     _config = Config(
         server=server,  # type: ignore
-        bots=bots,  # type: ignore
+        bots=bots or (),  # type: ignore
         log_level=log_level
     )
     return _config

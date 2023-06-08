@@ -17,11 +17,11 @@ from typing_extensions import Self
 
 from . import WORKDIR
 from .config import Bot as BotConfig
-from .config import Config
+from .config import Config, init_config, get_config
 from .config import Server as ServerConfig
 from .event import _get_server_event
 from .exception import KaruhaConnectError, KaruhaRuntimeError
-from .logger import get_logger
+from .logger import get_logger, Level
 from .version import APP_VERSION, LIB_VERSION
 
 
@@ -43,7 +43,7 @@ class Bot(object):
         config: BotConfig,
         /, *,
         server: Union[ServerConfig, Any, None] = None,
-        log_level: str = ...
+        log_level: Level = ...
     ) -> None: ...
     @overload  # noqa: E301
     def __init__(
@@ -52,7 +52,7 @@ class Bot(object):
         secret: str,
         *,
         server: Union[ServerConfig, Any, None] = None,
-        log_level: str = ...
+        log_level: Level = ...
     ) -> None: ...
     def __init__(  # noqa: E301
         self,
@@ -62,7 +62,7 @@ class Bot(object):
         secret: Optional[str] = None,
         *,
         server: Union[ServerConfig, Any, None] = None,
-        log_level: str = "INFO"
+        log_level: Level = "INFO"
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
@@ -257,6 +257,15 @@ class Bot(object):
                 break
     
     def run(self) -> None:
+        # synchronize with configuration
+        try:
+            get_config()
+        except Exception:
+            init_config(
+                server=self.server,
+                bots=[self.config],
+                log_level=self.logger.level
+            )
         try:
             asyncio.run(self.async_run())
         except KeyboardInterrupt:
