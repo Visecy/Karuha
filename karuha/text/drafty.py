@@ -11,11 +11,15 @@ from typing_extensions import Self
 from ..config import BaseModel
 
 
+InlineType = Literal["BR", "CO", "DL", "EM", "FM", "HD", "HL", "RW", "ST"]
+ExtendType = Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC", "VD"]
+
+
 class DraftyFormat(BaseModel):
     at: int = Field(0, ge=-1)  # -1 means not applying any styling to text.
     len: int = 0
     key: int = 0
-    tp: Optional[Literal["BR", "CO", "DL", "EM", "FM", "HD", "HL", "RW", "ST"]] = None
+    tp: Optional[InlineType] = None
 
     def rebase(self, offset: int, k_base: int = 0) -> Self:
         obj = self.copy()
@@ -40,7 +44,7 @@ class DraftyFormat(BaseModel):
 
 
 class DraftyExtend(BaseModel):
-    tp: Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC", "VD"]
+    tp: ExtendType
     data: Dict[str, Any]
 
 
@@ -82,7 +86,7 @@ class DraftyMessage(BaseModel):
         return self
 
     def __repr__(self) -> str:
-        return f"<drafty message '{self.txt}'>"
+        return f"<drafty message {self.txt!r}>"
     
     def __str__(self) -> str:
         return self.txt

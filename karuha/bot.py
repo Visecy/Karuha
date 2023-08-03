@@ -227,7 +227,7 @@ class Bot(object):
         :return: message which has the same tid
         :rtype: Optional[Message]
         """
-        client_msg = pb.ClientMsg(**kwds)
+        client_msg = pb.ClientMsg(**kwds)  # type: ignore
         if wait_tid is None:
             return await self.queue.put(client_msg)
         future = asyncio.get_running_loop().create_future()
@@ -244,6 +244,7 @@ class Bot(object):
 
     async def async_run(self) -> None:
         server = self.server
+        assert server
         while True:
             try:
                 async with self._run_context() as channel:
@@ -263,6 +264,8 @@ class Bot(object):
         try:
             get_config()
         except Exception:
+            if self.server is None:
+                raise ValueError("server not specified") from None
             init_config(
                 server=self.server,
                 bots=[self.config],
@@ -337,6 +340,7 @@ class Bot(object):
         return task
     
     def _get_channel(self) -> grpc_aio.Channel:
+        assert self.server
         host = self.server.host
         secure = self.server.ssl
         ssl_host = self.server.ssl_host
@@ -385,7 +389,7 @@ class Bot(object):
     def __repr__(self) -> str:
         state = self.state.name
         uid = self.config.user or ''
-        host = self.server.host
+        host = self.server.host if self.server else 'unknown'
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
 
