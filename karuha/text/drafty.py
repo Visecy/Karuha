@@ -4,11 +4,9 @@ Tinode Drafty Message Support
 For details see: https://github.com/tinode/chat/blob/master/docs/drafty.md
 """
 
-from pydantic import Field
+from pydantic import Field, BaseModel
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from typing_extensions import Self
-
-from ..config import BaseModel
 
 
 InlineType = Literal["BR", "CO", "DL", "EM", "FM", "HD", "HL", "RW", "ST"]
@@ -39,7 +37,7 @@ class DraftyFormat(BaseModel):
         back.len -= pos
         return front, back
     
-    def dict(self, *, exclude_defaults: Literal[True] = True, **kwds) -> Dict:
+    def dict(self, **kwds) -> Dict:
         return super().dict(exclude_defaults=True, **kwds)
 
 

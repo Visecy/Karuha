@@ -3,10 +3,12 @@ A simple Tinode chatbot framework
 """
 
 import asyncio
+import os
 from pathlib import Path
 
 
-WORKDIR = Path(".bot")  # dir to storage bot data
+WORKDIR = Path(os.environ.get("KARUHA_ROOT", ".bot"))  # dir to storage bot data
+
 
 from .version import __version__
 from .config import get_config, load_config, init_config, save_config, Config

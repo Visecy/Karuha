@@ -6,10 +6,9 @@ that is easier for users to read and write.
 from abc import abstractmethod
 from base64 import encodebytes
 from pathlib import Path
-from pydantic import AnyHttpUrl, validator
+from pydantic import AnyHttpUrl, BaseModel, validator
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from ..config import BaseModel
 from .drafty import DraftyMessage, DraftyFormat, DraftyExtend, ExtendType
 
 
@@ -50,7 +49,8 @@ class _PlainText(BaseText):
 
 
 class PlainText(_PlainText):
-    pass
+    def __init__(self, text: str) -> None:
+        super().__init__(text=text)
 
 
 class StyleText(_PlainText):

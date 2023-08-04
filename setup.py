@@ -57,7 +57,6 @@ setup(
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
         "pydantic",
-        "ujson"
     ],
 
     classifiers=[
