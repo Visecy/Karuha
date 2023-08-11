@@ -51,6 +51,10 @@ class DraftyMessage(BaseModel):
     fmt: List[DraftyFormat] = []
     ent: List[DraftyExtend] = []
 
+    @classmethod
+    def from_str(cls, string: str) -> Self:
+        return DraftyMessage(txt=string)
+
     def __add__(self, other: Union[str, "DraftyMessage"]) -> Self:
         obj = self.copy()
         if isinstance(other, str):

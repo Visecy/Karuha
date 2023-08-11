@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Iterable, Literal, Optional, Tuple, Union
-from pydantic import AnyUrl, BaseModel, Field, PrivateAttr, validator
+from pydantic import AnyUrl, BaseModel, Field, PrivateAttr, field_validator
 from typing_extensions import Annotated
 
 from .logger import logger, Level
@@ -26,7 +26,7 @@ class Config(BaseModel):
     bots: Tuple[Bot, ...] = ()
     _path: Path = PrivateAttr()
 
-    @validator("log_level", always=True)
+    @field_validator("log_level", mode="after")
     def validate_log_level(cls, val: str) -> str:
         logger.setLevel(val)
         return val
@@ -41,7 +41,7 @@ class Config(BaseModel):
         path = path or self._path
         try:
             with open(path, 'w', encoding=encoding) as f:
-                f.write(self.json(
+                f.write(self.model_dump_json(
                     indent=4, by_alias=True, exclude_defaults=False
                 ))
         except OSError:
@@ -66,7 +66,8 @@ def load_config(
 ) -> "Config":
     global _config
     try:
-        config = Config.parse_file(path, encoding=encoding)
+        with open(path, encoding=encoding) as f:
+            config = Config.model_validate_json(f.read())
     except Exception:
         logger.warn(f"failed to load config from '{path}'")
         config = Config(_path=path)  # type: ignore

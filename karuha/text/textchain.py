@@ -7,7 +7,7 @@ from abc import abstractmethod
 from base64 import encodebytes
 from pathlib import Path
 from pydantic import AnyHttpUrl, BaseModel, validator
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, ClassVar, Dict, Final, List, Literal, Optional, Type, Union
 
 from .drafty import DraftyMessage, DraftyFormat, DraftyExtend, ExtendType
 
@@ -23,11 +23,11 @@ class BaseText(BaseModel):
         return len(str(self))
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} {self}>"
+        return f"<{self.__class__.__name__} {str(self)!r}>"
     
     @abstractmethod
     def __str__(self) -> str:
-        return "<base text>"
+        return "unknown"
 
 
 class _PlainText(BaseText):
@@ -74,14 +74,53 @@ class StyleText(_PlainText):
         return DraftyMessage(txt=self.text.replace('\n', ' '), fmt=fmt)
 
 
-class Code(_PlainText):
+class InlineCode(_PlainText):
     def to_drafty(self) -> DraftyMessage:
         df = super().to_drafty()
         df.fmt.append(DraftyFormat(at=0, len=len(self), tp="CO"))
         return df
+    
+
+class TextChain(BaseText):
+    contents: List[BaseText]
+
+    def __init__(self, *args: BaseText) -> None:
+        super().__init__(contents=args)  # type: ignore
+
+    def to_drafty(self) -> DraftyMessage:
+        if not self.contents:
+            return DraftyMessage(txt=" ")
+        it = iter(self.contents)
+        base = next(it).to_drafty()
+        for i in it:
+            base += i.to_drafty()
+        return base
+
+    def __str__(self) -> str:
+        return ''.join(str(i) for i in self.contents)
+
+
+class FormText(TextChain):
+    su: bool = False
+
+    def __init__(self, *args: BaseText, su: bool = False) -> None:
+        super(BaseText, self).__init__(contents=args, su=su)
+
+    def to_drafty(self) -> DraftyMessage:
+        drafty = super().to_drafty()
+        length = len(drafty.txt)
+        if self.su:
+            key = len(drafty.ent)
+            drafty.ent.append(DraftyExtend(tp="FM", data={"su": True}))
+            drafty.fmt.append(DraftyFormat(at=0, len=length, key=key))
+        else:
+            drafty.fmt.append(DraftyFormat(at=0, len=length, tp="FM"))
+        return drafty
 
 
 class _ExtensionText(_PlainText):
+    tp_map: ClassVar[Dict[str, Type["_ExtensionText"]]] = {}
+
     type: ExtendType
 
     @abstractmethod
@@ -94,10 +133,16 @@ class _ExtensionText(_PlainText):
         df.fmt.append(DraftyFormat(at=0 if length else -1, len=length))
         df.ent.append(DraftyExtend(tp=self.type, data=self.get_data()))
         return df
+    
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        tp = getattr(cls, "type", cls.model_fields["type"].default)
+        if isinstance(tp, str):
+            cls.tp_map[tp] = cls
 
 
 class Link(_ExtensionText):
-    type: ExtendType = "LN"
+    type: Final[ExtendType] = "LN"
     url: AnyHttpUrl
 
     def get_data(self) -> Dict[str, Any]:
@@ -105,6 +150,8 @@ class Link(_ExtensionText):
     
 
 class Mention(_ExtensionText):
+    type: Final[ExtendType] = "MN"
+
     user: str
 
     def get_data(self) -> Dict[str, Any]:
@@ -112,6 +159,8 @@ class Mention(_ExtensionText):
     
 
 class Hashtag(_ExtensionText):
+    type: Final[ExtendType] = "HT"
+
     val: str
 
     def get_data(self) -> Dict[str, Any]:
@@ -119,6 +168,8 @@ class Hashtag(_ExtensionText):
 
 
 class Button(_ExtensionText):
+    type: Final[ExtendType] = "BN"
+
     name: Optional[str] = None
     value: Optional[str] = None
     act: Literal["pub", "url", "note"] = "pub"
@@ -151,44 +202,10 @@ class VideoCall(_ExtensionText):
 
     def get_data(self) -> Dict[str, Any]:
         return self.dict(include={"duration", "state", "incoming", "aonly"})
-    
-
-class TextChain(BaseText):
-    contents: List[BaseText]
-
-    def __init__(self, *args: BaseText) -> None:
-        super().__init__(contents=args)  # type: ignore
-
-    def to_drafty(self) -> DraftyMessage:
-        if not self.contents:
-            return DraftyMessage(txt=" ")
-        it = iter(self.contents)
-        base = next(it).to_drafty()
-        for i in it:
-            base += i.to_drafty()
-        return base
-
-    def __str__(self) -> str:
-        return ''.join(str(i) for i in self.contents)
-
-
-class FormText(TextChain):
-    su: bool = False
-
-    def to_drafty(self) -> DraftyMessage:
-        drafty = super().to_drafty()
-        length = len(drafty.txt)
-        if self.su:
-            key = len(drafty.ent)
-            drafty.ent.append(DraftyExtend(tp="FM", data={"su": True}))
-            drafty.fmt.append(DraftyFormat(at=0, len=length, key=key))
-        else:
-            drafty.fmt.append(DraftyFormat(at=0, len=length, tp="FM"))
-        return drafty
 
 
 class _AttachmentMessage(_ExtensionText):
-    text: str = " "
+    text: str = ""
     type: ExtendType
 
     mime: str
@@ -208,7 +225,7 @@ class _AttachmentMessage(_ExtensionText):
         return self.read_file(self.path)
     
     def get_data(self) -> Dict[str, Any]:
-        data = self.dict(exclude={"text", "type", "path", "ref"}, exclude_none=True)
+        data = self.model_dump(exclude={"text", "type", "path", "ref"}, exclude_none=True)
         if self.ref:
             data["ref"] = self.ref
         else:
@@ -217,13 +234,13 @@ class _AttachmentMessage(_ExtensionText):
 
 
 class File(_AttachmentMessage):
-    type: ExtendType = "EX"
+    type: Final[ExtendType] = "EX"
     
     mime: str = "text/plain"
 
 
 class Image(_AttachmentMessage):
-    type: ExtendType = "IM"
+    type: Final[ExtendType] = "IM"
 
     mime: str = "image/png"
     width: int
@@ -237,7 +254,7 @@ class Image(_AttachmentMessage):
 
 
 class Audio(_AttachmentMessage):
-    type: ExtendType = "AU"
+    type: Final[ExtendType] = "AU"
 
     mime: str = "audio/aac"
     duration: int
@@ -250,7 +267,7 @@ class Audio(_AttachmentMessage):
 
 
 class Video(_AttachmentMessage):
-    type: ExtendType = "VD"
+    type: Final[ExtendType] = "VD"
 
     mime: str = "video/webm"
     width: int

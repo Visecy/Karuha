@@ -56,7 +56,7 @@ setup(
             else "typing_extensions>=4.0,<4.2",
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
-        "pydantic",
+        "pydantic>2.0",
     ],
 
     classifiers=[
