@@ -1,5 +1,5 @@
 from .drafty import DraftyMessage, DraftyFormat, DraftyExtend
-from .textchain import BaseText, PlainText, StyleText, InlineCode, Link, Mention, Hashtag, Button, VideoCall, TextChain, FormText
+from .textchain import *
 from .convert import drafty2spans, spans2text, drafty2text, eval_spans, to_span_tree
 
 
@@ -11,12 +11,14 @@ __all__ = [
     # text
     "BaseText",
     "PlainText",
-    "StyleText",
     "InlineCode",
     "Link",
     "Mention",
     "Hashtag",
     "Button",
+    "VideoCall",
+    "TextChain",
+    "Form",
     # converter
     "drafty2spans",
     "spans2text",

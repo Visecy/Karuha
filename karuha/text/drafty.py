@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from typing_extensions import Self
 
 
-InlineType = Literal["BR", "CO", "DL", "EM", "FM", "HD", "HL", "RW", "ST"]
+InlineType = Literal["BR", "CO", "FM", "RW", "HL", "DL", "EM", "ST", "HD"]
 ExtendType = Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC", "VD"]
 
 

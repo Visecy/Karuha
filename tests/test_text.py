@@ -1,6 +1,6 @@
 from unittest import TestCase
-from karuha.text import *
-from karuha.text.convert import eval_spans, to_span_tree, spans2text, drafty2spans
+from karuha.text import PlainText, Form, DraftyMessage, drafty2spans, drafty2text
+from karuha.text.convert import eval_spans, to_span_tree
 
 
 example1 = DraftyMessage.model_validate_json(
@@ -22,7 +22,7 @@ example1 = DraftyMessage.model_validate_json(
        { "tp":"HT", "data":{ "val":"hashtag" } }
    ]
 }
-    """.strip()
+    """.strip()  # noqa: E501
 )
 
 example2 = DraftyMessage.model_validate_json(
@@ -50,7 +50,9 @@ class TestText(TestCase):
     def test_init(self) -> None:
         self.assertEqual(
             example1.txt,
-            "this is bold, code and italic, strike combined bold and italic an url: https://www.example.com/abc#fragment and another www.tinode.co this is a @mention and a #hashtag in a string second #hashtag"
+            "this is bold, code and italic, strike combined bold and italic an url: \
+                https://www.example.com/abc#fragment and another www.tinode.co this \
+                is a @mention and a #hashtag in a string second #hashtag"
         )
 
     def test_span(self) -> None:
@@ -72,3 +74,8 @@ class TestText(TestCase):
         self.assertFalse(df.ent)
         rtxt = drafty2text(df)
         self.assertEqual(txt, rtxt)
+
+        drafty2text(example1)
+        df2 = drafty2text(example2)
+        # print(df1, repr(df1))
+        self.assertIsInstance(df2, Form)

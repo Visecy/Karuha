@@ -1,9 +1,15 @@
-import sys
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 from ..logger import logger
 from .drafty import DraftyExtend, DraftyMessage, InlineType, ExtendType
-from .textchain import BaseText, PlainText, StyleText, InlineCode, TextChain, FormText, _ExtensionText
+from .textchain import BaseText, PlainText, InlineCode, TextChain, Form, _ExtensionText, _Container
+
+
+def _tp_weight(tp: str) -> int:
+    args: list = InlineType.__args__  # type: ignore
+    if tp in args:
+        return args.index(tp)
+    return 0
 
 
 class Span:
@@ -29,7 +35,7 @@ class Span:
             return diff > 0
         if diff := other.end - self.end:
             return diff > 0
-        return self.tp > other.tp
+        return _tp_weight(self.tp) < _tp_weight(other.tp)
     
     def __repr__(self) -> str:
         if not self.children:
@@ -66,7 +72,7 @@ def eval_spans(drafty: DraftyMessage) -> Tuple[List[Span], List[DraftyExtend]]:
             continue
         data = None
         if i.tp is None:
-            if i.key in drafty.ent:
+            if i.key < len(drafty.ent):
                 ent = drafty.ent[i.key]
                 tp = ent.tp
                 data = ent.data
@@ -94,29 +100,31 @@ def converter(tp: Union[InlineType, ExtendType]) -> Callable[[_T_Converter], _T_
 
 def _convert(text: str, span: Span) -> BaseText:
     try:
-        return _converters.get(span.tp, _default_convert)(text, span)
+        return _converters.get(span.tp, _default_converter)(text, span)
     except Exception:
-        logger.error(f"message decode error on span {span}", exc_info=sys.exc_info(), stack_info=True)
+        logger.error(f"message decode error on span {span}", exc_info=True)
         return PlainText(text=text[span.start:span.end])
 
 
-def _default_convert(text: str, span: Span) -> BaseText:
-    assert not span.children
-    return _ExtensionText.tp_map[span.tp](text=text[span.start:span.end], **(span.data or {}))
+def _default_converter(text: str, span: Span) -> BaseText:
+    logger.warn(f"unknown text {text[span.start:span.end]!r}[{span.tp}]")
+    return PlainText(text=text[span.start:span.end])
 
 
-def _split_text(text: str, /, span: List[Span]) -> List[BaseText]:
-    last = 0
-    raw = []
-    for i in span:
+def _split_text(text: str, /, spans: List[Span], start: int = 0, end: int = -1) -> List[BaseText]:
+    last = start
+    raw_contents = []
+    for i in spans:
         if last < i.start:
-            raw.append(PlainText(text[last:i.start]))
+            raw_contents.append(PlainText(text[last:i.start]))
         last = i.end
-        if t := _convert(text, i):
-            raw.append(t)
-    if last < len(text):
-        raw.append(PlainText(text[last:]))
-    iter_raw = iter(raw)
+        raw_contents.append(_convert(text, i))
+    if end < 0:
+        end = len(text)
+    if last < end:
+        raw_contents.append(PlainText(text[last:]))
+
+    iter_raw = iter(raw_contents)
     contents = [next(iter_raw)]
     for i in iter_raw:
         if isinstance(i, PlainText) and isinstance(contents[-1], PlainText):
@@ -128,9 +136,33 @@ def _split_text(text: str, /, span: List[Span]) -> List[BaseText]:
     return contents
 
 
-@converter("HD")
-def HD_converter(text: str, span: Span) -> PlainText:
-    return PlainText(text='')
+def _convert_spans(text: str, spans: Optional[List[Span]], /, start: int, end: int) -> BaseText:
+    if not spans:
+        return PlainText(text=text[start:end])
+    elif spans[0].start == start and spans[0].end == end:
+        return _convert(text, spans[0])
+    content = _split_text(text, spans, start, end)
+    if len(content) == 1:
+        return content[0]
+    return TextChain(*content)
+
+
+def _container_converter(text: str, span: Span) -> BaseText:
+    return _Container.tp_map[span.tp](
+        content=_convert_spans(text, span.children, span.start, span.end)
+    )  # type: ignore
+
+
+def _attachment_converter(text: str, span: Span) -> BaseText:
+    if span.children:
+        logger.warn(f"ignore children of span {span}")
+    return _ExtensionText.tp_map[span.tp](text=text[span.start:span.end], **(span.data or {}))
+
+
+for i in _Container.tp_map:
+    _converters[i] = _container_converter
+for i in _ExtensionText.tp_map:
+    _converters[i] = _attachment_converter
 
 
 @converter("BR")
@@ -138,41 +170,17 @@ def BR_converter(text: str, span: Span) -> PlainText:
     return PlainText(text='\n')
 
 
-@converter("ST")
-@converter("EM")
-@converter("DL")
-def StyleText_converter(text: str, span: Span) -> BaseText:
-    if span.tp == "ST":
-        tp_key = "bold"
-    elif span.tp == "EM":
-        tp_key = "italic"
-    elif span.tp == "DL":
-        tp_key = "strikethrough"
-    else:
-        raise ValueError(f"invalid text type: {span.tp}")
-    if not span.children:
-        return StyleText(text=text[span.start:span.end], **{tp_key: True})
-    
-    def _filter(msg: BaseText) -> BaseText:
-        if isinstance(msg, PlainText):
-            msg = StyleText(text=msg.text)
-        elif not isinstance(msg, StyleText):
-            return msg
-        setattr(msg, tp_key, True)
-        return msg
-    return TextChain(*filter(_filter, _split_text(text, span.children)))
-
-
 @converter("CO")
 def CO_converter(text: str, span: Span) -> BaseText:
-    assert not span.children
+    if span.children:
+        logger.warn(f"ignore children of span {span}")
     return InlineCode(text=text[span.start:span.end])
 
 
 @converter("FM")
 def FM_converter(text: str, span: Span) -> BaseText:
-    contents = _split_text(text, span.children) if span.children is not None else ()
-    return FormText(*contents, **(span.data or {}))
+    content = _convert_spans(text, span.children, span.start, span.end)
+    return Form(content=content, **(span.data or {}))
 
 
 def drafty2spans(drafty: DraftyMessage) -> List[Span]:
@@ -181,14 +189,7 @@ def drafty2spans(drafty: DraftyMessage) -> List[Span]:
 
 
 def spans2text(text: str, spans: List[Span]) -> BaseText:
-    if not spans:
-        return PlainText(text=text)
-    elif spans[0].start == 0 and spans[0].end == len(text):
-        return _convert(text, spans[0])
-    content = _split_text(text, spans)
-    if len(content) == 1:
-        return content[0]
-    return TextChain(*content)
+    return _convert_spans(text, spans, 0, len(text))
 
 
 def drafty2text(drafty: DraftyMessage) -> BaseText:

@@ -16,12 +16,11 @@ from grpc import aio as grpc_aio
 from tinode_grpc import pb
 from typing_extensions import Self
 
-from . import WORKDIR
 from .config import Bot as BotConfig
 from .config import Config, init_config, get_config
 from .config import Server as ServerConfig
 from .exception import KaruhaConnectError, KaruhaRuntimeError
-from .logger import get_logger, Level
+from .logger import get_sub_logger, Level
 from .version import APP_VERSION, LIB_VERSION
 
 
@@ -64,7 +63,7 @@ class Bot(object):
         secret: Optional[str] = None,
         *,
         server: Union[ServerConfig, Any, None] = None,
-        log_level: Level = "INFO"
+        log_level: Optional[Level] = None
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
@@ -74,12 +73,13 @@ class Bot(object):
             self.config = BotConfig(name=name, schema=schema, secret=secret)
         self.queue = Queue()
         self.state = State.stopped
-        self.logger = get_logger(f"KARUHA/{self.name}", WORKDIR / self.name / "log")
-        self.logger.setLevel(log_level)
+        self.logger = get_sub_logger(self.name)
+        if log_level is not None:
+            self.logger.setLevel(log_level)
         if server is None:
             server = ServerConfig()
         elif not isinstance(server, ServerConfig):
-            server = ServerConfig.parse_obj(server)
+            server = ServerConfig.model_validate(server)
         self.server = server
         # self.subscriptions = set()
         self._wait_list: Dict[str, asyncio.Future] = {}

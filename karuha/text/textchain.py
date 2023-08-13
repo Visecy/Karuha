@@ -5,11 +5,11 @@ that is easier for users to read and write.
 
 from abc import abstractmethod
 from base64 import encodebytes
-from pathlib import Path
-from pydantic import AnyHttpUrl, BaseModel, validator
-from typing import Any, ClassVar, Dict, Final, List, Literal, Optional, Type, Union
+from pydantic import AnyHttpUrl, BaseModel, model_validator
+from typing import Any, ClassVar, Dict, Final, List, Literal, MutableMapping, Optional, SupportsIndex, Type, Union
+from typing_extensions import Self
 
-from .drafty import DraftyMessage, DraftyFormat, DraftyExtend, ExtendType
+from .drafty import DraftyMessage, DraftyFormat, DraftyExtend, ExtendType, InlineType
 
 
 class BaseText(BaseModel):
@@ -30,7 +30,7 @@ class BaseText(BaseModel):
         return "unknown"
 
 
-class _PlainText(BaseText):
+class _Text(BaseText):
     text: str
     
     def to_drafty(self) -> DraftyMessage:
@@ -48,33 +48,15 @@ class _PlainText(BaseText):
         return self.text
 
 
-class PlainText(_PlainText):
+class PlainText(_Text):
     def __init__(self, text: str) -> None:
         super().__init__(text=text)
-
-
-class StyleText(_PlainText):
-    bold: bool = False
-    italic: bool = False
-    strikethrough: bool = False
     
-    def to_drafty(self) -> DraftyMessage:
-        length = len(self)
-        fmt = []
-        if self.bold:
-            fmt.append(DraftyFormat(at=0, len=length, tp="ST"))
-        if self.italic:
-            fmt.append(DraftyFormat(at=0, len=length, tp="EM"))
-        if self.strikethrough:
-            fmt.append(DraftyFormat(at=0, len=length, tp="DL"))
-        start = 0
-        while (p := self.text.find('\n', start)) != -1:
-            fmt.append(DraftyFormat(at=p, len=1, tp="BR"))
-            start = p + 1
-        return DraftyMessage(txt=self.text.replace('\n', ' '), fmt=fmt)
+    def __getitem__(self, index: Union[SupportsIndex, slice], /) -> "PlainText":
+        return self.__class__(text=self.text[index])
 
 
-class InlineCode(_PlainText):
+class InlineCode(_Text):
     def to_drafty(self) -> DraftyMessage:
         df = super().to_drafty()
         df.fmt.append(DraftyFormat(at=0, len=len(self), tp="CO"))
@@ -86,6 +68,9 @@ class TextChain(BaseText):
 
     def __init__(self, *args: BaseText) -> None:
         super().__init__(contents=args)  # type: ignore
+    
+    def __getitem__(self, key: SupportsIndex, /) -> BaseText:
+        return self.contents[key]
 
     def to_drafty(self) -> DraftyMessage:
         if not self.contents:
@@ -95,30 +80,79 @@ class TextChain(BaseText):
         for i in it:
             base += i.to_drafty()
         return base
+    
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.contents}>"
 
     def __str__(self) -> str:
         return ''.join(str(i) for i in self.contents)
 
 
-class FormText(TextChain):
+class _Container(BaseText):
+    tp_map: ClassVar[Dict[str, Type["_Container"]]] = {}
+
+    type: InlineType
+    content: BaseText
+    
+    def to_drafty(self) -> DraftyMessage:
+        df = self.content.to_drafty()
+        df.fmt.append(DraftyFormat(at=0, len=len(df.txt), tp=self.type))
+        return df
+    
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.content!r}>"
+    
+    def __str__(self) -> str:
+        return str(self.content)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        tp = getattr(cls, "type", cls.model_fields["type"].default)
+        if isinstance(tp, str):
+            cls.tp_map[tp] = cls
+
+
+class Bold(_Container):
+    type: Final[InlineType] = "ST"
+    
+
+class Italic(_Container):
+    type: Final[InlineType] = "EM"
+    
+
+class Strikethrough(_Container):
+    type: Final[InlineType] = "DL"
+
+
+class Highlight(_Container):
+    type: Final[InlineType] = "HL"
+
+
+class Hidden(_Container):
+    type: Final[InlineType] = "HD"
+    
+
+class Row(_Container):
+    type: Final[InlineType] = "RW"
+
+
+class Form(_Container):
+    type: Final[InlineType] = "FM"
+
     su: bool = False
 
-    def __init__(self, *args: BaseText, su: bool = False) -> None:
-        super(BaseText, self).__init__(contents=args, su=su)
-
     def to_drafty(self) -> DraftyMessage:
-        drafty = super().to_drafty()
+        if not self.su:
+            return super().to_drafty()
+        drafty = self.content.to_drafty()
         length = len(drafty.txt)
-        if self.su:
-            key = len(drafty.ent)
-            drafty.ent.append(DraftyExtend(tp="FM", data={"su": True}))
-            drafty.fmt.append(DraftyFormat(at=0, len=length, key=key))
-        else:
-            drafty.fmt.append(DraftyFormat(at=0, len=length, tp="FM"))
+        key = len(drafty.ent)
+        drafty.ent.append(DraftyExtend(tp="FM", data={"su": True}))
+        drafty.fmt.append(DraftyFormat(at=0, len=length, key=key))
         return drafty
 
 
-class _ExtensionText(_PlainText):
+class _ExtensionText(_Text):
     tp_map: ClassVar[Dict[str, Type["_ExtensionText"]]] = {}
 
     type: ExtendType
@@ -152,10 +186,10 @@ class Link(_ExtensionText):
 class Mention(_ExtensionText):
     type: Final[ExtendType] = "MN"
 
-    user: str
+    val: str
 
     def get_data(self) -> Dict[str, Any]:
-        return {"val": self.user}
+        return {"val": self.val}
     
 
 class Hashtag(_ExtensionText):
@@ -175,11 +209,11 @@ class Button(_ExtensionText):
     act: Literal["pub", "url", "note"] = "pub"
     ref: Optional[str] = None
 
-    @validator("ref")
-    def validate_ref(cls, val: Optional[str], values: Dict[str, Any]) -> Optional[str]:
-        if val and values.get("act") != "url":
+    @model_validator(mode="after")
+    def validate_ref(self) -> Self:
+        if self.value and self.act != "url":
             raise ValueError("only button with action 'url' have field ref")
-        return val
+        return self
 
     def get_data(self) -> Dict[str, Any]:
         return self.dict(include={"name", "value", "act", "ref"}, exclude_none=True)
@@ -204,69 +238,68 @@ class VideoCall(_ExtensionText):
         return self.dict(include={"duration", "state", "incoming", "aonly"})
 
 
-class _AttachmentMessage(_ExtensionText):
+class _Attachment(_ExtensionText):
     text: str = ""
     type: ExtendType
 
     mime: str
     name: Optional[str] = None
-    path: Optional[Path] = None
+    value: Optional[str] = None
     ref: Optional[str] = None
     size: Optional[int] = None
 
-    @staticmethod
-    def read_file(path: Union[str, Path]) -> str:
-        with open(path, 'rb') as f:
-            return encodebytes(f.read()).decode("ascii")
-
-    def get_val(self) -> str:
-        if self.path is None:
-            raise ValueError("missing resource path")
-        return self.read_file(self.path)
-    
-    def get_data(self) -> Dict[str, Any]:
-        data = self.model_dump(exclude={"text", "type", "path", "ref"}, exclude_none=True)
-        if self.ref:
-            data["ref"] = self.ref
-        else:
-            data["value"] = self.get_val()
+    @model_validator(mode="before")
+    def convert_value(cls, data: Any) -> Any:
+        if isinstance(data, MutableMapping):
+            for k, v in data.items():
+                if isinstance(k, str) and isinstance(v, bytes) and k.startswith("raw_"):
+                    data[k] = encodebytes(v).decode("ascii")
         return data
 
+    @model_validator(mode="after")
+    def check_data(self) -> Self:
+        if self.ref is None and self.value is None:
+            raise ValueError("no data provided")
+        return self
 
-class File(_AttachmentMessage):
+    def get_data(self) -> Dict[str, Any]:
+        return self.model_dump(exclude={"text", "type"}, exclude_none=True)
+    
+    def __str__(self) -> str:
+        name = self.__class__.__name__
+        if self.ref:
+            return f"<{name} from {self.ref}>"
+        elif self.value:
+            value = self.value
+            if len(value) < 20:
+                return f"<{name} {value}>"
+            return f"<{name} {value[:15]}..{value[-3:]}>"
+        return f"<{name}>"
+
+
+class File(_Attachment):
     type: Final[ExtendType] = "EX"
     
     mime: str = "text/plain"
 
 
-class Image(_AttachmentMessage):
+class Image(_Attachment):
     type: Final[ExtendType] = "IM"
 
     mime: str = "image/png"
     width: int
     height: int
 
-    def __str__(self) -> str:
-        if self.path:
-            return f"<image at {self.path}>"
-        else:
-            return f"<image from {self.ref}>"
 
-
-class Audio(_AttachmentMessage):
+class Audio(_Attachment):
     type: Final[ExtendType] = "AU"
 
     mime: str = "audio/aac"
     duration: int
-    preview: bytes
-
-    def get_data(self) -> Dict[str, Any]:
-        data = super().get_data()
-        data["preview"] = encodebytes(data["preview"]).decode("ascii")
-        return data
+    preview: str
 
 
-class Video(_AttachmentMessage):
+class Video(_Attachment):
     type: Final[ExtendType] = "VD"
 
     mime: str = "video/webm"
@@ -276,9 +309,4 @@ class Video(_AttachmentMessage):
 
     premime: Optional[str] = None
     preref: Optional[str] = None
-    prepath: Optional[Path] = None
-    
-    def get_val(self) -> str:
-        if self.path is None:
-            raise ValueError("missing resource path")
-        return self.read_file(self.path)
+    preview: Optional[str] = None
