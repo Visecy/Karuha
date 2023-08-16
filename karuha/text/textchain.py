@@ -200,24 +200,24 @@ class Button(_ExtensionText):
     type: Final[ExtendType] = "BN"
 
     name: Optional[str] = None
-    value: Optional[str] = None
+    val: Optional[str] = None
     act: Literal["pub", "url", "note"] = "pub"
     ref: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_ref(self) -> Self:
-        if self.value and self.act != "url":
+        if self.ref and self.act != "url":
             raise ValueError("only button with action 'url' have field ref")
         return self
 
     def get_data(self) -> Dict[str, Any]:
-        return self.dict(include={"name", "value", "act", "ref"}, exclude_none=True)
+        return self.model_dump(include={"name", "val", "act", "ref"}, exclude_none=True)
     
     def __str__(self) -> str:
         if self.name is None:
             return "<button>"
-        if self.value:
-            return f"<button {self.name}:{self.value}>"
+        if self.val:
+            return f"<button {self.name}:{self.val}>"
         return f"<button {self.name}>"
 
 
