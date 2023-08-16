@@ -1,8 +1,3 @@
-"""
-Instead of Drafty Text, Karuha handles text in a way
-that is easier for users to read and write.
-"""
-
 from abc import abstractmethod
 from base64 import encodebytes
 from pydantic import AnyHttpUrl, BaseModel, model_validator
@@ -96,7 +91,7 @@ class _Container(BaseText):
     
     def to_drafty(self) -> DraftyMessage:
         df = self.content.to_drafty()
-        df.fmt.append(DraftyFormat(at=0, len=len(df.txt), tp=self.type))
+        df.fmt.insert(0, DraftyFormat(at=0, len=len(df.txt), tp=self.type))
         return df
     
     def __repr__(self) -> str:
@@ -249,7 +244,7 @@ class _Attachment(_ExtensionText):
     size: Optional[int] = None
 
     @model_validator(mode="before")
-    def convert_value(cls, data: Any) -> Any:
+    def convert_raw(cls, data: Any) -> Any:
         if isinstance(data, MutableMapping):
             for k, v in data.items():
                 if isinstance(k, str) and isinstance(v, bytes) and k.startswith("raw_"):

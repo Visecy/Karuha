@@ -1,26 +1,27 @@
 import asyncio
-from collections import defaultdict
 import json
 import platform
 import sys
 from asyncio.queues import Queue, QueueEmpty
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Coroutine, Dict, Literal, Optional,
                     Union, overload)
+from typing_extensions import Self
 from weakref import WeakSet, ref
 
 import grpc
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
 from tinode_grpc import pb
-from typing_extensions import Self
 
 from .config import Bot as BotConfig
-from .config import Config, init_config, get_config
+from .config import Config
 from .config import Server as ServerConfig
+from .config import get_config, init_config
 from .exception import KaruhaConnectError, KaruhaRuntimeError
-from .logger import get_sub_logger, Level
+from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
 
 
@@ -31,6 +32,11 @@ class State(IntEnum):
 
 
 class Bot(object):
+    """
+    the core class of the chatbot
+
+    Provides many low-level API interfaces.
+    """
     __slots__ = [
         "queue", "state", "client", "logger", "config", "server",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"

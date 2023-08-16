@@ -4,8 +4,8 @@ Tinode Drafty Message Support
 For details see: https://github.com/tinode/chat/blob/master/docs/drafty.md
 """
 
-from pydantic import Field, BaseModel
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from pydantic import BaseModel
+from typing import Any, Dict, List, Literal, Optional, Union
 from typing_extensions import Self
 
 
@@ -13,35 +13,22 @@ InlineType = Literal["BR", "CO", "FM", "RW", "HL", "DL", "EM", "ST", "HD"]
 ExtendType = Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC", "VD"]
 
 
-class DraftyFormat(BaseModel):
-    at: int = Field(0, ge=-1)  # -1 means not applying any styling to text.
+class DraftyFormat(BaseModel, frozen=True):
+    at: int = 0     # -1 means not applying any styling to text.
     len: int = 0
     key: int = 0
     tp: Optional[InlineType] = None
 
     def rebase(self, offset: int, k_base: int = 0) -> Self:
-        obj = self.copy()
-        if self.at != -1:
-            obj.at += offset
-        if obj.tp is None:
-            obj.key += k_base
-        return obj
-    
-    def split(self, pos: int) -> Tuple[Self, Self]:
-        if pos >= self.len or pos == 0:
-            raise ValueError(f"split position {pos} out of range ({self.len})")
-        front = self.copy()
-        front.len = pos
-        back = self.copy()
-        back.at += pos
-        back.len -= pos
-        return front, back
-    
-    def dict(self, **kwds) -> Dict:
-        return super().dict(exclude_defaults=True, **kwds)
+        return self.model_copy(
+            update={
+                "at": self.at if self.at < 0 else self.at + offset,
+                "key": self.key if self.tp is not None else self.key + k_base,
+            }
+        )
 
 
-class DraftyExtend(BaseModel):
+class DraftyExtend(BaseModel, frozen=True):
     tp: ExtendType
     data: Dict[str, Any]
 
@@ -56,22 +43,14 @@ class DraftyMessage(BaseModel):
         return DraftyMessage(txt=string)
 
     def __add__(self, other: Union[str, "DraftyMessage"]) -> Self:
-        obj = self.copy()
-        if isinstance(other, str):
-            obj.txt += other
-            return obj
-        elif not isinstance(other, DraftyMessage):
-            return NotImplemented
-        offset = len(obj.txt)
-        k_base = len(obj.ent)
-        obj.ent.extend(other.ent)
-        obj.fmt.extend(i.rebase(offset, k_base) for i in other.fmt)
+        obj = self.model_copy()
+        obj += other
         return obj
     
-    def __radd__(self, other: Union[str, "DraftyMessage"]) -> Self:
+    def __radd__(self, other: str) -> Self:
         if not isinstance(other, str):
             return NotImplemented
-        obj = self.copy()
+        obj = self.model_copy()
         obj.txt = other + obj.txt
         return obj
     
@@ -83,8 +62,24 @@ class DraftyMessage(BaseModel):
             return NotImplemented
         offset = len(self.txt)
         k_base = len(self.ent)
-        self.ent.extend(other.ent)
-        self.fmt.extend(i.rebase(offset, k_base) for i in other.fmt)
+        self.txt += other.txt
+
+        if not k_base:
+            self.ent = other.ent
+            self.fmt.extend(i.rebase(offset, 0) for i in other.fmt)
+            return self
+        repeat = {}
+        for i, e in enumerate(other.ent):
+            for j, v in enumerate(self.ent):
+                if v == e:
+                    break
+            else:
+                self.ent.append(e)
+                continue
+            repeat[i] = j - i
+        self.fmt.extend(
+            v.rebase(offset, repeat.get(i, k_base)) for i, v in enumerate(other.fmt)
+        )
         return self
 
     def __repr__(self) -> str:

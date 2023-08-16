@@ -1,5 +1,5 @@
 from unittest import TestCase
-from karuha.text import PlainText, Form, DraftyMessage, drafty2spans, drafty2text
+from karuha.text import PlainText, Form, DraftyMessage, drafty2tree, drafty2text
 from karuha.text.convert import eval_spans, to_span_tree
 
 
@@ -50,9 +50,9 @@ class TestText(TestCase):
     def test_init(self) -> None:
         self.assertEqual(
             example1.txt,
-            "this is bold, code and italic, strike combined bold and italic an url: \
-                https://www.example.com/abc#fragment and another www.tinode.co this \
-                is a @mention and a #hashtag in a string second #hashtag"
+            "this is bold, code and italic, strike combined bold and italic an url: "
+            "https://www.example.com/abc#fragment and another www.tinode.co this "
+            "is a @mention and a #hashtag in a string second #hashtag"
         )
 
     def test_span(self) -> None:
@@ -62,7 +62,7 @@ class TestText(TestCase):
         spans = to_span_tree(spans)
         self.assertEqual(len(spans), len(example1.fmt) - 2)
 
-        spans = drafty2spans(example2)
+        spans = drafty2tree(example2)
         # print(spans)
         self.assertEqual(len(spans), 1)
     
@@ -75,7 +75,9 @@ class TestText(TestCase):
         rtxt = drafty2text(df)
         self.assertEqual(txt, rtxt)
 
-        drafty2text(example1)
-        df2 = drafty2text(example2)
-        # print(df1, repr(df1))
-        self.assertIsInstance(df2, Form)
+        tx1 = drafty2text(example1)
+        tx2 = drafty2text(example2)
+        self.assertIsInstance(tx2, Form)
+        df1 = tx1.to_drafty()
+        # print(df1.model_dump_json(indent=4))
+        self.assertSetEqual(set(df1.fmt), set(example1.fmt))

@@ -107,8 +107,9 @@ def _convert(text: str, span: Span) -> BaseText:
 
 
 def _default_converter(text: str, span: Span) -> BaseText:
-    logger.warn(f"unknown text {text[span.start:span.end]!r}[{span.tp}]")
-    return PlainText(text=text[span.start:span.end])
+    text = text[span.start:span.end]
+    logger.warn(f"unknown text {text!r}[{span.tp}]")
+    return PlainText(text=text)
 
 
 def _split_text(text: str, /, spans: List[Span], start: int = 0, end: int = -1) -> List[BaseText]:
@@ -183,14 +184,14 @@ def FM_converter(text: str, span: Span) -> BaseText:
     return Form(content=content, **(span.data or {}))
 
 
-def drafty2spans(drafty: DraftyMessage) -> List[Span]:
+def drafty2tree(drafty: DraftyMessage) -> List[Span]:
     spans, _ = eval_spans(drafty)
     return to_span_tree(spans)
 
 
-def spans2text(text: str, spans: List[Span]) -> BaseText:
+def tree2text(text: str, spans: List[Span]) -> BaseText:
     return _convert_spans(text, spans, 0, len(text))
 
 
 def drafty2text(drafty: DraftyMessage) -> BaseText:
-    return spans2text(drafty.txt, drafty2spans(drafty))
+    return tree2text(drafty.txt, drafty2tree(drafty))
