@@ -33,16 +33,16 @@ class DraftyExtend(BaseModel, frozen=True):
     data: Dict[str, Any]
 
 
-class DraftyMessage(BaseModel):
+class Drafty(BaseModel):
     txt: str
     fmt: List[DraftyFormat] = []
     ent: List[DraftyExtend] = []
 
     @classmethod
     def from_str(cls, string: str) -> Self:
-        return DraftyMessage(txt=string)
+        return Drafty(txt=string)
 
-    def __add__(self, other: Union[str, "DraftyMessage"]) -> Self:
+    def __add__(self, other: Union[str, "Drafty"]) -> Self:
         obj = self.model_copy()
         obj += other
         return obj
@@ -54,11 +54,11 @@ class DraftyMessage(BaseModel):
         obj.txt = other + obj.txt
         return obj
     
-    def __iadd__(self, other: Union[str, "DraftyMessage"]) -> Self:
+    def __iadd__(self, other: Union[str, "Drafty"]) -> Self:
         if isinstance(other, str):
             self.txt += other
             return self
-        elif not isinstance(other, DraftyMessage):
+        elif not isinstance(other, Drafty):
             return NotImplemented
         offset = len(self.txt)
         k_base = len(self.ent)

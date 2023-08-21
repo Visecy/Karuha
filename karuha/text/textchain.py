@@ -4,14 +4,14 @@ from pydantic import AnyHttpUrl, BaseModel, model_validator
 from typing import Any, ClassVar, Dict, Final, List, Literal, MutableMapping, Optional, SupportsIndex, Type, Union
 from typing_extensions import Self
 
-from .drafty import DraftyMessage, DraftyFormat, DraftyExtend, ExtendType, InlineType
+from .drafty import Drafty, DraftyFormat, DraftyExtend, ExtendType, InlineType
 
 
 class BaseText(BaseModel):
     __slots__ = []
 
     @abstractmethod
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         raise NotImplementedError
     
     def __len__(self) -> int:
@@ -28,13 +28,13 @@ class BaseText(BaseModel):
 class _Text(BaseText):
     text: str
     
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         start = 0
         fmt = []
         while (p := self.text.find('\n', start)) != -1:
             fmt.append(DraftyFormat(at=p, len=1, tp="BR"))
             start = p + 1
-        return DraftyMessage(txt=self.text.replace('\n', ' '), fmt=fmt)
+        return Drafty(txt=self.text.replace('\n', ' '), fmt=fmt)
     
     def __len__(self) -> int:
         return len(self.text)
@@ -52,7 +52,7 @@ class PlainText(_Text):
 
 
 class InlineCode(_Text):
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         df = super().to_drafty()
         df.fmt.append(DraftyFormat(at=0, len=len(self), tp="CO"))
         return df
@@ -67,9 +67,9 @@ class TextChain(BaseText):
     def __getitem__(self, key: SupportsIndex, /) -> BaseText:
         return self.contents[key]
 
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         if not self.contents:
-            return DraftyMessage(txt=" ")
+            return Drafty(txt=" ")
         it = iter(self.contents)
         base = next(it).to_drafty()
         for i in it:
@@ -89,7 +89,7 @@ class _Container(BaseText):
     type: InlineType
     content: BaseText
     
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         df = self.content.to_drafty()
         df.fmt.insert(0, DraftyFormat(at=0, len=len(df.txt), tp=self.type))
         return df
@@ -136,7 +136,7 @@ class Form(_Container):
 
     su: bool = False
 
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         if not self.su:
             return super().to_drafty()
         drafty = self.content.to_drafty()
@@ -156,7 +156,7 @@ class _ExtensionText(_Text):
     def get_data(self) -> Dict[str, Any]:
         raise NotImplementedError
     
-    def to_drafty(self) -> DraftyMessage:
+    def to_drafty(self) -> Drafty:
         df = super().to_drafty()
         length = len(self)
         df.fmt.append(DraftyFormat(at=0 if length else -1, len=length))

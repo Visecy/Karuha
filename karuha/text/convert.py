@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 from ..logger import logger
-from .drafty import DraftyExtend, DraftyMessage, InlineType, ExtendType
+from .drafty import DraftyExtend, Drafty, InlineType, ExtendType
 from .textchain import BaseText, PlainText, InlineCode, TextChain, Form, _ExtensionText, _Container
 
 
@@ -63,7 +63,7 @@ def to_span_tree(spans: Optional[List[Span]]) -> List[Span]:
     return tree
 
 
-def eval_spans(drafty: DraftyMessage) -> Tuple[List[Span], List[DraftyExtend]]:
+def eval_spans(drafty: Drafty) -> Tuple[List[Span], List[DraftyExtend]]:
     spans = []
     attachments = []
     for i in drafty.fmt:
@@ -184,7 +184,7 @@ def FM_converter(text: str, span: Span) -> BaseText:
     return Form(content=content, **(span.data or {}))
 
 
-def drafty2tree(drafty: DraftyMessage) -> List[Span]:
+def drafty2tree(drafty: Drafty) -> List[Span]:
     spans, _ = eval_spans(drafty)
     return to_span_tree(spans)
 
@@ -193,5 +193,5 @@ def tree2text(text: str, spans: List[Span]) -> BaseText:
     return _convert_spans(text, spans, 0, len(text))
 
 
-def drafty2text(drafty: DraftyMessage) -> BaseText:
+def drafty2text(drafty: Drafty) -> BaseText:
     return tree2text(drafty.txt, drafty2tree(drafty))

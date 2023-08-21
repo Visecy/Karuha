@@ -1,9 +1,9 @@
 from unittest import TestCase
-from karuha.text import PlainText, Form, DraftyMessage, drafty2tree, drafty2text
+from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
 from karuha.text.convert import eval_spans, to_span_tree
 
 
-example1 = DraftyMessage.model_validate_json(
+example1 = Drafty.model_validate_json(
     """
 {
    "txt":  "this is bold, code and italic, strike combined bold and italic an url: https://www.example.com/abc#fragment and another www.tinode.co this is a @mention and a #hashtag in a string second #hashtag",
@@ -25,7 +25,7 @@ example1 = DraftyMessage.model_validate_json(
     """.strip()  # noqa: E501
 )
 
-example2 = DraftyMessage.model_validate_json(
+example2 = Drafty.model_validate_json(
     """
 {
     "txt": "Do you agree? Yes No",
