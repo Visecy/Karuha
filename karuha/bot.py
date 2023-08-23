@@ -20,7 +20,7 @@ from .config import Bot as BotConfig
 from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
-from .exception import KaruhaConnectError, KaruhaRuntimeError
+from .exception import KaruhaConnectError, KaruhaBotError
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
 
@@ -360,9 +360,9 @@ class Bot(object):
     @asynccontextmanager
     async def _run_context(self):
         if self.state == State.running:
-            raise KaruhaRuntimeError(f"try to rerun bot {self.name}")
+            raise KaruhaBotError(f"try to rerun bot {self.name}")
         elif self.state != State.stopped:
-            raise KaruhaRuntimeError(f"fail to run bot {self.name} (state: {self.state})")
+            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})")
         self.state = State.running
         self._loop_task_ref = ref(asyncio.current_task())
         self.logger.info(f"starting the bot {self.name}")

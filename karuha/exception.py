@@ -14,10 +14,15 @@ class KaruhaConnectError(KaruhaException, RpcError):
     __slots__ = []
 
 
-class KaruhaRuntimeError(KaruhaException):
+class KaruhaBotError(KaruhaException):
     """unspecified chatbot run-time error"""
     __slots__ = ["bot"]
 
     def __init__(self, *args: object, bot: Optional["bot.Bot"] = None) -> None:
         super().__init__(*args)
         self.bot = bot
+
+
+class KaruhaEventError(KaruhaException):
+    """node network system error"""
+    __slots__ = []

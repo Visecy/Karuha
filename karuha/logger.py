@@ -12,7 +12,7 @@ Level = Union[int, str]
 formatter = logging.Formatter('[%(asctime)s %(name)s][%(levelname)s] %(message)s')
 
 
-class FileFilter(logging.Filter):
+class NameFilter(logging.Filter):
     def filter(self, record: LogRecord) -> bool:
         if not self.name:
             return True
@@ -30,7 +30,7 @@ def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> Non
         encoding="utf-8"
     )
     handler.setFormatter(formatter)
-    handler.addFilter(FileFilter(logger.name))
+    handler.addFilter(NameFilter(logger.name))
     logger.addHandler(handler)
 
 
