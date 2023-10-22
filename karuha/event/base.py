@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable, ClassVar, Coroutine, List
+from typing import Any, Callable, ClassVar, Coroutine, List
 from typing_extensions import Self
 
 from ..logger import logger
@@ -26,6 +26,6 @@ class Event(object):
         for i in self.__handlers__:
             self.call_handler(i)
     
-    def __init_subclass__(cls) -> None:
+    def __init_subclass__(cls, **kwds: Any) -> None:
         if "__handlers__" not in cls.__dict__:
             cls.__handlers__ = cls.__handlers__.copy()

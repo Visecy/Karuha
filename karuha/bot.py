@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Coroutine, Dict, Literal, Optional,
                     Union, overload)
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 from weakref import WeakSet, ref
 
 import grpc
@@ -90,7 +90,7 @@ class Bot(object):
         # self.subscriptions = set()
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
-        self._tasks = WeakSet()
+        self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
         self._loop_task_ref = lambda: None
     
     async def hello(self, /, lang: str = "EN") -> None:
@@ -250,13 +250,13 @@ class Bot(object):
 
     async def async_run(self) -> None:
         server = self.server
-        assert server
+        if self.server is None:
+            raise ValueError("server not specified") from None
         while True:
             try:
                 async with self._run_context() as channel:
                     stream = get_stream(channel)  # type: ignore
                     msg_gen = self._message_generator()
-                    self._tasks.add(msg_gen)
                     client = stream(msg_gen)
                     await self._loop(client)
             except grpc.RpcError:
@@ -265,6 +265,7 @@ class Bot(object):
             except KeyboardInterrupt:
                 break
     
+    @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
         # synchronize with configuration
         try:
@@ -297,7 +298,8 @@ class Bot(object):
         # self.subscriptions.clear()
         for i in self._wait_list.values():
             i.cancel()
-        map(asyncio.Task.cancel, self._tasks)
+        for t in self._tasks:
+            t.cancel()
         loop_task = self._loop_task_ref()
         if cancel_loop and loop_task is not None:
             loop_task.cancel()
@@ -376,6 +378,7 @@ class Bot(object):
     
     async def _message_generator(self) -> AsyncGenerator[Message, None]:
         while True:
+            assert self.state == State.running
             msg: Message = await self.queue.get()
             self.logger.debug(f"out: {msg}")
             yield msg

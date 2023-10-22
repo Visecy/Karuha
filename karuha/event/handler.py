@@ -17,7 +17,7 @@ async def _(event: CtrlEvent) -> None:
 
 
 @PresEvent.add_handler
-async def default_handler(event: PresEvent) -> None:
+async def _(event: PresEvent) -> None:
     msg = event.server_message
     if msg.topic != "me":
         return
