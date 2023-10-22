@@ -1,5 +1,7 @@
+from tinode_grpc import pb
+
 from ..text import BaseText
-from .bot import *
+from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, SubscribeEvent, LeaveEvent
 
 
 @DataEvent.add_handler

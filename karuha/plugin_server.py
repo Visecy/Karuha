@@ -7,6 +7,7 @@ import grpc
 from tinode_grpc import pb, pbx
 
 from .event import Event
+from .logger import logger
 
 
 class PluginServerEvent(Event):
@@ -97,4 +98,5 @@ def init_server(address: str) -> grpc.Server:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=16))
     pbx.add_PluginServicer_to_server(Plugin(), server)
     server.add_insecure_port(address)
+    logger.info(f"plugin server at {address}")
     return server

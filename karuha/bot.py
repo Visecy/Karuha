@@ -77,7 +77,7 @@ class Bot(object):
             raise ValueError("authentication scheme not defined")
         else:
             self.config = BotConfig(name=name, schema=schema, secret=secret)
-        self.queue = Queue()
+        # self.queue = Queue()
         self.state = State.stopped
         self.logger = get_sub_logger(self.name)
         if log_level is not None:
@@ -360,12 +360,13 @@ class Bot(object):
         return grpc_aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
     
     @asynccontextmanager
-    async def _run_context(self):
+    async def _run_context(self) -> AsyncGenerator[grpc_aio.Channel, None]:
         if self.state == State.running:
-            raise KaruhaBotError(f"try to rerun bot {self.name}")
+            raise KaruhaBotError(f"rerun bot {self.name}")
         elif self.state != State.stopped:
             raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})")
         self.state = State.running
+        self.queue = Queue(loop=asyncio.get_running_loop())
         self._loop_task_ref = ref(asyncio.current_task())
         self.logger.info(f"starting the bot {self.name}")
         channel = self._get_channel()
