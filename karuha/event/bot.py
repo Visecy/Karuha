@@ -12,7 +12,7 @@ from .base import Event
 class BotEvent(Event):
     __slots__ = ["bot"]
 
-    def __init__(self, bot: "bot.Bot") -> None:
+    def __init__(self, bot: "bot.Bot", /) -> None:
         self.bot = bot
 
     def call_handler(self, handler: Callable[[Self], Coroutine]) -> None:

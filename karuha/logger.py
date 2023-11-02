@@ -21,7 +21,12 @@ class NameFilter(logging.Filter):
 
 def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> None:
     log_dir = Path(log_dir)
-    file_path = log_dir / "latest.log"
+    name = logger.name
+    if '.' not in name:
+        file_path = log_dir / "Karuha.log"
+    else:
+        _, bot_name = name.split('.')
+        file_path = log_dir / f"bot_{bot_name}.log"
     log_dir.mkdir(exist_ok=True, parents=True)
     handler = TimedRotatingFileHandler(
         file_path,
@@ -30,13 +35,13 @@ def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> Non
         encoding="utf-8"
     )
     handler.setFormatter(formatter)
-    handler.addFilter(NameFilter(logger.name))
+    handler.addFilter(NameFilter(name))
     logger.addHandler(handler)
 
 
 def get_sub_logger(name: str) -> logging.Logger:
     sub_logger = logger.getChild(name)
-    add_log_dir(sub_logger, WORKDIR / name / "log")
+    add_log_dir(sub_logger, WORKDIR / "log")
     return sub_logger
 
 

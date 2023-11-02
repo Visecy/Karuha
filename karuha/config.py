@@ -66,7 +66,7 @@ def load_config(
 ) -> "Config":
     global _config
     try:
-        with open(path, encoding=encoding) as f:
+        with open(path, "r", encoding=encoding) as f:
             config = Config.model_validate_json(f.read())
     except Exception:
         logger.warn(f"failed to load config from '{path}'")

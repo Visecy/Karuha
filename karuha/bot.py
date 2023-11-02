@@ -147,16 +147,27 @@ class Bot(object):
             self.config.schema_ = "token"
             self.config.secret = json.loads(params["token"].decode())
     
-    async def subscribe(self, /, topic: str) -> None:
+    async def subscribe(self, /, topic: str, *, get_since: Optional[int] = None, limit: int = 24) -> None:
         # if topic in self.subscriptions:
         #     self.logger.info(f"topic {topic} already subscribed, request ignored")
         #     return
         tid = self._get_tid()
+        if get_since is not None:
+            query = pb.GetQuery(
+                data=pb.GetOpts(
+                    if_modified_since=get_since,
+                    limit=limit
+                ),
+                what="data"
+            )
+        else:
+            query = None
         ctrl = await self.send_message(
             tid,
             sub=pb.ClientSub(
                 id=tid,
-                topic=topic
+                topic=topic,
+                get_query=query
             )
         )
         assert isinstance(ctrl, pb.ServerCtrl)

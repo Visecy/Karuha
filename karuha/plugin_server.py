@@ -78,18 +78,15 @@ class MessageEvent(PluginServerEvent, property_export={"data": "msg"}):
 
 
 class Plugin(pbx.PluginServicer):
-    def Topic(self, tpc_event: pb.TopicEvent, context):
-        print(context)
+    def Topic(self, tpc_event: pb.TopicEvent, context: grpc.ServicerContext):
         TopicEvent(tpc_event).trigger()
         return pb.Unused()
     
-    def Account(self, acc_event: pb.AccountEvent, context):
-        print(context)
+    def Account(self, acc_event: pb.AccountEvent, context: grpc.ServicerContext):
         AccountEvent(acc_event).trigger()
         return pb.Unused()
     
-    def Subscription(self, tpc_event: pb.TopicEvent, context):
-        print(context)
+    def Subscription(self, tpc_event: pb.TopicEvent, context: grpc.ServicerContext):
         TopicEvent(tpc_event).trigger()
         return pb.Unused()
 
@@ -98,5 +95,5 @@ def init_server(address: str) -> grpc.Server:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=16))
     pbx.add_PluginServicer_to_server(Plugin(), server)
     server.add_insecure_port(address)
-    logger.info(f"plugin server at {address}")
+    logger.info(f"plugin server starts at {address}")
     return server
