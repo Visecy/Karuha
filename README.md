@@ -24,9 +24,13 @@ From pip:
 
 From source code:
 
-    python setup.py install
+    git clone https://github.com/Ovizro/Karuha.git
+    cd Karuha
+    make install
 
 ## Quick Start
+
+> Before starting, you need to make sure you have the Tinode service running locally with its gRPC port set to the default value of 16060. If your service is not local or the default port has been changed, you need to add additional server configuration items in the following code.
 
 Create a new file `config.json` and write the following content:
 
@@ -60,7 +64,7 @@ Well, you can actually go a step further and send messages to users.
 
 Currently, if you want to reply to a message, you currently need to add a handler for the event yourself. This is not a simple process. Fortunately, we are about to introduce a command module to improve this.
 
-Because this is a relatively low-level function, I will only give an example to show how karuha is currently used in python:
+Because this is a relatively low-level API, I will only give an example to show how karuha is currently used in python:
 
 ```python
 import karuha

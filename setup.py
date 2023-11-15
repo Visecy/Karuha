@@ -43,9 +43,9 @@ setup(
     long_description_content_type='text/markdown',
     
     author="Ovizro",
-    author_email="Ovizro@visecy.top",
+    author_email="Ovizro@visecy.org",
     maintainer="Ovizro",
-    maintainer_email="Ovizro@visecy.top",
+    maintainer_email="Ovizro@visecy.org",
     license="Apache 2.0",
 
     url="https://github.com/Ovizro/Karuha",
