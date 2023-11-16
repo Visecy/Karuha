@@ -33,10 +33,12 @@ async def _(event: PresEvent) -> None:
     msg = event.server_message
     if msg.topic != "me":
         return
-    if msg.what in [pb.ServerPres.ON, pb.ServerPres.MSG]:
-        SubscribeEvent(event.bot, msg.src).trigger()
+    if msg.what == pb.ServerPres.ON:
+        SubscribeEvent.new(event.bot, msg.src)
+    elif msg.what == pb.ServerPres.MSG:
+        SubscribeEvent.new(event.bot, msg.src, since=msg.seq_id)
     elif msg.what == pb.ServerPres.OFF:
-        LeaveEvent(event.bot, msg.src).trigger()
+        LeaveEvent.new(event.bot, msg.src)
 
 
 @PublishEvent.add_handler
@@ -56,7 +58,7 @@ async def _(event: PublishEvent) -> None:
 
 @SubscribeEvent.add_handler
 async def _(evnet: SubscribeEvent) -> None:
-    await evnet.bot.subscribe(evnet.topic)
+    await evnet.bot.subscribe(evnet.topic, get_since=evnet.since)
 
 
 @LeaveEvent.add_handler

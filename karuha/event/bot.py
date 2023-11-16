@@ -1,4 +1,4 @@
-from typing import Any, Callable, Coroutine, Union
+from typing import Any, Callable, Coroutine, Optional, Union
 from typing_extensions import Self
 
 from google.protobuf.message import Message
@@ -83,11 +83,12 @@ class PublishEvent(ClientEvent):
 
 
 class SubscribeEvent(ClientEvent):
-    __slots__ = ["topic"]
+    __slots__ = ["topic", "since"]
 
-    def __init__(self, bot: "bot.Bot", topic: str) -> None:
+    def __init__(self, bot: "bot.Bot", topic: str, *, since: Optional[int] = None) -> None:
         super().__init__(bot)
         self.topic = topic
+        self.since = since
 
 
 class LeaveEvent(ClientEvent):
