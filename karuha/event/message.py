@@ -26,7 +26,7 @@ class MessageEvent(BotEvent):
             message.topic,
             message.from_user_id,
             message.seq_id,
-            {k: json.loads(v) for k, v in message.head},
+            {k: json.loads(v) for k, v in message.head.items()},
             message.content
         )
     

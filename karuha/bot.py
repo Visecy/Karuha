@@ -155,7 +155,7 @@ class Bot(object):
         if get_since is not None:
             query = pb.GetQuery(
                 data=pb.GetOpts(
-                    if_modified_since=get_since,
+                    since_id=get_since,
                     limit=limit
                 ),
                 what="data"
