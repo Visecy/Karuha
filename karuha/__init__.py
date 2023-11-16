@@ -16,7 +16,8 @@ from .version import __version__
 from .config import get_config, load_config, init_config, save_config, Config
 from .config import Server as ServerConfig, Bot as BotConfig
 from .bot import Bot
-from .event import on, BotEvent, DataEvent, CtrlEvent, PresEvent, MetaEvent, InfoEvent
+from .event import *
+from .text import Drafty, BaseText, PlainText
 from .plugin_server import init_server
 from .logger import logger
 from .exception import KaruhaException
@@ -103,11 +104,5 @@ __all__ = [
     "ServerConfig",
     "Bot",
     "on",
-    "BotEvent",
-    "DataEvent",
-    "CtrlEvent",
-    "PresEvent",
-    "MetaEvent",
-    "InfoEvent",
     "KaruhaException"
 ]

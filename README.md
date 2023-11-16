@@ -68,25 +68,27 @@ Because this is a relatively low-level API, I will only give an example to show 
 
 ```python
 import karuha
-from karuha import Bot, DataEvent
+from karuha import Bot, MessageEvent, PublishEvent
 
 
 bot = Bot(
+    "chatbot",
     "basic",
     "chatbot:123456"
 )
 
 
-@karuha.on(DataEvent)
-async def reply(event: DataEvent) -> None:
-    if event.server_message.content.decode() == "\"Hello chatbot!\"":    # message.content is a json string
-        await event.bot.publish(
-            event.server_message.topic,
+@karuha.on(MessageEvent)
+async def reply(event: MessageEvent) -> None:
+    if event.text == "Hello!":
+        PublishEvent.new(
+            event.bot,
+            event.topic,
             "Hello world!"
         )
 
 
-if __name__ = "__main__":
+if __name__ == "__main__":
     karuha.load_config()
     karuha.add_bot(bot)
     karuha.run()

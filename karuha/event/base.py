@@ -1,8 +1,11 @@
 import asyncio
 from typing import Any, Callable, ClassVar, Coroutine, List
-from typing_extensions import Self
+from typing_extensions import Self, ParamSpec
 
 from ..logger import logger
+
+
+P = ParamSpec("P")
 
 
 class Event(object):
@@ -17,6 +20,14 @@ class Event(object):
     @classmethod
     def remove_handler(cls, handler: Callable[[Self], Coroutine]) -> None:
         cls.__handlers__.remove(handler)
+    
+    @classmethod  # type: ignore
+    def new(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
+        event = cls(
+            *args, **kwds
+        )
+        event.trigger()
+        return event
     
     def call_handler(self, handler: Callable[[Self], Coroutine]) -> None:
         asyncio.create_task(handler(self))

@@ -2,13 +2,23 @@ from tinode_grpc import pb
 
 from ..text import BaseText
 from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, SubscribeEvent, LeaveEvent
+from .message import MessageEvent
 
 
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
     msg = event.server_message
-    event.bot.logger.info(f"({msg.topic})=> {msg.content.decode()}")
     await event.bot.note_read(msg.topic, msg.seq_id)
+
+
+@DataEvent.add_handler
+async def _(event: DataEvent) -> None:
+    MessageEvent.from_data_event(event).trigger()
+
+
+@MessageEvent.add_handler
+async def _(event: MessageEvent) -> None:
+    event.bot.logger.info(f"({event.topic})=> {event.text}")
 
 
 @CtrlEvent.add_handler

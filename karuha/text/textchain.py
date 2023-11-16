@@ -35,6 +35,11 @@ class _Text(BaseText):
             fmt.append(DraftyFormat(at=p, len=1, tp="BR"))
             start = p + 1
         return Drafty(txt=self.text.replace('\n', ' '), fmt=fmt)
+
+    def __eq__(self, __value: Any) -> bool:
+        if isinstance(__value, str):
+            return self.text == __value
+        return super().__eq__(__value)
     
     def __len__(self) -> int:
         return len(self.text)
