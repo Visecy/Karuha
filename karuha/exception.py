@@ -1,16 +1,10 @@
 from typing import Optional
-from grpc import RpcError
 
 from . import bot
 
 
 class KaruhaException(Exception):
     """base exception for all errors in Karuha module"""
-    __slots__ = []
-
-
-class KaruhaConnectError(KaruhaException, RpcError):
-    """grpc connection error"""
     __slots__ = []
 
 

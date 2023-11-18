@@ -1,4 +1,4 @@
-from typing import Any, Callable, Coroutine, Optional, Union
+from typing import Any, Awaitable, Callable, Coroutine, Optional, Union
 from typing_extensions import Self
 
 from google.protobuf.message import Message
@@ -15,8 +15,8 @@ class BotEvent(Event):
     def __init__(self, bot: "bot.Bot", /) -> None:
         self.bot = bot
 
-    def call_handler(self, handler: Callable[[Self], Coroutine]) -> None:
-        self.bot._create_task(handler(self))
+    def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
+        return self.bot._create_task(handler(self))
 
 
 # Server Event Part

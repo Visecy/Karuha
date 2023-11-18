@@ -1,6 +1,6 @@
 import asyncio
 from concurrent import futures
-from typing import Any, Callable, Coroutine, Mapping, Sequence, Union
+from typing import Any, Awaitable, Callable, Coroutine, Mapping, Sequence, Union
 from typing_extensions import Self
 
 import grpc
@@ -22,9 +22,10 @@ class PluginServerEvent(Event):
     def action(self) -> pb.Crud:
         return self.raw_message.action
 
-    def call_handler(self, handler: Callable[[Self], Coroutine]) -> None:
+    def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
         loop = asyncio.get_running_loop()
-        asyncio.run_coroutine_threadsafe(handler(self), loop)
+        future = asyncio.run_coroutine_threadsafe(handler(self), loop)
+        return asyncio.wrap_future(future, loop=loop)
     
     def __init_subclass__(cls, property_export: Union[Sequence[str], Mapping[str, str], None] = None, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)
