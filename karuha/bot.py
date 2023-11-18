@@ -20,7 +20,7 @@ from .config import Bot as BotConfig
 from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
-from .exception import KaruhaConnectError, KaruhaBotError
+from .exception import KaruhaBotError
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
 
@@ -208,9 +208,11 @@ class Bot(object):
     
     async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> None:
         if head is None:
-            head = {"auto": b"true"}
+            head = {}
         else:
             head = {k: json.dumps(v).encode() for k, v in head.items()}
+        if "auto" not in head:
+            head["auto"] = b"true"
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -245,19 +247,9 @@ class Bot(object):
         :rtype: Optional[Message]
         """
         client_msg = pb.ClientMsg(**kwds)  # type: ignore
-        if wait_tid is None:
-            return await self.queue.put(client_msg)
-        future = asyncio.get_running_loop().create_future()
-        self._wait_list[wait_tid] = future
-        try:
-            await self.queue.put(client_msg)
-            rsp_msg = await future
-        except:  # noqa: E722
-            self._wait_list.pop(wait_tid, None)
-            raise
-        else:
-            assert self._wait_list.pop(wait_tid) == future
-        return rsp_msg
+        await self.queue.put(client_msg)
+        if wait_tid is not None:
+            return await self._wait_reply(wait_tid)
 
     async def async_run(self) -> None:
         server = self.server
@@ -294,7 +286,7 @@ class Bot(object):
         except KeyboardInterrupt:
             pass
         except asyncio.CancelledError:
-            raise KaruhaConnectError("the connection was closed by remote") from None
+            raise KaruhaBotError("the connection was closed") from None
     
     def cancel(self, cancel_loop: bool = True) -> None:
         if self.state != State.running:
@@ -319,7 +311,7 @@ class Bot(object):
         loop_task = self._loop_task_ref()
         if loop_task is not None:
             loop_task.set_exception(
-                KaruhaConnectError("restart chatbot")
+                KaruhaBotError("restart chatbot")
             )
     
     @classmethod
@@ -352,6 +344,15 @@ class Bot(object):
         tid = str(self._tid_counter)
         self._tid_counter += 1
         return tid
+
+    async def _wait_reply(self, tid: Optional[str] = None) -> Any:
+        tid = tid or self._get_tid()
+        future = asyncio.get_running_loop().create_future()
+        self._wait_list[tid] = future
+        try:
+            return await future
+        finally:
+            assert self._wait_list.pop(tid, None) is future
     
     def _create_task(self, coro: Coroutine, /) -> asyncio.Task:
         task = asyncio.create_task(coro)

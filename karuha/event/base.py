@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Callable, ClassVar, Coroutine, List
+from typing import Any, Awaitable, Callable, ClassVar, Coroutine, List
 from typing_extensions import Self, ParamSpec
 
 from ..logger import logger
@@ -23,19 +23,18 @@ class Event(object):
     
     @classmethod  # type: ignore
     def new(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
-        event = cls(
-            *args, **kwds
-        )
+        event = cls(*args, **kwds)
         event.trigger()
         return event
     
-    def call_handler(self, handler: Callable[[Self], Coroutine]) -> None:
-        asyncio.create_task(handler(self))
+    def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
+        return asyncio.create_task(handler(self))
     
-    def trigger(self) -> None:
+    def trigger(self) -> "asyncio.Future[list]":
         logger.debug(f"trigger event {self.__class__.__name__}")
-        for i in self.__handlers__:
-            self.call_handler(i)
+        return asyncio.gather(
+            *(self.call_handler(i) for i in self.__handlers__)
+        )
     
     def __init_subclass__(cls, **kwds: Any) -> None:
         if "__handlers__" not in cls.__dict__:
