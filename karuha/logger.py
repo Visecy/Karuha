@@ -23,7 +23,7 @@ def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> Non
     log_dir = Path(log_dir)
     name = logger.name
     if '.' not in name:
-        file_path = log_dir / "Karuha.log"
+        file_path = log_dir / "main.log"
     else:
         _, bot_name = name.split('.')
         file_path = log_dir / f"bot_{bot_name}.log"

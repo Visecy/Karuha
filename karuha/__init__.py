@@ -9,7 +9,7 @@ from typing import List
 from typing_extensions import deprecated
 
 
-WORKDIR = Path(os.environ.get("KARUHA_ROOT", ".bot"))  # dir to storage bot data
+WORKDIR = Path(os.environ.get("KARUHA_HOME", ".bot"))  # dir to storage bot data
 
 
 from .version import __version__
@@ -69,7 +69,7 @@ def run() -> None:
             bots.append(bot)
         loop.create_task(bot.async_run())
     
-    if config.server.listen is not None:
+    if config.server.enable_plugin:
         server = init_server(config.server.listen)
         loop.call_soon(server.start)
     else:

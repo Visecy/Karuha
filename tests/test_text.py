@@ -1,6 +1,10 @@
 from unittest import TestCase
+
 from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
 from karuha.text.convert import eval_spans, to_span_tree
+from karuha.event import MessageEvent
+
+from .utils import botlike
 
 
 example1 = Drafty.model_validate_json(
@@ -85,3 +89,17 @@ class TestText(TestCase):
         self.assertLessEqual(df2.fmt, example2.fmt)
         # print(df1.model_dump_json(indent=4))
         self.assertSetEqual(set(df1.fmt), set(example1.fmt))
+    
+    def test_message_event(self) -> None:
+        ev = MessageEvent(
+            botlike,
+            "", "", 0, {},
+            b"\"\""
+        )
+        self.assertEqual(ev.text, "")
+        self.assertEqual(ev.raw_text, "")
+        self.assertEqual(ev.raw_content, b"\"\"")
+        ev._set_text(b"{\"txt\": \"Hi\"}")
+        self.assertIsInstance(ev.text, PlainText)
+        self.assertEqual(ev.text, "Hi")
+        

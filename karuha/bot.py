@@ -147,7 +147,7 @@ class Bot(object):
             self.config.schema_ = "token"
             self.config.secret = json.loads(params["token"].decode())
     
-    async def subscribe(self, /, topic: str, *, get_since: Optional[int] = None, limit: int = 24) -> None:
+    async def subscribe(self, /, topic: str, *, get_since: Optional[int] = None, limit: int = 24) -> str:
         # if topic in self.subscriptions:
         #     self.logger.info(f"topic {topic} already subscribed, request ignored")
         #     return
@@ -181,8 +181,9 @@ class Bot(object):
         else:
             # self.subscriptions.add(topic)
             self.logger.info(f"subscribe topic {topic}")
+        return tid
     
-    async def leave(self, /, topic: str) -> None:
+    async def leave(self, /, topic: str) -> str:
         # if topic not in self.subscriptions:
         #     self.logger.info(f"topic {topic} not subscribed, request ignored")
         #     return
@@ -205,8 +206,9 @@ class Bot(object):
         else:
             # self.subscriptions.remove(topic)
             self.logger.info(f"leave topic {topic}")
+        return tid
     
-    async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> None:
+    async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> str:
         if head is None:
             head = {}
         else:
@@ -229,6 +231,7 @@ class Bot(object):
             self.logger.error(f"fail to publish message to {topic}: {ctrl.text}")
         else:
             self.logger.info(f"({topic})<= {text}")
+        return tid
     
     async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
@@ -315,7 +318,10 @@ class Bot(object):
             )
     
     @classmethod
-    def from_config(cls, name: Union[str, BotConfig], /, config: Config) -> Self:
+    def from_config(cls, name: Union[str, BotConfig], /, config: Optional[Config] = None) -> Self:
+        if config is None:
+            config = get_config()
+            
         if not isinstance(name, BotConfig):
             for i in config.bots:
                 if i.name == name:
