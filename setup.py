@@ -15,7 +15,6 @@ limitations under the License.
 """
 
 import re
-import sys
 import warnings
 from setuptools import setup, find_packages
 
@@ -52,15 +51,14 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
-        "typing_extensions>=4.0" if sys.version_info >= (3, 7)
-            else "typing_extensions>=4.0,<4.2",
+        "typing_extensions>=4.0",
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
         "pydantic>2.0",
     ],
 
     classifiers=[
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3 :: Only",

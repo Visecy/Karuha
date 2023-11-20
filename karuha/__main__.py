@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import os
 from pathlib import Path
 import platform
 
@@ -18,11 +19,14 @@ version_info = ' '.join((
     f"gRPC-python/{LIB_VERSION}"
 ))
 
+default_config = os.environ.get("KARUHA_CONFIG", "config.json")
+
 parser = ArgumentParser("Karuha", usage=useage)
-parser.add_argument("config", type=Path, nargs='?', default="config.json", help="path of the Karuha config")
+parser.add_argument("config", type=Path, nargs='?', default=default_config, help="path of the Karuha config")
 parser.add_argument("--auto-create", action="store_true", help="auto create config")
 parser.add_argument("--encoding", default="utf-8", help="config encoding")
 parser.add_argument("-v", "--version", action="version", version=version_info)
+
 
 if __name__ == "__main__":
     namespace = parser.parse_args()

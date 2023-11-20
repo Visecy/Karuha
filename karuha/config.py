@@ -10,7 +10,8 @@ class Server(BaseModel):
     host: Annotated[str, AnyUrl] = "localhost:16060"
     ssl: bool = False
     ssl_host: Optional[str] = None
-    listen: Optional[Annotated[str, AnyUrl]] = "0.0.0.0:40051"
+    enable_plugin: bool = False
+    listen: Annotated[str, AnyUrl] = "0.0.0.0:40051"
 
 
 class Bot(BaseModel):
