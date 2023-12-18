@@ -5,9 +5,12 @@ from typing_extensions import Self
 from ..bot import Bot
 from ..text import Drafty, PlainText, drafty2text
 from .bot import BotEvent, DataEvent
+from .dispatcher import AbstractDispatcher
 
 
 class MessageEvent(BotEvent):
+    """a parsed DataMessage"""
+
     __slots__ = ["topic", "uid", "seq_id", "head", "raw_content", "raw_text", "text"]
 
     def __init__(self, bot: Bot, /, topic: str, uid: str, seq_id: int, head: Dict[str, str], content: bytes) -> None:
@@ -57,3 +60,9 @@ class MessageEvent(BotEvent):
         
         self.raw_text = raw_text
         self.text = PlainText(raw_text)
+
+
+class MessageDispatcher(AbstractDispatcher[MessageEvent]):
+    __slots__ = []
+
+    dispatchers = set()

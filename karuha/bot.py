@@ -6,7 +6,7 @@ from asyncio.queues import Queue, QueueEmpty
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from enum import IntEnum
-from typing import (Any, AsyncGenerator, Coroutine, Dict, Literal, Optional,
+from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, List, Literal, Optional,
                     Union, overload)
 from typing_extensions import Self, deprecated
 from weakref import WeakSet, ref
@@ -42,7 +42,7 @@ class Bot(object):
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
 
-    server_event_map: Dict[str, list] = defaultdict(list)
+    server_event_map: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
     
     @overload
     def __init__(
@@ -257,7 +257,7 @@ class Bot(object):
     async def async_run(self) -> None:
         server = self.server
         if self.server is None:
-            raise ValueError("server not specified") from None
+            raise ValueError("server not specified")
         while True:
             try:
                 async with self._run_context() as channel:
@@ -412,7 +412,7 @@ class Bot(object):
 
             for desc, msg in message.ListFields():
                 for e in self.server_event_map[desc.name]:
-                    e(self, msg).trigger()
+                    e(self, msg)
     
     def __repr__(self) -> str:
         state = self.state.name

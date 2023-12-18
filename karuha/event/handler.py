@@ -2,7 +2,7 @@ from tinode_grpc import pb
 
 from ..text import BaseText
 from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, SubscribeEvent, LeaveEvent
-from .message import MessageEvent
+from .message import MessageEvent, MessageDispatcher
 
 
 @DataEvent.add_handler
@@ -14,11 +14,6 @@ async def _(event: DataEvent) -> None:
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
     MessageEvent.from_data_event(event).trigger()
-
-
-@MessageEvent.add_handler
-async def _(event: MessageEvent) -> None:
-    event.bot.logger.info(f"({event.topic})=> {event.text}")
 
 
 @CtrlEvent.add_handler
@@ -64,3 +59,13 @@ async def _(evnet: SubscribeEvent) -> None:
 @LeaveEvent.add_handler
 async def _(event: LeaveEvent) -> None:
     await event.bot.leave(event.topic)
+
+
+@MessageEvent.add_handler
+async def _(event: MessageEvent) -> None:
+    event.bot.logger.info(f"({event.topic})=> {event.text}")
+
+
+@MessageEvent.add_handler
+async def _(event: MessageEvent) -> None:
+    MessageDispatcher.dispatch(event)
