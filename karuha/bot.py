@@ -4,9 +4,9 @@ import platform
 import sys
 from asyncio.queues import Queue, QueueEmpty
 from collections import defaultdict
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from enum import IntEnum
-from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, List, Literal, Optional,
+from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator, List, Literal, Optional,
                     Union, overload)
 from typing_extensions import Self, deprecated
 from weakref import WeakSet, ref
@@ -250,9 +250,13 @@ class Bot(object):
         :rtype: Optional[Message]
         """
         client_msg = pb.ClientMsg(**kwds)  # type: ignore
-        await self.queue.put(client_msg)
-        if wait_tid is not None:
-            return await self._wait_reply(wait_tid)
+        if wait_tid is None:
+            await self.queue.put(client_msg)
+            return
+
+        with self._wait_reply(wait_tid) as future:
+            await self.queue.put(client_msg)
+            return await future
 
     async def async_run(self) -> None:
         server = self.server
@@ -351,12 +355,13 @@ class Bot(object):
         self._tid_counter += 1
         return tid
 
-    async def _wait_reply(self, tid: Optional[str] = None) -> Any:
+    @contextmanager
+    def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
         tid = tid or self._get_tid()
         future = asyncio.get_running_loop().create_future()
         self._wait_list[tid] = future
         try:
-            return await future
+            yield future
         finally:
             assert self._wait_list.pop(tid, None) is future
     

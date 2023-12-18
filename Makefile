@@ -9,6 +9,9 @@ refresh: clean develop test lint
 run:
 	python -m ${MODULE}
 
+build:
+	python setup.py build
+
 build_dist:
 	python setup.py sdist bdist_wheel
 

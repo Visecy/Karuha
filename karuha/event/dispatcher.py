@@ -26,7 +26,7 @@ class AbstractDispatcher(ABC, Generic[T]):
         self.dispatchers.remove(self)
     
     @classmethod
-    def dispatch(cls, message: T) -> None:
+    def dispatch(cls, message: T, /) -> None:
         if not cls.dispatchers:
             return
         selected = max(
@@ -44,9 +44,9 @@ class AbstractDispatcher(ABC, Generic[T]):
 class FutureDispatcher(AbstractDispatcher[T]):
     __slots__ = ["future"]
 
-    def __init__(self, future: asyncio.Future) -> None:
+    def __init__(self, /, future: asyncio.Future) -> None:
         super().__init__()
         self.future = future
 
-    def run(self, message: T) -> None:
+    def run(self, message: T, /) -> None:
         self.future.set_result(message)
