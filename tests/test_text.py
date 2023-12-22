@@ -4,7 +4,7 @@ from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
 from karuha.text.convert import eval_spans, to_span_tree
 from karuha.event import MessageEvent
 
-from .utils import botlike
+from .utils import bot_simulation
 
 
 example1 = Drafty.model_validate_json(
@@ -92,7 +92,7 @@ class TestText(TestCase):
     
     def test_message_event(self) -> None:
         ev = MessageEvent(
-            botlike,
+            bot_simulation,
             "", "", 0, {},
             b"\"\""
         )

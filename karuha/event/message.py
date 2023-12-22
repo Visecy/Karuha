@@ -1,11 +1,13 @@
 import json
-from typing import Dict
+from asyncio import Future
+from typing import Any, Dict, Optional
+
 from typing_extensions import Self
 
 from ..bot import Bot
 from ..text import Drafty, PlainText, drafty2text
 from .bot import BotEvent, DataEvent
-from .dispatcher import AbstractDispatcher
+from .dispatcher import FutureDispatcher
 
 
 class MessageEvent(BotEvent):
@@ -62,7 +64,33 @@ class MessageEvent(BotEvent):
         self.text = PlainText(raw_text)
 
 
-class MessageDispatcher(AbstractDispatcher[MessageEvent]):
+class MessageDispatcher(FutureDispatcher[MessageEvent]):
     __slots__ = []
 
     dispatchers = set()
+
+
+class ButtonReplyDispatcher(MessageDispatcher):
+    __slots__ = ["seq_id", "name", "value"]
+
+    def __init__(self, /, future: Future, seq_id: int, name: Optional[str] = None, value: Optional[str] = None) -> None:
+        super().__init__(future)
+        self.seq_id = seq_id
+        self.name = name
+        self.value = value
+    
+    def match(self, message: MessageEvent) -> float:
+        text = message.raw_text
+
+        val: Dict[str, Any] = {"seq": self.seq_id}
+        if self.name:
+            val["resp"] = {self.name: self.value or 1}
+        if isinstance(text, Drafty):
+            for i in text.ent:
+                if (
+                    i.tp == "EX" and
+                    i.data.get("mime") == "application/json" and
+                    i.data.get("value") == val
+                ):
+                    return 2.5
+        return 0
