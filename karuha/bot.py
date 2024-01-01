@@ -338,7 +338,7 @@ class Bot(object):
         while self.state == State.running:
             self.logger.info(f"starting the bot {self.name}")
             try:
-                async with self._run_context() as channel:
+                async with self._run_context(server) as channel:
                     stream = get_stream(channel)  # type: ignore
                     msg_gen = self._message_generator()
                     client = stream(msg_gen)
@@ -460,11 +460,10 @@ class Bot(object):
         self.queue = Queue()
         self._loop_task_ref = ref(asyncio.current_task())
     
-    def _get_channel(self) -> grpc_aio.Channel:  # pragma: no cover
-        assert self.server
-        host = self.server.host
-        secure = self.server.ssl
-        ssl_host = self.server.ssl_host
+    def _get_channel(self, server_config: ServerConfig, /) -> grpc_aio.Channel:  # pragma: no cover
+        host = server_config.host
+        secure = server_config.ssl
+        ssl_host = server_config.ssl_host
         if not secure:
             self.logger.info(f"connecting to server at {host}")
             return grpc_aio.insecure_channel(host)
@@ -473,8 +472,8 @@ class Bot(object):
         return grpc_aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
     
     @asynccontextmanager
-    async def _run_context(self) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
-        channel = self._get_channel()
+    async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
+        channel = self._get_channel(server_config)
         try:
             yield channel
         except:  # noqa: E722

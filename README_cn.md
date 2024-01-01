@@ -83,15 +83,11 @@ bot = Bot(
 @karuha.on(MessageEvent)
 async def reply(event: MessageEvent) -> None:
     if event.text == "Hello!":
-        PublishEvent.new(
-            event.bot,
-            event.topic,
-            "Hello world!"
-        )
+        await event.bot.publish(event.topic, "Hello world!")
 
 
 if __name__ == "__main__":
-    karuha.load_config()
+    karuha.init_config()
     karuha.add_bot(bot)
     karuha.run()
 ```
