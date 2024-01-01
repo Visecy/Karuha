@@ -1,11 +1,10 @@
-from typing import Any, Awaitable, Callable, Coroutine, Optional, Union
+from typing import Any, Awaitable, Callable, Coroutine, Optional
 from typing_extensions import Self
 
 from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from .. import bot
-from ..text import BaseText, Drafty
 from .base import Event
 
 
@@ -34,7 +33,7 @@ class ServerEvent(BotEvent):
 
     def __init_subclass__(cls, on_field: str, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)
-        bot.Bot.server_event_map[on_field].append(cls.new)
+        bot.Bot.server_event_callbacks[on_field].append(cls.new)
 
 
 class DataEvent(ServerEvent, on_field="data"):
@@ -293,10 +292,67 @@ class InfoEvent(ServerEvent, on_field="info"):
 
 
 class ClientEvent(BotEvent):
+    """base class for client events
+    
+    NOTE: Such events will be triggered after the corresponding action is completed.
+    """
+
+    __slots__ = ["client_message", "response_message"]
+
+    def __init__(self, bot: "bot.Bot", message: Message, response_message: Optional[Message] = None) -> None:
+        super().__init__(bot)
+        self.client_message = message
+        self.response_message = response_message
+    
+    def __init_subclass__(cls, on_field: str, **kwds: Any) -> None:
+        super().__init_subclass__(**kwds)
+        bot.Bot.client_event_callbacks[on_field].append(cls.new)
+
+
+class LoginEvent(ClientEvent, on_field="login"):
+    """
+    Login is used to authenticate the current session.
+
+    ```js
+    login: {
+    id: "1a2b3",     // string, client-provided message id, optional
+    scheme: "basic", // string, authentication scheme; "basic",
+                    // "token", and "reset" are currently supported
+    secret: base64encode("username:password"), // string, base64-encoded secret for the chosen
+                    // authentication scheme, required
+    cred: [
+        {
+        meth: "email", // string, verification method, e.g. "email", "tel", "captcha", etc, required
+        resp: "178307" // string, verification response, required
+        },
+    ...
+    ],   // response to a request for credential verification, optional
+    }
+    ```
+
+    Server responds to a `{login}` packet with a `{ctrl}` message.
+    The `params` of the message contains the id of the logged in user as `user`.
+    The `token` contains an encrypted string which can be used for authentication.
+    Expiration time of the token is passed as `expires`.
+    """
     __slots__ = []
 
+    client_message: pb.ClientLogin
 
-class PublishEvent(ClientEvent):
+    @property
+    def uid(self) -> str:
+        return self.client_message.id
+
+    @property
+    def scheme(self) -> str:
+        return self.client_message.scheme
+    
+    @property
+    def secret(self) -> bytes:
+        return self.client_message.secret
+
+
+class PublishEvent(ClientEvent, on_field="pub"):
     """
     The message is used to distribute content to topic subscribers.
 
@@ -356,15 +412,20 @@ class PublishEvent(ClientEvent):
     If the topic is omitted, i.e. `":123"`, it's assumed to be the current topic.
     """
 
-    __slots__ = ["text", "topic"]
+    __slots__ = []
 
-    def __init__(self, bot: "bot.Bot", topic: str, text: Union[str, Drafty, BaseText]) -> None:
-        super().__init__(bot)
-        self.text = text
-        self.topic = topic
+    client_message: pb.ClientPub
+    
+    @property
+    def topic(self) -> str:
+        return self.client_message.topic
+    
+    @property
+    def text(self) -> str:
+        return self.client_message.content.decode()
 
 
-class SubscribeEvent(ClientEvent):
+class SubscribeEvent(ClientEvent, on_field="sub"):
     """
     The `{sub}` packet serves the following functions:
     * creating a new topic
@@ -476,15 +537,16 @@ class SubscribeEvent(ClientEvent):
     ```
     """
 
-    __slots__ = ["topic", "since"]
+    __slots__ = []
 
-    def __init__(self, bot: "bot.Bot", topic: str, *, since: Optional[int] = None) -> None:
-        super().__init__(bot)
-        self.topic = topic
-        self.since = since
+    client_message: pb.ClientSub
+
+    @property
+    def topic(self) -> str:
+        return self.client_message.topic
 
 
-class LeaveEvent(ClientEvent):
+class LeaveEvent(ClientEvent, on_field="leave"):
     """
     This is a counterpart to `{sub}` message. It also serves two functions:
     * leaving the topic without unsubscribing (`unsub=false`)
@@ -504,8 +566,10 @@ class LeaveEvent(ClientEvent):
     ```
     """
 
-    __slots__ = ["topic"]
+    __slots__ = []
 
-    def __init__(self, bot: "bot.Bot", topic: str) -> None:
-        super().__init__(bot)
-        self.topic = topic
+    client_message: pb.ClientLeave
+
+    @property
+    def topic(self) -> str:
+        return self.client_message.topic

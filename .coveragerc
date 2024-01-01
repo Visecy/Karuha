@@ -29,5 +29,8 @@ exclude_lines =
     class (\w+)\(Protocol\):
     @(typing\.)?overload
 
+    # Don't complain about deprecated code
+    @(typing(_extensions)?\.)?deprecated(.*)
+
 
 ignore_errors = True

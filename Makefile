@@ -28,7 +28,7 @@ test:
 	python -m unittest
 
 coverage:
-	coverage run --source ${MODULE} --parallel-mode -m pytest
+	coverage run --source ${MODULE} --parallel-mode -m unittest
 	coverage combine
 	coverage html -i
 

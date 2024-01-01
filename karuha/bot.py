@@ -4,7 +4,6 @@ import platform
 import sys
 from asyncio.queues import Queue
 from collections import defaultdict
-from functools import singledispatchmethod
 from contextlib import asynccontextmanager, contextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
@@ -30,6 +29,7 @@ class State(IntEnum):
     disabled = 0
     running = 1
     stopped = 2
+    restarting = 3
 
 
 class Bot(object):
@@ -43,7 +43,8 @@ class Bot(object):
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
 
-    server_event_map: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
+    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
+    client_event_callbacks: Dict[str, List[Callable[[Self, Message, Optional[Message]], Any]]] = defaultdict(list)
     
     @overload
     def __init__(
@@ -52,8 +53,18 @@ class Bot(object):
         /, *,
         server: Union[ServerConfig, Any, None] = None,
         log_level: Level = ...
-    ) -> None: ...
-    @overload  # noqa: E301
+    ) -> None:
+        """
+        :param config: the bot configuration
+        :type config: :class:`BotConfig`
+        :param server: the server configuration
+        :type server: Union[:class:`ServerConfig`, Any, None]
+        :param log_level: the log level
+        :type log_level: Union[str, int]
+        :raises ValueError: if the authentication scheme is not defined
+        """
+
+    @overload
     def __init__(
         self, name: str, /,
         schema: Literal["basic", "token", "cookie"],
@@ -61,8 +72,20 @@ class Bot(object):
         *,
         server: Union[ServerConfig, Any, None] = None,
         log_level: Level = ...
-    ) -> None: ...
-    def __init__(  # noqa: E301
+    ) -> None:
+        """
+        :param name: the bot name
+        :type name: str
+        :param schema: the authentication scheme
+        :type schema: Literal["basic", "token", "cookie"]
+        :param secret: the authentication secret
+        :type secret: str
+        :param server: the server configuration
+        :type server: Union[:class:`ServerConfig`, Any, None]
+        :param log_level: the log level
+        """
+
+    def __init__(
         self,
         name: Union[str, BotConfig],
         /,
@@ -90,14 +113,22 @@ class Bot(object):
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
         self._loop_task_ref = lambda: None
     
-    async def hello(self, /, lang: str = "EN") -> None:
+    async def hello(self, /, lang: str = "EN") -> str:
+        """
+        send a hello message to the server and get the server id
+        
+        :param lang: the language of the chatbot
+        :type lang: str
+        :return: tid
+        :rtype: str
+        """
         tid = self._get_tid()
         user_agent = ' '.join((
             f"KaruhaBot/{APP_VERSION}",
             f"({platform.system()}/{platform.release()});",
             f"gRPC-python/{LIB_VERSION}"
         ))
-        ctrl = await self._send_message(
+        ctrl = await self.send_message(
             tid,
             hi=pb.ClientHi(
                 id=tid,
@@ -107,16 +138,24 @@ class Bot(object):
             )
         )
         assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code < 200 or ctrl.code >= 400:
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
             self.logger.error(f"fail to init chatbot: {ctrl.text}")
-            return
+            return tid
         build = ctrl.params["build"].decode()
         ver = ctrl.params["ver"].decode()
-        self.logger.info(f"server: {build} {ver}")
+        if build:
+            self.logger.info(f"server: {build} {ver}")
+        return tid
     
-    async def login(self) -> None:
+    async def login(self) -> str:
+        """
+        login to the server and get the user id
+        
+        :return: tid
+        :rtype: str
+        """
         tid = self._get_tid()
-        ctrl = await self._send_message(
+        ctrl = await self.send_message(
             tid,
             login=pb.ClientLogin(
                 id=tid,
@@ -125,26 +164,38 @@ class Bot(object):
             )
         )
         assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code == 409:
-            return
+        if ctrl.code == 409:  # pragma: no cover
+            return tid
         elif ctrl.code < 200 or ctrl.code >= 400:
             self.logger.error(f"fail to login: {ctrl.text}")
             self.cancel()
-            return
+            return tid
         
         self.logger.info("login successful")
-        self._create_task(self.subscribe("me"))
 
         params = ctrl.params
         if not params:
-            return
+            return tid
         if "user" in params:
             self.config.user = json.loads(params["user"].decode())
         if "token" in params:
             self.config.schema_ = "token"
             self.config.secret = json.loads(params["token"].decode())
+        return tid
     
     async def subscribe(self, /, topic: str, *, get_since: Optional[int] = None, limit: int = 24) -> str:
+        """
+        subscribe to a topic
+        
+        :param topic: topic to subscribe
+        :type topic: str
+        :param get_since: get messages since this id
+        :type get_since: int
+        :param limit: number of messages to get
+        :type limit: int
+        :return: tid
+        :rtype: str
+        """
         tid = self._get_tid()
         if get_since is not None:
             query = pb.GetQuery(
@@ -156,26 +207,68 @@ class Bot(object):
             )
         else:
             query = None
-        await self._subscribe(
-            pb.ClientSub(
+        ctrl = await self.send_message(
+            tid,
+            sub=pb.ClientSub(
                 id=tid,
                 topic=topic,
                 get_query=query
             )
         )
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:
+            self.logger.error(f"fail to subscribe topic {topic}: {ctrl.text}")
+            if topic == "me":  # pragma: no cover
+                if ctrl.code == 502:
+                    self.restart()
+                else:
+                    self.cancel()
+        else:
+            self.logger.info(f"subscribe topic {topic}")
         return tid
     
     async def leave(self, /, topic: str) -> str:
+        """
+        leave a topic
+
+        :param topic: topic to leave
+        :type topic: str
+        :return: tid
+        :rtype: str
+        """
         tid = self._get_tid()
-        await self._leave(
-            pb.ClientLeave(
+        ctrl = await self.send_message(
+            tid,
+            leave=pb.ClientLeave(
                 id=tid,
                 topic=topic
             )
         )
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:
+            self.logger.error(f"fail to leave topic {topic}: {ctrl.text}")
+            if topic == "me":
+                if ctrl.code == 502:
+                    self.restart()
+                else:
+                    self.cancel()
+        else:
+            self.logger.info(f"leave topic {topic}")
         return tid
     
     async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> str:
+        """
+        publish message to a topic
+
+        :param topic: topic to publish
+        :type topic: str
+        :param text: message content
+        :type text: Union[str, dict]
+        :param head: message header
+        :type head: Optional[Dict[str, Any]]
+        :return: tid or None
+        :rtype: str
+        """
         if head is None:
             head = {}
         else:
@@ -183,8 +276,9 @@ class Bot(object):
         if "auto" not in head:
             head["auto"] = b"true"
         tid = self._get_tid()
-        await self._publish(
-            pb.ClientPub(
+        ctrl = await self.send_message(
+            tid,
+            pub=pb.ClientPub(
                 id=tid,
                 topic=topic,
                 no_echo=True,
@@ -192,43 +286,57 @@ class Bot(object):
                 content=json.dumps(text).encode()
             )
         )
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:
+            self.logger.error(f"fail to publish message to {topic}: {ctrl.text}")
         return tid
     
     async def note_read(self, /, topic: str, seq: int) -> None:
-        await self._send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
+        await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
     
-    @singledispatchmethod
-    async def send_message(self, message: Message) -> Any:
-        msg_name_map = {
-            pb.ClientHi: "hi",
-            pb.ClientAcc: "acc",
-            pb.ClientLogin: "login",
-            pb.ClientSub: "sub",
-            pb.ClientLeave: "leave",
-            pb.ClientPub: "pub",
-            pb.ClientGet: "get",
-            pb.ClientSet: "set",
-            pb.ClientNote: "note",
-            pb.ClientExtra: "extra"
-        }
-        name = msg_name_map.get(message.__class__)  # type: ignore
-        if name is None:
-            raise TypeError(f"unsupported message type '{message.__class__.__name__}'")
-        if not hasattr(message, "id") or not (tid := message.id):  # type: ignore
-            return await self._send_message(**{name: message})
-        ctrl: pb.ServerCtrl = await self._send_message(
-            tid,
-            **{name: message}
-        )
-        if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to sned message {__name__}({str(message).strip()})")
-        return tid
+    @overload
+    async def send_message(self, wait_tid: str, /, **kwds: Message) -> Message: ...
+    @overload
+    async def send_message(self, wait_tid: None = None, /, **kwds: Message) -> None: ...
+
+    async def send_message(self, wait_tid: Optional[str] = None, /, **kwds: Message) -> Optional[Message]:
+        """set a message to Tinode server
+
+        :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
+        :type wait_tid: Optional[str], optional
+        :return: message which has the same tid
+        :rtype: Optional[Message]
+        """
+        if self.state != State.running:
+            raise KaruhaBotError("bot is not running")
+        client_msg = pb.ClientMsg(**kwds)  # type: ignore
+        ret = None
+        if wait_tid is None:
+            await self.queue.put(client_msg)
+        else:
+            with self._wait_reply(wait_tid) as future:
+                await self.queue.put(client_msg)
+                ret = await future
+        for k, v in kwds.items():
+            for cb in self.client_event_callbacks[k]:
+                cb(self, v, ret)
+        return ret
 
     async def async_run(self, server_config: Optional[ServerConfig] = None) -> None:  # pragma: no cover
+        """
+        run the bot in an async loop
+
+        :param server_config: Optional server configuration. Defaults to None.
+        :type server_config: Optional[ServerConfig]
+        :return: None
+        """
         server = server_config or self.server
         if server is None:
             raise ValueError("server not specified")
-        while True:
+        
+        self._prepare_loop_task()
+        while self.state == State.running:
+            self.logger.info(f"starting the bot {self.name}")
             try:
                 async with self._run_context() as channel:
                     stream = get_stream(channel)  # type: ignore
@@ -240,9 +348,22 @@ class Bot(object):
                 await asyncio.sleep(0.5)
             except KeyboardInterrupt:
                 break
+            except asyncio.CancelledError:
+                if self.state == State.restarting:
+                    # uncancel from Bot.restart()
+                    self.state = State.running
+                else:
+                    raise
     
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
-    def run(self) -> None:  # pragma: no cover
+    def run(self) -> None:
+        """
+        run the bot
+
+        NOTE: this method is deprecated, use karuha.run() instead
+        
+        :rtype: None
+        """
         # synchronize with configuration
         try:
             get_config()
@@ -262,25 +383,24 @@ class Bot(object):
             raise KaruhaBotError("the connection was closed") from None
     
     def cancel(self, cancel_loop: bool = True) -> None:
-        if self.state != State.running:
+        if self.state in [State.stopped, State.disabled]:
             return
         self.state = State.stopped
         self.logger.info(f"canceling the bot {self.name}")
-        while not self.queue.empty():
-            self.queue.get_nowait()
-
-        for t in self._tasks:
-            t.cancel()
         loop_task = self._loop_task_ref()
         if cancel_loop and loop_task is not None:
             loop_task.cancel()
     
     def restart(self) -> None:
+        if self.state == State.disabled:
+            raise KaruhaBotError(f"cannot restart disabled bot {self.name}")
         loop_task = self._loop_task_ref()
+        self.state = State.restarting
         if loop_task is not None:
-            loop_task.set_exception(
-                KaruhaBotError("restart chatbot")
-            )
+            self.logger.info(f"restarting the bot {self.name}")
+            loop_task.cancel()
+        else:
+            self.logger.warning(f"invalid restart operation for bot {self.name}, no valid running task found")
     
     @classmethod
     def from_config(cls, name: Union[str, BotConfig], /, config: Optional[Config] = None) -> Self:
@@ -325,77 +445,20 @@ class Bot(object):
             yield future
         finally:
             assert self._wait_list.pop(tid, None) is future
-    
-    @overload
-    async def _send_message(self, wait_tid: str, /, **kwds: Message) -> Message: ...
-    @overload
-    async def _send_message(self, wait_tid: None = None, /, **kwds: Message) -> None: ...
 
-    async def _send_message(self, wait_tid: Optional[str] = None, /, **kwds: Message) -> Optional[Message]:
-        """set a message to Tinode server
-
-        :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
-        :type wait_tid: Optional[str], optional
-        :return: message which has the same tid
-        :rtype: Optional[Message]
-        """
-        client_msg = pb.ClientMsg(**kwds)  # type: ignore
-        if wait_tid is None:
-            await self.queue.put(client_msg)
-            return
-
-        with self._wait_reply(wait_tid) as future:
-            await self.queue.put(client_msg)
-            return await future
-
-    @send_message.register(pb.ClientSub)
-    async def _subscribe(self, /, message: pb.ClientSub) -> None:
-        tid = message.id
-        topic = message.topic
-        ctrl = await self._send_message(tid, sub=message)
-        assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to subscribe topic {topic}: {ctrl.text}")
-            if topic == "me":
-                if ctrl.code == 502:
-                    self.restart()
-                else:
-                    self.cancel()
-        else:
-            self.logger.info(f"subscribe topic {topic}")
-    
-    @send_message.register(pb.ClientLeave)
-    async def _leave(self, /, message: pb.ClientLeave) -> None:
-        tid = message.id
-        topic = message.topic
-        ctrl = await self._send_message(tid, leave=message)
-        assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to leave topic {topic}: {ctrl.text}")
-            if topic == "me":
-                if ctrl.code == 502:
-                    self.restart()
-                else:
-                    self.cancel()
-        else:
-            self.logger.info(f"leave topic {topic}")
-    
-    @send_message.register(pb.ClientPub)
-    async def _publish(self, /, message: pb.ClientPub) -> str:
-        tid = message.id
-        topic = message.topic
-        ctrl = await self._send_message(tid, pub=message)
-        assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to publish message to {topic}: {ctrl.text}")
-        else:
-            self.logger.info(f"({topic})<= {message.content.decode(errors='replace')}")
-        return ctrl.params["seq"].decode()
-    
     def _create_task(self, coro: Coroutine, /) -> asyncio.Task:
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
+
+    def _prepare_loop_task(self) -> None:
+        if self.state == State.running:
+            raise KaruhaBotError(f"rerun bot {self.name}")
+        elif self.state != State.stopped:
+            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})")
+        self.state = State.running
+        self.queue = Queue()
+        self._loop_task_ref = ref(asyncio.current_task())
     
     def _get_channel(self) -> grpc_aio.Channel:  # pragma: no cover
         assert self.server
@@ -411,26 +474,26 @@ class Bot(object):
     
     @asynccontextmanager
     async def _run_context(self) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
-        if self.state == State.running:
-            raise KaruhaBotError(f"rerun bot {self.name}")
-        elif self.state != State.stopped:
-            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})")
-        self.state = State.running
-        self.queue = Queue(loop=asyncio.get_running_loop())
-        self._loop_task_ref = ref(asyncio.current_task())
-        self.logger.info(f"starting the bot {self.name}")
         channel = self._get_channel()
         try:
             yield channel
         except:  # noqa: E722
             await channel.close()
-            self.cancel(cancel_loop=False)
+            if self.state != State.restarting:
+                self.cancel(cancel_loop=False)
             raise
+        finally:
+            # clean up for restarting
+            while not self.queue.empty():
+                self.queue.get_nowait()
+
+            for t in self._tasks:
+                t.cancel()
     
-    async def _message_generator(self) -> AsyncGenerator[Message, None]:  # pragma: no cover
+    async def _message_generator(self) -> AsyncGenerator[pb.ClientMsg, None]:  # pragma: no cover
         while True:
             assert self.state == State.running
-            msg: Message = await self.queue.get()
+            msg: pb.ClientMsg = await self.queue.get()
             self.logger.debug(f"out: {msg}")
             yield msg
     
@@ -443,7 +506,7 @@ class Bot(object):
             self.logger.debug(f"in: {message}")
 
             for desc, msg in message.ListFields():
-                for e in self.server_event_map[desc.name]:
+                for e in self.server_event_callbacks[desc.name]:
                     e(self, msg)
     
     def __repr__(self) -> str:
@@ -453,7 +516,7 @@ class Bot(object):
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
 
-def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:
+def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:  # pragma: no cover
     return channel.stream_stream(
         '/pbx.Node/MessageLoop',
         request_serializer=pb.ClientMsg.SerializeToString,

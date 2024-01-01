@@ -1,10 +1,11 @@
 import asyncio
+import json
 from contextlib import asynccontextmanager
-from traceback import print_exc
-from types import TracebackType
-from typing import AsyncGenerator, Coroutine, Generic, Optional, Type
+from time import time
+from types import TracebackType, coroutine
+from typing import (AsyncGenerator, Awaitable, Generator, Generic, Optional,
+                    Type)
 from unittest import IsolatedAsyncioTestCase
-from weakref import ref
 
 from tinode_grpc import pb
 from typing_extensions import Self
@@ -12,7 +13,15 @@ from typing_extensions import Self
 from karuha.bot import Bot, State
 from karuha.config import Server as ServerConfig
 from karuha.event import T_Event
-from karuha.exception import KaruhaBotError
+
+
+TEST_TIME_OUT = 5
+
+
+@coroutine
+def run_forever() -> Generator[None, None, None]:
+    while True:
+        yield
 
 
 class BotSimulation(Bot):
@@ -20,7 +29,7 @@ class BotSimulation(Bot):
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
         for desc, msg in message.ListFields():
-            for e in self.server_event_map[desc.name]:
+            for e in self.server_event_callbacks[desc.name]:
                 e(self, msg)
     
     async def consum_message(self) -> pb.ClientMsg:
@@ -36,41 +45,69 @@ class BotSimulation(Bot):
     async def assert_message(self, message: pb.ClientMsg, /) -> None:
         assert await self.consum_message() == message
 
-    async def wait_init(self) -> None:
-        await self.assert_message(pb.ClientMsg(hi=pb.ClientHi()))
+    async def wait_state(self, state: State, /, timeout: float = TEST_TIME_OUT) -> None:
+        start = time()
+        while self.state != state:
+            await asyncio.sleep(0)
+            if time() - start > timeout:
+                raise TimeoutError(f"bot state has not changed to {state}")
 
+    async def wait_init(self) -> None:
+        await self.wait_state(State.running)
+    
+    def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: str) -> str:
+        if tid is None:
+            assert len(self._wait_list) == 1
+            tid = list(self._wait_list.keys())[0]
+        if code < 200 or code >= 400:
+            text = "test error"
+        else:
+            text = "OK"
+        self._wait_list[tid].set_result(
+            pb.ServerCtrl(
+                id=tid,
+                topic="test_topic",
+                code=code,
+                text=text,
+                params={k: json.dumps(v).encode() for k, v in params.items()}
+            )
+        )
+        return tid
+    
     async def async_run(self, server_config: Optional[ServerConfig] = None) -> None:
         server = server_config or self.server
         if server is None:
             raise ValueError("server not specified")
-        try:
-            async with self._run_context() as future:
-                await self._send_message(hi=pb.ClientHi())
-                await future
-        except KeyboardInterrupt:
-            pass
+        
+        self._prepare_loop_task()
+        while self.state == State.running:
+            self.logger.info(f"starting the bot {self.name}")
+            try:
+                async with self._run_context() as channel:
+                    await channel
+            except KeyboardInterrupt:
+                break
+            except asyncio.CancelledError:
+                if self.state == State.restarting:
+                    self.state = State.running
+                else:
+                    raise
     
     @asynccontextmanager
-    async def _run_context(self) -> AsyncGenerator[Coroutine, None]:
-        if self.state == State.running:
-            raise KaruhaBotError(f"rerun bot {self.name}")
-        elif self.state != State.stopped:
-            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})")
-        self.state = State.running
-
-        self._loop_task_ref = ref(asyncio.current_task())
-        self.logger.info(f"starting the bot {self.name}")
+    async def _run_context(self) -> AsyncGenerator[Awaitable, None]:
         try:
-            # Here a better way is to create a future like:
-            #   yield asyncio.get_running_loop().create_future()
-            # But doing this will cause a GeneratorExit exception
-            # that is difficult for me to understand when async_run is running,
-            # so I finally adopted the following solution.
-            yield asyncio.sleep(100)
+            yield run_forever()
         except:  # noqa: E722
-            print_exc()
-            self.cancel(cancel_loop=False)
+            if self.state != State.restarting:
+                self.cancel(cancel_loop=False)
             raise
+        finally:
+            # clean up for restarting
+            while not self.queue.empty():
+                self.queue.get_nowait()
+
+            for t in self._tasks:
+                t.cancel()
 
 
 bot_simulation = BotSimulation("test", "basic", "123456", log_level="DEBUG")
@@ -87,10 +124,10 @@ class EventCatcher(Generic[T_Event]):
     def catch_event_nowait(self) -> T_Event:
         return self.events.pop()
     
-    async def catch_event(self, timeout: float = 5) -> T_Event:
+    async def catch_event(self, timeout: float = TEST_TIME_OUT) -> T_Event:
         if self.events:
             return self.catch_event_nowait()
-        assert self.future is None
+        assert self.future is None, "catcher is already waiting"
         loop = asyncio.get_running_loop()
         self.future = loop.create_future()
         try:
@@ -120,17 +157,20 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     bot = bot_simulation
 
     async def asyncSetUp(self) -> None:
-        # self.bot = BotSimulation("test", "basic", "123456", log_level="DEBUG")
-        assert self.bot.state == State.stopped
-        self.bot.queue = asyncio.Queue()
+        self.assertEqual(self.bot.state, State.stopped)
         loop = asyncio.get_running_loop()
         loop.set_debug(True)
         loop.create_task(self.bot.async_run(ServerConfig()))
         await self.bot.wait_init()
-        print("sf")
     
     async def asyncTearDown(self) -> None:
-        assert self.bot.state == State.running
+        self.assertEqual(self.bot.state, State.running)
         self.bot.cancel()
     
     catchEvent = EventCatcher
+
+    async def assertBotMessage(self, message: pb.ClientMsg, /) -> None:
+        await self.bot.assert_message(message)
+    
+    def assertBotMessageNowait(self, message: pb.ClientMsg, /) -> None:
+        self.bot.assert_message_nowait(message)
