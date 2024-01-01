@@ -1,19 +1,25 @@
-.PHONY: build build_cython install build_dist test docs clean
+.PHONY: run install develop build_dist test coverage clean
 
 MODULE := karuha
 PIP_MODULE := KaruhaBot
 
-all: clean build lint build_dist
-refresh: clean install lint
+all: clean lint build_dist
+refresh: clean develop test lint
 
 run:
 	python -m ${MODULE}
 
+build:
+	python setup.py build
+
 build_dist:
 	python setup.py sdist bdist_wheel
 
-install: build_dist
-	pip install dist/${PIP_MODULE}*.tar.gz
+install:
+	pip install .
+
+develop:
+	pip install -e .
 
 lint:
 	flake8 ${MODULE}/ tests/ --exclude __init__.py --count --max-line-length=127 --extend-ignore=W293,E402
@@ -33,5 +39,3 @@ clean:
 	rm -rf build
 	rm -rf dist
 	rm -rf ${PIP_MODULE}.egg-info
-
-

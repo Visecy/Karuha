@@ -1,8 +1,7 @@
 from tinode_grpc import pb
 
-from ..text import BaseText
-from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, SubscribeEvent, LeaveEvent
-from .message import MessageEvent
+from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, LoginEvent
+from .message import MessageEvent, MessageDispatcher
 
 
 @DataEvent.add_handler
@@ -14,11 +13,6 @@ async def _(event: DataEvent) -> None:
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
     MessageEvent.from_data_event(event).trigger()
-
-
-@MessageEvent.add_handler
-async def _(event: MessageEvent) -> None:
-    event.bot.logger.info(f"({event.topic})=> {event.text}")
 
 
 @CtrlEvent.add_handler
@@ -34,33 +28,28 @@ async def _(event: PresEvent) -> None:
     if msg.topic != "me":
         return
     if msg.what == pb.ServerPres.ON:
-        SubscribeEvent.new(event.bot, msg.src)
+        await event.bot.subscribe(msg.src)
     elif msg.what == pb.ServerPres.MSG:
-        SubscribeEvent.new(event.bot, msg.src, since=msg.seq_id)
+        await event.bot.subscribe(msg.src, get_since=msg.seq_id)
     elif msg.what == pb.ServerPres.OFF:
-        LeaveEvent.new(event.bot, msg.src)
+        await event.bot.leave(msg.src)
+
+
+@LoginEvent.add_handler
+async def _(event: LoginEvent) -> None:
+    await event.bot.subscribe("me")
 
 
 @PublishEvent.add_handler
 async def _(event: PublishEvent) -> None:
-    text = event.text
-    if isinstance(text, str):
-        await event.bot.publish(event.topic, text)
-    else:
-        if isinstance(text, BaseText):
-            text = text.to_drafty()
-        await event.bot.publish(
-            event.topic,
-            text.model_dump(exclude_defaults=True),
-            head={"auto": True, "mime": "text/x-drafty"}
-        )
+    event.bot.logger.info(f"({event.topic})<= {event.text}")
 
 
-@SubscribeEvent.add_handler
-async def _(evnet: SubscribeEvent) -> None:
-    await evnet.bot.subscribe(evnet.topic, get_since=evnet.since)
+@MessageEvent.add_handler
+async def _(event: MessageEvent) -> None:
+    event.bot.logger.info(f"({event.topic})=> {event.text}")
 
 
-@LeaveEvent.add_handler
-async def _(event: LeaveEvent) -> None:
-    await event.bot.leave(event.topic)
+@MessageEvent.add_handler
+async def _(event: MessageEvent) -> None:
+    MessageDispatcher.dispatch(event)

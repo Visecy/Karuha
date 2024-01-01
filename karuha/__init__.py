@@ -5,7 +5,7 @@ A simple Tinode chatbot framework
 import asyncio
 import os
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 from typing_extensions import deprecated
 
 
@@ -23,7 +23,7 @@ from .logger import logger
 from .exception import KaruhaException
 
 
-_bot_cache = {}
+_bot_cache: Dict[str, Bot] = {}
 
 
 def get_bot(name: str = "chatbot") -> Bot:
@@ -50,7 +50,8 @@ async def async_run() -> None:
             bot = _bot_cache[i.name]
         else:
             bot = Bot.from_config(i, config)
-        tasks.append(asyncio.create_task(bot.async_run()))
+            _bot_cache[i.name] = bot
+        tasks.append(asyncio.create_task(bot.async_run(config.server)))
     if not tasks:
         raise ValueError("no bot loaded")
     await asyncio.gather(*tasks)
@@ -60,14 +61,16 @@ def run() -> None:
     config = get_config()
     loop = asyncio.new_event_loop()
 
-    bots: List[Bot] = []
     for i in config.bots:
         if i.name in _bot_cache:
-            bot = _bot_cache[i.name]
-        else:
-            bot = Bot.from_config(i, config)
-            bots.append(bot)
-        loop.create_task(bot.async_run())
+            continue
+        bot = Bot.from_config(i, config)
+        _bot_cache[i.name] = bot
+        
+    bots: List[Bot] = []
+    for bot in _bot_cache.values():
+        bots.append(bot)
+        loop.create_task(bot.async_run(config.server))
     
     if config.server.enable_plugin:
         server = init_server(config.server.listen)

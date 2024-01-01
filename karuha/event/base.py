@@ -9,6 +9,8 @@ P = ParamSpec("P")
 
 
 class Event(object):
+    """base class for all events"""
+
     __slots__ = []
 
     __handlers__: ClassVar[List[Callable[[Self], Coroutine]]] = []

@@ -80,12 +80,7 @@ bot = Bot(
 
 @karuha.on(MessageEvent)
 async def reply(event: MessageEvent) -> None:
-    if event.text == "Hello!":
-        PublishEvent.new(
-            event.bot,
-            event.topic,
-            "Hello world!"
-        )
+    bot = event.bot
 
 
 if __name__ == "__main__":
