@@ -20,7 +20,6 @@ from .config import Bot as BotConfig
 from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
-from .exception import KaruhaBotError
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
 
@@ -308,7 +307,7 @@ class Bot(object):
         :rtype: Optional[Message]
         """
         if self.state != State.running:
-            raise KaruhaBotError("bot is not running")
+            raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds)  # type: ignore
         ret = None
         if wait_tid is None:
@@ -380,7 +379,7 @@ class Bot(object):
         except KeyboardInterrupt:
             pass
         except asyncio.CancelledError:
-            raise KaruhaBotError("the connection was closed") from None
+            raise KaruhaBotError("the connection was closed", bot=self) from None
     
     def cancel(self, cancel_loop: bool = True) -> None:
         if self.state in [State.stopped, State.disabled]:
@@ -393,7 +392,7 @@ class Bot(object):
     
     def restart(self) -> None:
         if self.state == State.disabled:
-            raise KaruhaBotError(f"cannot restart disabled bot {self.name}")
+            raise KaruhaBotError(f"cannot restart disabled bot {self.name}", bot=self)
         loop_task = self._loop_task_ref()
         self.state = State.restarting
         if loop_task is not None:
@@ -453,9 +452,9 @@ class Bot(object):
 
     def _prepare_loop_task(self) -> None:
         if self.state == State.running:
-            raise KaruhaBotError(f"rerun bot {self.name}")
+            raise KaruhaBotError(f"rerun bot {self.name}", bot=self)
         elif self.state != State.stopped:
-            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})")
+            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
         self.state = State.running
         self.queue = Queue()
         self._loop_task_ref = ref(asyncio.current_task())
@@ -521,3 +520,6 @@ def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallab
         request_serializer=pb.ClientMsg.SerializeToString,
         response_deserializer=pb.ServerMsg.FromString
     )
+
+
+from .exception import KaruhaBotError

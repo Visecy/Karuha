@@ -43,13 +43,14 @@ class TestCommand(TestCase):
     
     def test_meta_param_dispatcher(self) -> None:
         d = MetaParamDispatcher("test", str, lambda d, x: d.name, ParamParserFlag.MESSAGE_DATA)
+        self.addCleanup(d.deactivate)
         self.assertAlmostEqual(
             d.match(Parameter("test", Parameter.POSITIONAL_ONLY, annotation=str)),
-            1.8
+            1.4
         )
         self.assertAlmostEqual(
             d.match(Parameter("test", Parameter.KEYWORD_ONLY, annotation=str, default="test")),
-            2.0
+            1.6
         )
         self.assertAlmostEqual(
             d.match(Parameter("test", Parameter.KEYWORD_ONLY)),
@@ -57,7 +58,7 @@ class TestCommand(TestCase):
         )
         self.assertAlmostEqual(
             d.match(Parameter("test1", Parameter.KEYWORD_ONLY, annotation=str)),
-            0.8
+            0.4
         )
     
     def test_param_parser(self) -> None:
@@ -70,3 +71,6 @@ class TestCommand(TestCase):
         args, kwargs = parser.parse(new_test_message())
         self.assertEqual(args, (bot_mock,))
         self.assertEqual(kwargs, {"user_id": "user", "content": b"\"test\""})
+
+        with self.assertRaises(Exception):
+            ParamParser.from_signature(sig, flags=ParamParserFlag.MESSAGE_DATA)

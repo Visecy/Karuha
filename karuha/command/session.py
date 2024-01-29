@@ -58,7 +58,7 @@ class MessageSession(BaseSession):
         return cls(event.bot, event.dump())
 
     @property
-    def messages(self) -> Tuple[Message,...]:
+    def messages(self) -> Tuple[Message, ...]:
         return tuple(self._messages)
     
     @property

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from enum import IntFlag, auto
+from enum import IntFlag
 from functools import partial
 from inspect import Signature, Parameter
 from typing import Any, Callable, Iterable, NamedTuple, Optional, Tuple, Type, Union, get_args
@@ -7,6 +7,7 @@ from typing_extensions import Self
 
 from ..dispatcher import AbstractDispatcher
 from ..text import Drafty, BaseText, Message
+from ..exception import KaruhaParserError
 from ..bot import Bot
 from .session import MessageSession
 
@@ -49,11 +50,11 @@ class SimpleCommandNameParser(AbstractCommandNameParser):
 class ParamParserFlag(IntFlag):
     NONE = 0
     META = 1
-    MESSAGE_DATA = 2 | META
-    SESSION = 4 | META
-    BOT = 8 | META
+    MESSAGE_DATA = 2
+    SESSION = 4
+    BOT = 8
 
-    FULL = MESSAGE_DATA | SESSION | BOT
+    FULL = META | MESSAGE_DATA | SESSION | BOT
 
 
 class ParamDispatcher(AbstractDispatcher[Parameter]):
@@ -69,8 +70,11 @@ class ParamDispatcher(AbstractDispatcher[Parameter]):
         self.activate()
 
     @classmethod
-    def dispatch(cls, message: Parameter, /, threshold: float = 0, flag: ParamParserFlag = ParamParserFlag.FULL) -> Any:
+    def dispatch(cls, message: Parameter, /, threshold: float = 0.6, flag: ParamParserFlag = ParamParserFlag.FULL) -> Any:
         return super().dispatch(message, threshold, filter=lambda d: d.flag & flag != 0)
+    
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} flag={self.flag}>"
     
 
 RawParamGetter = Callable[["MetaParamDispatcher", Message], Any]
@@ -78,14 +82,23 @@ ParamGetter = Callable[[Message], Any]
 
 
 class MetaParamDispatcher(ParamDispatcher):
-    __slots__ = ["name", "type", "type_args", "raw_getter", "flag"]
+    __slots__ = ["name", "type", "type_args", "raw_getter", "flag", "special_type"]
 
-    def __init__(self, name: str, /, type: Type, getter: RawParamGetter, flag: ParamParserFlag = ParamParserFlag.NONE) -> None:
+    def __init__(
+            self,
+            name: str,
+            /,
+            type: Type,
+            getter: RawParamGetter,
+            flag: ParamParserFlag = ParamParserFlag.NONE,
+            special_type: bool = False
+    ) -> None:
         super().__init__(flag=flag)
         self.name = name
         self.type = type
         self.type_args = set(get_args(type))
         self.raw_getter = getter
+        self.special_type = special_type
     
     def match(self, parameter: Parameter, /) -> float:
         rate = 0.0
@@ -95,17 +108,26 @@ class MetaParamDispatcher(ParamDispatcher):
             else:
                 rate += 1.0
         if parameter.annotation == self.type:
-            rate += 0.8
+            if self.special_type:
+                rate += 1.0
+            else:
+                rate += 0.4
         elif parameter.annotation == Any:
             pass
         elif self.type in get_args(parameter.annotation) or set(get_args(parameter.annotation)) & self.type_args:
-            rate += 0.2
+            if self.special_type:
+                rate += 0.5
+            else:
+                rate += 0.2
         elif parameter.annotation != Parameter.empty:
             rate -= 0.4
         return rate
     
     def run(self, param: Parameter, /) -> ParamGetter:
         return partial(self.raw_getter, self)
+    
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} name={self.name} type={self.type} flag={self.flag}>"
 
 
 class ParamParser(NamedTuple):
@@ -120,11 +142,11 @@ class ParamParser(NamedTuple):
         for name, param in signature.parameters.items():
             dispatcher = ParamDispatcher.dispatch(param, flag=flags)
             if dispatcher is None:
-                raise
+                raise KaruhaParserError(f"cannot find a dispatcher for {param} in {signature}")
             elif param.kind == Parameter.POSITIONAL_ONLY:
                 args.append(dispatcher)
             elif param.kind in [Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD]:
-                raise
+                raise KaruhaParserError(f"unexpected parameter kind {param.kind} in {signature}")
             else:
                 kwargs[name] = dispatcher
         return cls(tuple(args), tuple(kwargs.items()), flags)
@@ -135,7 +157,11 @@ class ParamParser(NamedTuple):
         return args, kwargs
 
 
-MessageParamDispatcher = partial(MetaParamDispatcher, getter=lambda d, m: getattr(m, d.name), flag=ParamParserFlag.MESSAGE_DATA)
+MessageParamDispatcher = partial(
+    MetaParamDispatcher,
+    getter=lambda d, m: getattr(m, d.name),
+    flag=ParamParserFlag.MESSAGE_DATA | ParamParserFlag.META
+)
 
 
 TOPIC_PARAM = MessageParamDispatcher("topic", type=str)
@@ -147,6 +173,17 @@ CONTENT_PARAM = MessageParamDispatcher("content", type=bytes)
 TEXT_PARAM = MessageParamDispatcher("text", type=Union[str, BaseText])
 RAW_TEXT_PARAM = MessageParamDispatcher("raw_text", type=Union[str, Drafty])
 
-SESSION_PARAM = MetaParamDispatcher("session", type=MessageSession, getter=lambda _, m: MessageSession(m.bot, m), flag=ParamParserFlag.SESSION)
-BOT_PARAM = MetaParamDispatcher("bot", type=Bot, getter=lambda _, m: m.bot, flag=ParamParserFlag.BOT)
-
+SESSION_PARAM = MetaParamDispatcher(
+    "session",
+    type=MessageSession,
+    getter=lambda _, m: MessageSession(m.bot, m),
+    flag=ParamParserFlag.SESSION | ParamParserFlag.META,
+    special_type=True
+)
+BOT_PARAM = MetaParamDispatcher(
+    "bot",
+    type=Bot,
+    getter=lambda _, m: m.bot,
+    flag=ParamParserFlag.BOT | ParamParserFlag.META,
+    special_type=True
+)

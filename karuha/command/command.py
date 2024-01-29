@@ -1,11 +1,17 @@
 import asyncio
 from abc import ABC, abstractmethod
 from inspect import signature
-from typing import Any, Callable, Iterable, Optional, Tuple
-from typing_extensions import Self
+from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar
+from typing_extensions import Self, ParamSpec
+
+from ..exception import KaruhaCommandError
 
 from ..event.message import Message
 from .parser import ParamParser, ParamParserFlag
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class AbstractCommand(ABC):
@@ -23,10 +29,10 @@ class AbstractCommand(ABC):
         pass
 
 
-class FunctionCommand(AbstractCommand):
+class FunctionCommand(AbstractCommand, Generic[P, R]):
     __slots__ = ["name", "alias", "__func__"]
 
-    def __init__(self, name: str, func: Callable, /, alias: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, name: str, func: Callable[P, R], /, alias: Optional[Iterable[str]] = None) -> None:
         super().__init__(name, alias)
         self.__func__ = func
     
@@ -35,12 +41,15 @@ class FunctionCommand(AbstractCommand):
     
     async def call_command(self, message: Message) -> Any:
         args, kwargs = self.parse_message(message)
-        result = self.__func__(*args, **kwargs)
-        if asyncio.iscoroutine(result):
-            result = await result
+        try:
+            result = self.__func__(*args, **kwargs)  # type: ignore
+            if asyncio.iscoroutine(result):
+                result = await result
+        except Exception as e:
+            raise KaruhaCommandError(f"run command {self.name} failed", name=self.name, command=self) from e
         return result
     
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
+    def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:
         return self.__func__(*args, **kwds)
     
     @classmethod
@@ -50,10 +59,10 @@ class FunctionCommand(AbstractCommand):
         return cls(name, func, alias=alias)
 
 
-class ArgparserFunctionCommand(FunctionCommand):
+class ArgparserFunctionCommand(FunctionCommand[P, R]):
     __slots__ = ["name", "alias", "__func__", "parser"]
 
-    def __init__(self, name: str, func: Callable, parser: ParamParser, /, alias: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, name: str, func: Callable[P, R], parser: ParamParser, /, alias: Optional[Iterable[str]] = None) -> None:
         super().__init__(name, func, alias)
         self.parser = parser
     
@@ -64,7 +73,7 @@ class ArgparserFunctionCommand(FunctionCommand):
     def from_function(
             cls,
             /,
-            func: Callable,
+            func: Callable[P, R],
             *,
             name: Optional[str] = None,
             alias: Optional[Iterable[str]] = None,

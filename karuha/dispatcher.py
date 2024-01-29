@@ -57,7 +57,7 @@ class AbstractDispatcher(ABC, Generic[T]):
         if not dispatchers:
             return
         selected, match_rate = max(
-            zip(dispatchers, map(lambda d: d.match(message), cls.dispatchers)),
+            map(lambda d: (d, d.match(message)), dispatchers),
             key=lambda x: x[1],
         )
         if match_rate < threshold:
