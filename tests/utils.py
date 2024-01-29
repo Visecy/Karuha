@@ -24,7 +24,7 @@ def run_forever() -> Generator[None, None, None]:
         yield
 
 
-class BotSimulation(Bot):
+class BotMock(Bot):
     __slots__ = []
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
@@ -110,7 +110,7 @@ class BotSimulation(Bot):
                 t.cancel()
 
 
-bot_simulation = BotSimulation("test", "basic", "123456", log_level="DEBUG")
+bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
 
 
 class EventCatcher(Generic[T_Event]):
@@ -154,7 +154,7 @@ class EventCatcher(Generic[T_Event]):
 
 
 class AsyncBotTestCase(IsolatedAsyncioTestCase):
-    bot = bot_simulation
+    bot = bot_mock
 
     async def asyncSetUp(self) -> None:
         self.assertEqual(self.bot.state, State.stopped)

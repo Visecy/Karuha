@@ -5,7 +5,7 @@ from karuha.text.textchain import TextChain
 from karuha.text.convert import eval_spans, to_span_tree
 from karuha.event import MessageEvent
 
-from .utils import bot_simulation
+from .utils import bot_mock
 
 
 example1 = Drafty.model_validate_json(
@@ -103,16 +103,13 @@ class TestText(TestCase):
     
     def test_message_event(self) -> None:
         ev = MessageEvent(
-            bot_simulation,
+            bot_mock,
             "", "", 0, {},
             b"\"\""
         )
         self.assertEqual(ev.text, "")
         self.assertEqual(ev.raw_text, "")
         self.assertEqual(ev.content, b"\"\"")
-        ev._set_text(b"{\"txt\": \"Hi\"}")
-        self.assertIsInstance(ev.text, PlainText)
-        self.assertEqual(ev.text, "Hi")
     
     def test_drafty_ops(self) -> None:
         df = Drafty.from_str("Hello")

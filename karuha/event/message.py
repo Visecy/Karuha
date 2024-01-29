@@ -1,38 +1,33 @@
 import json
 from asyncio import Future
-from typing import Any, Dict, NamedTuple, Optional, Union
+from typing import Any, Dict, Optional, Type
 
 from typing_extensions import Self
 
 from ..bot import Bot
-from ..text import Drafty, PlainText, BaseText, drafty2text
+from ..text import Drafty, Message
 from .bot import BotEvent, DataEvent
 from ..dispatcher import AbstractDispatcher, FutureDispatcher
 
 
-class Message(NamedTuple):
-    bot: Bot
-    topic: str
-    user_id: str
-    seq_id: int
-    head: Dict[str, str]
-    content: bytes
-    raw_text: Union[str, Drafty]
-    text: Union[str, BaseText]
+class MessageProperty:
+    __slots__ = ["name"]
+
+    def __set_name__(self, owner: Type["MessageEvent"], name: str, /) -> None:
+        self.name = name
+    
+    def __get__(self, instance: "MessageEvent", owner: Type["MessageEvent"], /) -> Any:
+        return getattr(instance.message, self.name)
 
 
 class MessageEvent(BotEvent):
     """a parsed DataMessage"""
 
-    __slots__ = ["topic", "user_id", "seq_id", "head", "content", "raw_text", "text"]
+    __slots__ = ["message"]
 
     def __init__(self, bot: Bot, /, topic: str, user_id: str, seq_id: int, head: Dict[str, str], content: bytes) -> None:
         super().__init__(bot)
-        self.topic = topic
-        self.user_id = user_id
-        self.seq_id = seq_id
-        self.head = head
-        self._set_text(content)
+        self.message = Message.new(bot, topic, user_id, seq_id, head, content)
     
     @classmethod
     def from_data_event(cls, event: DataEvent, /) -> Self:
@@ -47,44 +42,14 @@ class MessageEvent(BotEvent):
         )
 
     def dump(self) -> Message:
-        return Message(
-            self.bot,
-            self.topic,
-            self.user_id,
-            self.seq_id,
-            self.head,
-            self.content,
-            self.raw_text,
-            self.text
-        )
+        return self.message
     
-    def _set_text(self, content: bytes, /) -> None:
-        self.content = content
-
-        try:
-            raw_text = json.loads(content)
-        except json.JSONDecodeError:
-            raw_text = content.decode()
-            topic = self.topic
-            seq_id = self.seq_id
-            self.bot.logger.error(f"cannot decode text {raw_text!r} ({topic=},{seq_id=})")
-        
-        if not isinstance(raw_text, str):
-            try:
-                self.raw_text = Drafty.model_validate(raw_text)
-            except Exception:
-                self.bot.logger.error(f"unknown text format {raw_text!r}")
-                raw_text = str(raw_text)
-            else:
-                try:
-                    self.text = drafty2text(self.raw_text)
-                except Exception:
-                    self.bot.logger.error(f"cannot decode drafty {self.raw_text!r}")
-                    self.text = self.raw_text.txt
-                return
-        
-        self.raw_text = raw_text
-        self.text = PlainText(raw_text)
+    topic = MessageProperty()
+    user_id = MessageProperty()
+    seq_id = MessageProperty()
+    content = MessageProperty()
+    raw_text = MessageProperty()
+    text = MessageProperty()
 
 
 class MessageDispatcher(AbstractDispatcher[MessageEvent]):

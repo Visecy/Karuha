@@ -1,5 +1,4 @@
-from abc import ABC, abstractmethod
-from typing import Dict, Iterable, Optional
+from typing import Dict
 
 from ..event.message import Message
 from .parser import AbstractCommandNameParser

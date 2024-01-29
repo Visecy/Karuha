@@ -1,14 +1,12 @@
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
 from functools import partial
-from inspect import Signature, signature, Parameter
+from inspect import Signature, Parameter
 from typing import Any, Callable, Iterable, NamedTuple, Optional, Tuple, Type, Union, get_args
 from typing_extensions import Self
 
-from ..text.drafty import Drafty
-from ..text.textchain import BaseText
 from ..dispatcher import AbstractDispatcher
-from ..event.message import Message
+from ..text import Drafty, BaseText, Message
 from ..bot import Bot
 from .session import MessageSession
 
@@ -50,12 +48,12 @@ class SimpleCommandNameParser(AbstractCommandNameParser):
 
 class ParamParserFlag(IntFlag):
     NONE = 0
-    META = auto()
-    MESSAGE_META = auto() | META
-    SESSION = auto() | META
-    BOT = auto() | META
+    META = 1
+    MESSAGE_DATA = 2 | META
+    SESSION = 4 | META
+    BOT = 8 | META
 
-    FULL = MESSAGE_META | SESSION | BOT
+    FULL = MESSAGE_DATA | SESSION | BOT
 
 
 class ParamDispatcher(AbstractDispatcher[Parameter]):
@@ -102,7 +100,7 @@ class MetaParamDispatcher(ParamDispatcher):
             pass
         elif self.type in get_args(parameter.annotation) or set(get_args(parameter.annotation)) & self.type_args:
             rate += 0.2
-        elif parameter.annotation:
+        elif parameter.annotation != Parameter.empty:
             rate -= 0.4
         return rate
     
@@ -137,7 +135,7 @@ class ParamParser(NamedTuple):
         return args, kwargs
 
 
-MessageParamDispatcher = partial(MetaParamDispatcher, getter=lambda d, m: getattr(m, d.name), flag=ParamParserFlag.MESSAGE_META)
+MessageParamDispatcher = partial(MetaParamDispatcher, getter=lambda d, m: getattr(m, d.name), flag=ParamParserFlag.MESSAGE_DATA)
 
 
 TOPIC_PARAM = MessageParamDispatcher("topic", type=str)
