@@ -2,8 +2,8 @@
 [run]
 branch = True
 omit =
-    kola/lib/debugger/*
-    */__main__.py
+    __main__.py
+    karuha/plugin_server.py
 
 [report]
 # Regexes for lines to exclude from consideration

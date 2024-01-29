@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
+from karuha.text.textchain import TextChain
 from karuha.text.convert import eval_spans, to_span_tree
 from karuha.event import MessageEvent
 
@@ -58,6 +59,15 @@ class TestText(TestCase):
             "https://www.example.com/abc#fragment and another www.tinode.co this "
             "is a @mention and a #hashtag in a string second #hashtag"
         )
+        t = PlainText("Hello world!\n")
+        self.assertEqual(str(t), "Hello world!\n")
+        self.assertEqual(len(t), 13)
+        self.assertEqual(str(t[0]), "H")
+        self.assertEqual(str(t[1:]), "ello world!\n")
+        empty = TextChain()
+        self.assertEqual(len(empty), 0)
+        self.assertEqual(str(empty), "")
+        self.assertEqual(empty.to_drafty(), Drafty.from_str(' '))
 
     def test_span(self) -> None:
         spans, attachments = eval_spans(example1)
@@ -73,6 +83,7 @@ class TestText(TestCase):
     def test_convert(self) -> None:
         txt = PlainText("Hello world!\n")
         df = txt.to_drafty()
+        
         self.assertEqual(df.txt, "Hello world! ")
         self.assertTrue(df.fmt)
         self.assertFalse(df.ent)
@@ -98,8 +109,14 @@ class TestText(TestCase):
         )
         self.assertEqual(ev.text, "")
         self.assertEqual(ev.raw_text, "")
-        self.assertEqual(ev.raw_content, b"\"\"")
+        self.assertEqual(ev.content, b"\"\"")
         ev._set_text(b"{\"txt\": \"Hi\"}")
         self.assertIsInstance(ev.text, PlainText)
         self.assertEqual(ev.text, "Hi")
-        
+    
+    def test_drafty_ops(self) -> None:
+        df = Drafty.from_str("Hello")
+        df = df + " world"
+        self.assertEqual(str(df), "Hello world")
+        df1 = "Hello" + Drafty.from_str(" world")
+        self.assertEqual(df, df1)

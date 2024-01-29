@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from types import TracebackType
-from typing import ClassVar, Generic, Set, Type, TypeVar
+from typing import Any, Callable, ClassVar, Generic, Optional, Set, Type, TypeVar
 from typing_extensions import Self
 
 
@@ -28,8 +28,9 @@ class AbstractDispatcher(ABC, Generic[T]):
         4. 3~5: Urgent matters. Only dispatchers that need to handle special urgent matters\
             should return the value in this range.
         
-        In principle, only values within the above range should be returned,
-        but there are no specific restrictions on this.
+        In principle, only values within the above range should be returned.
+        Values less than 0 will be ignored by default,
+        while there are no specific restrictions on values that are too large.
 
         :param message: given message
         :type message: T
@@ -39,7 +40,7 @@ class AbstractDispatcher(ABC, Generic[T]):
         return 1
     
     @abstractmethod
-    def run(self, message: T, /) -> None:
+    def run(self, message: T, /) -> Any:
         raise NotImplementedError
     
     def activate(self) -> None:
@@ -49,16 +50,21 @@ class AbstractDispatcher(ABC, Generic[T]):
         self.dispatchers.discard(self)
     
     @classmethod
-    def dispatch(cls, message: T, /) -> None:
-        if not cls.dispatchers:
+    def dispatch(cls, message: T, /, threshold: float = 0.0, filter: Optional[Callable[[Self], bool]] = None) -> Any:
+        dispatchers = cls.dispatchers
+        if filter is not None:
+            dispatchers = {d for d in dispatchers if filter(d)}
+        if not dispatchers:
             return
-        selected = max(
-            cls.dispatchers,
-            key=lambda i: i.match(message)
+        selected, match_rate = max(
+            zip(dispatchers, map(lambda d: d.match(message), cls.dispatchers)),
+            key=lambda x: x[1],
         )
-        if selected.once:
+        if match_rate < threshold:
+            return
+        elif selected.once:
             selected.deactivate()
-        selected.run(message)
+        return selected.run(message)
     
     def __enter__(self) -> Self:
         self.activate()

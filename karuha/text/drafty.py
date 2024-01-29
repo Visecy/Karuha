@@ -40,7 +40,7 @@ class Drafty(BaseModel):
 
     @classmethod
     def from_str(cls, string: str) -> Self:
-        return Drafty(txt=string)
+        return cls(txt=string)
 
     def __add__(self, other: Union[str, "Drafty"]) -> Self:
         obj = self.model_copy()
@@ -48,7 +48,7 @@ class Drafty(BaseModel):
         return obj
     
     def __radd__(self, other: str) -> Self:
-        if not isinstance(other, str):
+        if not isinstance(other, str):  # pragma: no cover
             return NotImplemented
         obj = self.model_copy()
         obj.txt = other + obj.txt
@@ -58,7 +58,7 @@ class Drafty(BaseModel):
         if isinstance(other, str):
             self.txt += other
             return self
-        elif not isinstance(other, Drafty):
+        elif not isinstance(other, Drafty):  # pragma: no cover
             return NotImplemented
         offset = len(self.txt)
         k_base = len(self.ent)

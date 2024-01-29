@@ -1,10 +1,12 @@
 from abc import abstractmethod
 from base64 import encodebytes
+from typing import (Any, ClassVar, Dict, Final, List, Literal, MutableMapping,
+                    Optional, SupportsIndex, Type, Union)
+
 from pydantic import AnyHttpUrl, BaseModel, model_validator
-from typing import Any, ClassVar, Dict, Final, List, Literal, MutableMapping, Optional, SupportsIndex, Type, Union
 from typing_extensions import Self
 
-from .drafty import Drafty, DraftyFormat, DraftyExtend, ExtendType, InlineType
+from .drafty import Drafty, DraftyExtend, DraftyFormat, ExtendType, InlineType
 
 
 class BaseText(BaseModel):
@@ -218,7 +220,7 @@ class Button(_ExtensionText):
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(include={"name", "val", "act", "ref"}, exclude_none=True)
     
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         if self.name is None:
             return "<button>"
         if self.val:
@@ -265,7 +267,7 @@ class _Attachment(_ExtensionText):
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(exclude={"text", "type"}, exclude_none=True)
     
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         name = self.__class__.__name__
         if self.ref:
             return f"<{name} from {self.ref}>"

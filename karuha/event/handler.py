@@ -6,13 +6,9 @@ from .message import MessageEvent, MessageDispatcher
 
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
+    MessageEvent.from_data_event(event).trigger()
     msg = event.server_message
     await event.bot.note_read(msg.topic, msg.seq_id)
-
-
-@DataEvent.add_handler
-async def _(event: DataEvent) -> None:
-    MessageEvent.from_data_event(event).trigger()
 
 
 @CtrlEvent.add_handler
@@ -48,8 +44,4 @@ async def _(event: PublishEvent) -> None:
 @MessageEvent.add_handler
 async def _(event: MessageEvent) -> None:
     event.bot.logger.info(f"({event.topic})=> {event.text}")
-
-
-@MessageEvent.add_handler
-async def _(event: MessageEvent) -> None:
     MessageDispatcher.dispatch(event)

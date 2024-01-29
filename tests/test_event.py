@@ -2,7 +2,7 @@ import asyncio
 from unittest import IsolatedAsyncioTestCase
 
 from karuha.event import Event, on
-from karuha.event.dispatcher import AbstractDispatcher, FutureDispatcher
+from karuha.dispatcher import AbstractDispatcher, FutureDispatcher
 
 from .utils import EventCatcher
 
