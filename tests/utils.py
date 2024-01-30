@@ -10,8 +10,9 @@ from unittest import IsolatedAsyncioTestCase
 from tinode_grpc import pb
 from typing_extensions import Self
 
+from karuha import async_run, try_add_bot
 from karuha.bot import Bot, State
-from karuha.config import Server as ServerConfig
+from karuha.config import Server as ServerConfig, init_config
 from karuha.event import T_Event
 
 
@@ -155,12 +156,12 @@ class EventCatcher(Generic[T_Event]):
 
 class AsyncBotTestCase(IsolatedAsyncioTestCase):
     bot = bot_mock
+    config = init_config(log_level="DEBUG")
 
     async def asyncSetUp(self) -> None:
         self.assertEqual(self.bot.state, State.stopped)
-        loop = asyncio.get_running_loop()
-        loop.set_debug(True)
-        loop.create_task(self.bot.async_run(ServerConfig()))
+        try_add_bot(self.bot)
+        asyncio.create_task(async_run())
         await self.bot.wait_init()
     
     async def asyncTearDown(self) -> None:

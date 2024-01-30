@@ -1,23 +1,18 @@
 import json
 from asyncio import Future
-from typing import Any, Dict, Optional, Type
+from functools import partial
+from typing import Any, Dict, Optional, Union
 
 from typing_extensions import Self
 
 from ..bot import Bot
-from ..text import Drafty, Message
+from ..text import BaseText, Drafty, Message
+from ..utils.dispatcher import AbstractDispatcher, FutureDispatcher
+from ..utils.proxy_propery import ProxyProperty
 from .bot import BotEvent, DataEvent
-from ..dispatcher import AbstractDispatcher, FutureDispatcher
 
 
-class MessageProperty:
-    __slots__ = ["name"]
-
-    def __set_name__(self, owner: Type["MessageEvent"], name: str, /) -> None:
-        self.name = name
-    
-    def __get__(self, instance: "MessageEvent", owner: Type["MessageEvent"], /) -> Any:
-        return getattr(instance.message, self.name)
+MessageProperty = partial(ProxyProperty, "message", mutable=True)
 
 
 class MessageEvent(BotEvent):
@@ -44,12 +39,12 @@ class MessageEvent(BotEvent):
     def dump(self) -> Message:
         return self.message
     
-    topic = MessageProperty()
-    user_id = MessageProperty()
-    seq_id = MessageProperty()
-    content = MessageProperty()
-    raw_text = MessageProperty()
-    text = MessageProperty()
+    topic: ProxyProperty[str] = MessageProperty()
+    user_id: ProxyProperty[str] = MessageProperty()
+    seq_id: ProxyProperty[int] = MessageProperty()
+    content: ProxyProperty[bytes] = MessageProperty()
+    raw_text: ProxyProperty[Union[str, Drafty]] = MessageProperty()
+    text: ProxyProperty[Union[str, BaseText]] = MessageProperty()
 
 
 class MessageDispatcher(AbstractDispatcher[MessageEvent]):

@@ -1,14 +1,15 @@
 import asyncio
 from abc import ABC, abstractmethod
-from types import TracebackType
-from typing import Any, Callable, ClassVar, Generic, Optional, Set, Type, TypeVar
+from typing import Any, Callable, ClassVar, Generic, Optional, Set, TypeVar
 from typing_extensions import Self
+
+from .context import _ContextHelper
 
 
 T = TypeVar("T")
 
 
-class AbstractDispatcher(ABC, Generic[T]):
+class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
     __slots__ = ["once"]
 
     dispatchers: ClassVar[Set[Self]] = set()
@@ -16,7 +17,7 @@ class AbstractDispatcher(ABC, Generic[T]):
     def __init__(self, *, once: bool = False) -> None:
         self.once = once
 
-    def match(self, message: T, /) -> float:
+    def match(self, message: T, /) -> float:  # pragma: no cover
         """calculate the match for a given message
 
         Matching degree is divided into the following levels:
@@ -65,13 +66,6 @@ class AbstractDispatcher(ABC, Generic[T]):
         elif selected.once:
             selected.deactivate()
         return selected.run(message)
-    
-    def __enter__(self) -> Self:
-        self.activate()
-        return self
-    
-    def __exit__(self, exec_type: Type[BaseException], exec_ins: BaseException, traceback: TracebackType) -> None:
-        self.deactivate()
     
     @property
     def activated(self) -> bool:

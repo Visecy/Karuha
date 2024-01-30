@@ -7,7 +7,7 @@ from aiofiles import open as aio_open
 from typing_extensions import Self
 
 from ..bot import Bot
-from ..dispatcher import FutureDispatcher
+from ..utils.dispatcher import FutureDispatcher
 from ..event.message import MessageDispatcher, MessageEvent, Message
 from ..text import BaseText, Drafty, File
 

@@ -5,7 +5,7 @@ from inspect import Signature, Parameter
 from typing import Any, Callable, Iterable, NamedTuple, Optional, Tuple, Type, Union, get_args
 from typing_extensions import Self
 
-from ..dispatcher import AbstractDispatcher
+from ..utils.dispatcher import AbstractDispatcher
 from ..text import Drafty, BaseText, Message
 from ..exception import KaruhaParserError
 from ..bot import Bot
@@ -53,8 +53,9 @@ class ParamParserFlag(IntFlag):
     MESSAGE_DATA = 2
     SESSION = 4
     BOT = 8
+    MESSAGE = 16
 
-    FULL = META | MESSAGE_DATA | SESSION | BOT
+    FULL = META | MESSAGE_DATA | SESSION | BOT | MESSAGE
 
 
 class ParamDispatcher(AbstractDispatcher[Parameter]):
@@ -185,5 +186,12 @@ BOT_PARAM = MetaParamDispatcher(
     type=Bot,
     getter=lambda _, m: m.bot,
     flag=ParamParserFlag.BOT | ParamParserFlag.META,
+    special_type=True
+)
+MESSAGE_PARAM = MetaParamDispatcher(
+    "message",
+    type=Message,
+    getter=lambda _, m: m,
+    flag=ParamParserFlag.MESSAGE | ParamParserFlag.META,
     special_type=True
 )

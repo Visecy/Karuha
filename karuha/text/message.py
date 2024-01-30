@@ -9,7 +9,7 @@ from .convert import drafty2text
 
 try:
     import ujson as json
-except ImportError:
+except ImportError:  # pragma: no cover
     import json
 
 

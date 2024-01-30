@@ -15,14 +15,18 @@ R = TypeVar("R")
 
 
 class AbstractCommand(ABC):
-    __slots__ = ["name", "alias"]
+    __slots__ = ["__name__", "alias"]
 
     def __init__(self, name: str, /, alias: Optional[Iterable[str]] = None) -> None:
-        self.name = name
+        self.__name__ = name
         if alias is None:
             self.alias = ()
         else:
             self.alias = tuple(alias)
+    
+    @property
+    def name(self) -> str:
+        return self.__name__
     
     @abstractmethod
     async def call_command(self, message: Message) -> Any:
@@ -45,7 +49,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             result = self.__func__(*args, **kwargs)  # type: ignore
             if asyncio.iscoroutine(result):
                 result = await result
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             raise KaruhaCommandError(f"run command {self.name} failed", name=self.name, command=self) from e
         return result
     
@@ -59,7 +63,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         return cls(name, func, alias=alias)
 
 
-class ArgparserFunctionCommand(FunctionCommand[P, R]):
+class ParamFunctionCommand(FunctionCommand[P, R]):
     __slots__ = ["name", "alias", "__func__", "parser"]
 
     def __init__(self, name: str, func: Callable[P, R], parser: ParamParser, /, alias: Optional[Iterable[str]] = None) -> None:

@@ -6,7 +6,6 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Dict, List
-from typing_extensions import deprecated
 
 
 WORKDIR = Path(os.environ.get("KARUHA_HOME", ".bot"))  # dir to storage bot data
@@ -18,6 +17,7 @@ from .config import Server as ServerConfig, Bot as BotConfig
 from .bot import Bot
 from .event import *
 from .text import Drafty, BaseText, PlainText
+from .command import *
 from .plugin_server import init_server
 from .logger import logger
 from .exception import KaruhaException
@@ -35,31 +35,21 @@ def get_bot(name: str = "chatbot") -> Bot:
     return bot
 
 
-def add_bot(bot: Bot) -> None:
+def try_add_bot(bot: Bot) -> bool:
     if bot.name in _bot_cache:
-        raise ValueError(f"bot {bot.name} has existed")
+        return False
     _bot_cache[bot.name] = bot
+    return True
 
 
-@deprecated("karuha.async_run() is deprecated, using karuha.run() instead")
+def add_bot(bot: Bot) -> None:
+    if not try_add_bot(bot):
+        raise ValueError(f"bot {bot.name} has existed")
+
+
 async def async_run() -> None:
     config = get_config()
-    tasks = [asyncio.create_task(bot.async_run()) for bot in _bot_cache.values()]
-    for i in config.bots:
-        if i.name in _bot_cache:
-            bot = _bot_cache[i.name]
-        else:
-            bot = Bot.from_config(i, config)
-            _bot_cache[i.name] = bot
-        tasks.append(asyncio.create_task(bot.async_run(config.server)))
-    if not tasks:
-        raise ValueError("no bot loaded")
-    await asyncio.gather(*tasks)
-    
-
-def run() -> None:
-    config = get_config()
-    loop = asyncio.new_event_loop()
+    loop = asyncio.get_running_loop()
 
     for i in config.bots:
         if i.name in _bot_cache:
@@ -67,12 +57,11 @@ def run() -> None:
         bot = Bot.from_config(i, config)
         _bot_cache[i.name] = bot
         
-    bots: List[Bot] = []
+    tasks: List[asyncio.Task] = []
     for bot in _bot_cache.values():
-        bots.append(bot)
-        loop.create_task(bot.async_run(config.server))
+        tasks.append(loop.create_task(bot.async_run(config.server)))
     
-    if config.server.enable_plugin:
+    if config.server.enable_plugin:  # pragma: no cover
         server = init_server(config.server.listen)
         loop.call_soon(server.start)
     else:
@@ -80,32 +69,38 @@ def run() -> None:
     
     if config.log_level == "DEBUG":
         loop.set_debug(True)
-
+        
+    if not tasks:  # pragma: no cover
+        logger.warning("no bot found")
+        return
+    
     try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
+        await asyncio.gather(*tasks)
+        logger.info("all bots have been cancelled, exit")
     finally:
-        try:
-            for i in bots:
-                i.cancel()
-            loop.run_until_complete(loop.shutdown_asyncgens())
-        finally:
-            loop.close()
-            if server is not None:
-                logger.info("stop plugin server")
-                server.stop(None)
+        if server is not None:  # pragma: no cover
+            logger.info("stop plugin server")
+            server.stop(None)
+    
+
+def run() -> None:
+    asyncio.run(async_run())
 
 
 __all__ = [
+    "add_bot",
+    "get_bot",
+    "async_run",
+    "run",
     "get_config",
     "init_config",
     "load_config",
     "save_config",
+    "Bot",
     "Config",
     "BotConfig",
     "ServerConfig",
-    "Bot",
     "on",
+    "on_command",
     "KaruhaException"
 ]

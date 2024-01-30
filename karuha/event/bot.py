@@ -1,4 +1,5 @@
-from typing import Any, Awaitable, Callable, Coroutine, Optional
+from functools import partial
+from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional
 from typing_extensions import Self
 
 from google.protobuf.message import Message
@@ -6,6 +7,12 @@ from tinode_grpc import pb
 
 from .. import bot
 from .base import Event
+from ..utils.proxy_propery import ProxyProperty
+
+try:
+    import ujson as json
+except ImportError:  # pragma: no cover
+    import json
 
 
 class BotEvent(Event):
@@ -20,6 +27,9 @@ class BotEvent(Event):
 
 # Server Event Part
 # =========================
+
+
+ServerMessageProperty = partial(ProxyProperty, "server_message")
 
 
 class ServerEvent(BotEvent):
@@ -72,6 +82,14 @@ class DataEvent(ServerEvent, on_field="data"):
 
     server_message: pb.ServerData
 
+    topic: ProxyProperty[str] = ServerMessageProperty()
+    from_user_id: ProxyProperty[str] = ServerMessageProperty()
+    timestamp: ProxyProperty[int] = ServerMessageProperty()
+    deleted_at: ProxyProperty[int] = ServerMessageProperty()
+    seq_id: ProxyProperty[int] = ServerMessageProperty()
+    head: ProxyProperty[Mapping[str, bytes]] = ServerMessageProperty()
+    content: ProxyProperty[bytes] = ServerMessageProperty()
+
 
 class CtrlEvent(ServerEvent, on_field="ctrl"):
     """
@@ -95,6 +113,12 @@ class CtrlEvent(ServerEvent, on_field="ctrl"):
     __slots__ = []
 
     server_message: pb.ServerCtrl
+
+    id: ProxyProperty[str] = ServerMessageProperty()
+    topic: ProxyProperty[str] = ServerMessageProperty()
+    code: ProxyProperty[int] = ServerMessageProperty()
+    text: ProxyProperty[str] = ServerMessageProperty()
+    params: ProxyProperty[Mapping[str, bytes]] = ServerMessageProperty()
 
 
 class MetaEvent(ServerEvent, on_field="meta"):
@@ -209,6 +233,9 @@ class MetaEvent(ServerEvent, on_field="meta"):
 
     server_message: pb.ServerMeta
 
+    id: ProxyProperty[str] = ServerMessageProperty()
+    topic: ProxyProperty[str] = ServerMessageProperty()
+
 
 class PresEvent(ServerEvent, on_field="pres"):
     """
@@ -260,6 +287,15 @@ class PresEvent(ServerEvent, on_field="pres"):
 
     server_message: pb.ServerPres
 
+    topic: ProxyProperty[str] = ServerMessageProperty()
+    src: ProxyProperty[str] = ServerMessageProperty()
+    what: ProxyProperty["pb.ServerPres.What"] = ServerMessageProperty()
+    user_agent: ProxyProperty[str] = ServerMessageProperty()
+    seq_id: ProxyProperty[int] = ServerMessageProperty()
+    del_id: ProxyProperty[int] = ServerMessageProperty()
+    target_user_id: ProxyProperty[str] = ServerMessageProperty()
+    actor_user_id: ProxyProperty[str] = ServerMessageProperty()
+
 
 class InfoEvent(ServerEvent, on_field="info"):
     """
@@ -286,9 +322,19 @@ class InfoEvent(ServerEvent, on_field="info"):
 
     server_message: pb.ServerInfo
 
+    topic: ProxyProperty[str] = ServerMessageProperty()
+    from_user_id: ProxyProperty[str] = ServerMessageProperty()
+    what: ProxyProperty["pb.InfoNote"] = ServerMessageProperty()
+    seq_id: ProxyProperty[int] = ServerMessageProperty()
+    src: ProxyProperty[str] = ServerMessageProperty()
+    payload: ProxyProperty[bytes] = ServerMessageProperty()
+
 
 # Client Event Part
 # =========================
+    
+
+ClientMessageProperty = partial(ProxyProperty, "client_message")
 
 
 class ClientEvent(BotEvent):
@@ -339,17 +385,9 @@ class LoginEvent(ClientEvent, on_field="login"):
 
     client_message: pb.ClientLogin
 
-    @property
-    def uid(self) -> str:
-        return self.client_message.id
-
-    @property
-    def scheme(self) -> str:
-        return self.client_message.scheme
-    
-    @property
-    def secret(self) -> bytes:
-        return self.client_message.secret
+    id: ProxyProperty[str] = ClientMessageProperty()
+    scheme: ProxyProperty[str] = ClientMessageProperty()
+    secret: ProxyProperty[bytes] = ClientMessageProperty()
 
 
 class PublishEvent(ClientEvent, on_field="pub"):
@@ -415,14 +453,23 @@ class PublishEvent(ClientEvent, on_field="pub"):
     __slots__ = []
 
     client_message: pb.ClientPub
+    response_message: Optional[pb.ServerCtrl]
     
-    @property
-    def topic(self) -> str:
-        return self.client_message.topic
+    id: ProxyProperty[str] = ClientMessageProperty()
+    topic: ProxyProperty[str] = ClientMessageProperty()
+    head: ProxyProperty[Mapping[str, bytes]] = ClientMessageProperty()
+    content: ProxyProperty[bytes] = ClientMessageProperty()
     
     @property
     def text(self) -> str:
-        return self.client_message.content.decode()
+        return self.content.decode()
+    
+    @property
+    def seq_id(self) -> Optional[int]:
+        if self.response_message is None:
+            return
+        params = {k: json.loads(v) for k, v in self.response_message.params.items()}
+        return params.get("seq")
 
 
 class SubscribeEvent(ClientEvent, on_field="sub"):
@@ -541,9 +588,8 @@ class SubscribeEvent(ClientEvent, on_field="sub"):
 
     client_message: pb.ClientSub
 
-    @property
-    def topic(self) -> str:
-        return self.client_message.topic
+    id: ProxyProperty[str] = ClientMessageProperty()
+    topic: ProxyProperty[str] = ClientMessageProperty()
 
 
 class LeaveEvent(ClientEvent, on_field="leave"):
@@ -570,6 +616,6 @@ class LeaveEvent(ClientEvent, on_field="leave"):
 
     client_message: pb.ClientLeave
 
-    @property
-    def topic(self) -> str:
-        return self.client_message.topic
+    id: ProxyProperty[str] = ClientMessageProperty()
+    topic: ProxyProperty[str] = ClientMessageProperty()
+    unsub: ProxyProperty[bool] = ClientMessageProperty()

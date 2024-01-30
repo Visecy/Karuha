@@ -155,7 +155,7 @@ def _container_converter(text: str, span: Span) -> BaseText:
 
 
 def _attachment_converter(text: str, span: Span) -> BaseText:
-    if span.children:
+    if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
     return _ExtensionText.tp_map[span.tp](text=text[span.start:span.end], **(span.data or {}))
 
@@ -173,7 +173,7 @@ def BR_converter(text: str, span: Span) -> PlainText:
 
 @converter("CO")
 def CO_converter(text: str, span: Span) -> BaseText:
-    if span.children:
+    if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
     return InlineCode(text=text[span.start:span.end])
 
