@@ -4,7 +4,7 @@ Tinode Drafty Message Support
 For details see: https://github.com/tinode/chat/blob/master/docs/drafty.md
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, NonNegativeInt
 from typing import Any, Dict, List, Literal, Optional, Union
 from typing_extensions import Self
 
@@ -15,8 +15,8 @@ ExtendType = Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC",
 
 class DraftyFormat(BaseModel, frozen=True):
     at: int = 0     # -1 means not applying any styling to text.
-    len: int = 0
-    key: int = 0
+    len: NonNegativeInt = 0
+    key: NonNegativeInt = 0
     tp: Optional[InlineType] = None
 
     def rebase(self, offset: int, k_base: int = 0) -> Self:

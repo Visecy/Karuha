@@ -2,18 +2,19 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from time import time
-from types import TracebackType, coroutine
-from typing import (AsyncGenerator, Awaitable, Generator, Generic, Optional,
-                    Type)
+from types import coroutine
+from typing import Any, AsyncGenerator, Awaitable, Dict, Generator, Optional
 from unittest import IsolatedAsyncioTestCase
 
 from tinode_grpc import pb
-from typing_extensions import Self
 
 from karuha import async_run, try_add_bot
 from karuha.bot import Bot, State
-from karuha.config import Server as ServerConfig, init_config
+from karuha.config import Server as ServerConfig
+from karuha.config import init_config
 from karuha.event import T_Event
+from karuha.text.message import Message
+from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
 TEST_TIME_OUT = 5
@@ -32,6 +33,27 @@ class BotMock(Bot):
         for desc, msg in message.ListFields():
             for e in self.server_event_callbacks[desc.name]:
                 e(self, msg)
+    
+    def receive_content(
+            self,
+            content: bytes,
+            *,
+            topic: str = "test",
+            from_user_id: str = "user",
+            seq_id: int = 0,
+            head: Dict[str, bytes] = {"auto": b"true"}
+    ) -> None:
+        self.receive_message(
+            pb.ServerMsg(
+                data=pb.ServerData(
+                    topic=topic,
+                    from_user_id=from_user_id,
+                    seq_id=seq_id,
+                    head=head.copy(),
+                    content=content,
+                )
+            )
+        )
     
     async def consum_message(self) -> pb.ClientMsg:
         return await self.queue.get()
@@ -56,7 +78,7 @@ class BotMock(Bot):
     async def wait_init(self) -> None:
         await self.wait_state(State.running)
     
-    def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: str) -> str:
+    def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
         if tid is None:
             assert len(self._wait_list) == 1
             tid = list(self._wait_list.keys())[0]
@@ -67,7 +89,7 @@ class BotMock(Bot):
         self._wait_list[tid].set_result(
             pb.ServerCtrl(
                 id=tid,
-                topic="test_topic",
+                topic="test",
                 code=code,
                 text=text,
                 params={k: json.dumps(v).encode() for k, v in params.items()}
@@ -114,44 +136,11 @@ class BotMock(Bot):
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
 
 
-class EventCatcher(Generic[T_Event]):
-    __slots__ = ["event_type", "future", "events"]
+class EventCatcher(_EventCatcher[T_Event]):
+    __slots__ = []
 
-    def __init__(self, event_type: Type[T_Event]) -> None:
-        self.event_type = event_type
-        self.events = []
-        self.future = None
-    
-    def catch_event_nowait(self) -> T_Event:
-        return self.events.pop()
-    
     async def catch_event(self, timeout: float = TEST_TIME_OUT) -> T_Event:
-        if self.events:
-            return self.catch_event_nowait()
-        assert self.future is None, "catcher is already waiting"
-        loop = asyncio.get_running_loop()
-        self.future = loop.create_future()
-        try:
-            return await asyncio.wait_for(self.future, timeout)
-        finally:
-            self.future = None
-    
-    @property
-    def caught(self) -> bool:
-        return bool(self.events)
-
-    async def __call__(self, event: T_Event) -> None:
-        if self.future:
-            self.future.set_result(event)
-        else:
-            self.events.append(event)
-    
-    def __enter__(self) -> Self:
-        self.event_type.add_handler(self)
-        return self
-    
-    def __exit__(self, exec_type: Type[BaseException], exec_ins: BaseException, traceback: TracebackType) -> None:
-        self.event_type.remove_handler(self)
+        return await super().catch_event(timeout)
 
 
 class AsyncBotTestCase(IsolatedAsyncioTestCase):
@@ -175,3 +164,9 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     
     def assertBotMessageNowait(self, message: pb.ClientMsg, /) -> None:
         self.bot.assert_message_nowait(message)
+
+
+def new_test_message(content: bytes = b"\"test\"") -> Message:
+    return Message.new(
+        bot_mock, "test", "user", 1, {}, content
+    )

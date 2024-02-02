@@ -90,6 +90,10 @@ class DataEvent(ServerEvent, on_field="data"):
     head: ProxyProperty[Mapping[str, bytes]] = ServerMessageProperty()
     content: ProxyProperty[bytes] = ServerMessageProperty()
 
+    @property
+    def text(self) -> str:
+        return self.content.decode(errors="ignore")
+
 
 class CtrlEvent(ServerEvent, on_field="ctrl"):
     """
@@ -462,7 +466,7 @@ class PublishEvent(ClientEvent, on_field="pub"):
     
     @property
     def text(self) -> str:
-        return self.content.decode()
+        return self.content.decode(errors="ignore")
     
     @property
     def seq_id(self) -> Optional[int]:

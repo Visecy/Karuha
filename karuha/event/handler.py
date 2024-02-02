@@ -1,14 +1,14 @@
 from tinode_grpc import pb
 
 from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, LoginEvent
-from .message import MessageEvent, MessageDispatcher
+from .message import MessageEvent, MessageDispatcher, get_message_lock
 
 
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
+    event.bot.logger.info(f"({event.topic})=> {event.text}")
     MessageEvent.from_data_event(event).trigger()
-    msg = event.server_message
-    await event.bot.note_read(msg.topic, msg.seq_id)
+    await event.bot.note_read(event.topic, event.seq_id)
 
 
 @CtrlEvent.add_handler
@@ -43,5 +43,5 @@ async def _(event: PublishEvent) -> None:
 
 @MessageEvent.add_handler
 async def _(event: MessageEvent) -> None:
-    event.bot.logger.info(f"({event.topic})=> {event.text}")
-    MessageDispatcher.dispatch(event)
+    async with get_message_lock():
+        MessageDispatcher.dispatch(event.dump())

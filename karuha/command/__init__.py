@@ -1,8 +1,15 @@
 from .command import AbstractCommand, FunctionCommand, ParamFunctionCommand
-from .parser import AbstractCommandNameParser, SimpleCommandNameParser, ParamParser, ParamParserFlag
-from .session import BaseSession, MessageSession
-from .collection import CommandCollection, get_collection, set_prefix, set_collection_factory
+from .collection import (CommandCollection, add_sub_collection, get_collection,
+                         remove_sub_collection, reset_collection,
+                         set_collection, set_collection_factory, set_prefix)
 from .decoractor import on_command
+from .parser import (AbstractCommandNameParser, ParamParser, ParamParserFlag,
+                     SimpleCommandNameParser)
+from .session import BaseSession, MessageSession
+
+from ..event.command import (BaseCommandEvent, CommandCompleteEvent, CommandEvent,
+                    CommandFailEvent, CommandNotFoundEvent,
+                    CommandPrepareEvent)
 
 
 __all__ = [
@@ -21,8 +28,19 @@ __all__ = [
     # collection
     "CommandCollection",
     "get_collection",
-    "set_prefix",
+    "add_sub_collection",
+    "remove_sub_collection",
+    "reset_collection",
+    "set_collection",
     "set_collection_factory",
+    "set_prefix",
+    # event
+    "BaseCommandEvent",
+    "CommandEvent",
+    "CommandFailEvent",
+    "CommandNotFoundEvent",
+    "CommandPrepareEvent",
+    "CommandCompleteEvent",
     # decorator
     "on_command",
 ]

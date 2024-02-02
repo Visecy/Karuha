@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import IntFlag
 from functools import partial
-from inspect import Signature, Parameter
+from inspect import Signature, Parameter, isclass
 from typing import Any, Callable, Iterable, NamedTuple, Optional, Tuple, Type, Union, get_args
 from typing_extensions import Self
 
@@ -18,8 +18,11 @@ class AbstractCommandNameParser(ABC):
     @abstractmethod
     def parse(self, message: Message) -> Optional[str]:
         raise NotImplementedError
+    
+    def precheck(self, message: Message) -> bool:  # pragma: no cover
+        return True
 
-    def check_name(self, name: str) -> bool:
+    def check_name(self, name: str) -> bool:  # pragma: no cover
         return True
 
 
@@ -42,6 +45,12 @@ class SimpleCommandNameParser(AbstractCommandNameParser):
         for prefix in self.prefixs:
             if name.startswith(prefix):
                 return name[len(prefix):]
+    
+    def precheck(self, message: Message) -> bool:
+        for prefix in self.prefixs:
+            if message.plain_text.startswith(prefix):
+                return True
+        return False
     
     def check_name(self, name: str) -> bool:
         return ' ' not in name
@@ -83,7 +92,7 @@ ParamGetter = Callable[[Message], Any]
 
 
 class MetaParamDispatcher(ParamDispatcher):
-    __slots__ = ["name", "type", "type_args", "raw_getter", "flag", "special_type"]
+    __slots__ = ["name", "type", "raw_getter", "flag", "special_type"]
 
     def __init__(
             self,
@@ -97,7 +106,6 @@ class MetaParamDispatcher(ParamDispatcher):
         super().__init__(flag=flag)
         self.name = name
         self.type = type
-        self.type_args = set(get_args(type))
         self.raw_getter = getter
         self.special_type = special_type
     
@@ -113,14 +121,12 @@ class MetaParamDispatcher(ParamDispatcher):
                 rate += 1.0
             else:
                 rate += 0.4
-        elif parameter.annotation == Any:
-            pass
-        elif self.type in get_args(parameter.annotation) or set(get_args(parameter.annotation)) & self.type_args:
+        elif self.type in get_args(parameter.annotation):
             if self.special_type:
                 rate += 0.5
             else:
                 rate += 0.2
-        elif parameter.annotation != Parameter.empty:
+        elif parameter.annotation not in [Any, Parameter.empty]:
             rate -= 0.4
         return rate
     
@@ -129,6 +135,68 @@ class MetaParamDispatcher(ParamDispatcher):
     
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} name={self.name} type={self.type} flag={self.flag}>"
+
+
+class TextParamDispatcher(ParamDispatcher):
+    __slots__ = []
+
+    def __init__(self) -> None:
+        super().__init__(flag=ParamParserFlag.MESSAGE_DATA | ParamParserFlag.META)
+
+    def match(self, param: Parameter, /) -> float:
+        if param.name != "text":
+            return 0
+        elif param.annotation in [Any, Parameter.empty]:
+            return 1.2
+        elif param.annotation in [str, BaseText, Union[str, BaseText]]:
+            return 1.8
+        elif isclass(param.annotation) and issubclass(param.annotation, BaseText):
+            return 2.0
+        return 0.8  # pragma: no cover
+
+    def run(self, param: Parameter, /) -> ParamGetter:
+        if param.annotation in [Any, Parameter.empty, Union[str, BaseText]]:
+            return lambda message: message.text
+        elif param.annotation == str:
+            return lambda message: message.plain_text
+        elif isclass(param.annotation) and issubclass(param.annotation, BaseText):
+            def getter(message: Message) -> BaseText:
+                if not isinstance(message.text, param.annotation):  # pragma: no cover
+                    raise KaruhaParserError(f"{message.text} is not a valid {param.annotation.__name__}")
+                return message.text  # type: ignore
+            return getter
+        else:  # pragma: no cover
+            raise KaruhaParserError(f"cannot parse {param}")
+
+
+class RawTextParamDispatcher(ParamDispatcher):
+    __slots__ = []
+
+    def __init__(self) -> None:
+        super().__init__(flag=ParamParserFlag.MESSAGE_DATA | ParamParserFlag.META)
+
+    def match(self, param: Parameter, /) -> float:
+        if param.name != "raw_text":
+            return 0
+        elif param.annotation in [Any, Parameter.empty]:
+            return 1.2
+        elif param.annotation in [str, Drafty, Union[str, Drafty]]:
+            return 1.8
+        return 0.8  # pragma: no cover
+    
+    def run(self, param: Parameter, /) -> ParamGetter:
+        if param.annotation in [Any, Parameter.empty, Union[str, BaseText]]:
+            return lambda message: message.raw_text
+        elif param.annotation == str:
+            return lambda message: message.raw_text if isinstance(message.raw_text, str) else message.raw_text.txt
+        elif param.annotation == Drafty:
+            def getter(message: Message) -> Drafty:
+                if not isinstance(message.raw_text, Drafty):
+                    raise KaruhaParserError(f"{message.raw_text} is not a valid Drafty")
+                return message.raw_text
+            return getter
+        else:  # pragma: no cover
+            raise KaruhaParserError(f"cannot parse {param}")
 
 
 class ParamParser(NamedTuple):
@@ -169,10 +237,11 @@ TOPIC_PARAM = MessageParamDispatcher("topic", type=str)
 USER_ID_PARAM = MessageParamDispatcher("user_id", type=str)
 SEQ_ID_PARAM = MessageParamDispatcher("seq_id", type=int)
 HEAD_PARAM = MessageParamDispatcher("head", type=dict)
-
 CONTENT_PARAM = MessageParamDispatcher("content", type=bytes)
-TEXT_PARAM = MessageParamDispatcher("text", type=Union[str, BaseText])
-RAW_TEXT_PARAM = MessageParamDispatcher("raw_text", type=Union[str, Drafty])
+PLAIN_TEXT_PARAM = MessageParamDispatcher("plain_text", type=str)
+
+TEXT_PARAM = TextParamDispatcher()
+RAW_TEXT_DISPATCHER = RawTextParamDispatcher()
 
 SESSION_PARAM = MetaParamDispatcher(
     "session",

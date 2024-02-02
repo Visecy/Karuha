@@ -75,9 +75,13 @@ class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
 class FutureDispatcher(AbstractDispatcher[T]):
     __slots__ = ["future"]
 
-    def __init__(self, /, future: asyncio.Future, *, once: bool = False) -> None:
-        super().__init__(once=once)
+    def __init__(self, /, future: asyncio.Future) -> None:
+        super().__init__(once=True)
         self.future = future
 
     def run(self, message: T, /) -> None:
         self.future.set_result(message)
+    
+    async def wait(self) -> T:
+        self.activate()
+        return await self.future

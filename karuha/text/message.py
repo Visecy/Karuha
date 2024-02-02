@@ -32,21 +32,25 @@ class Message(NamedTuple):
         try:
             raw_text = json.loads(content)
         except json.JSONDecodeError:
-            raw_text = content.decode()
+            raw_text = content.decode(errors="ignore")
             logger.warning(f"cannot decode text {raw_text!r}")
         
-        if not isinstance(raw_text, str):
-            try:
-                raw_text = Drafty.model_validate(raw_text)
-            except Exception:
-                logger.warning(f"unknown text format {raw_text!r}")
-                raw_text = str(raw_text)
-            else:
-                try:
-                    text = drafty2text(raw_text)
-                except Exception:
-                    logger.error(f"cannot decode drafty {raw_text!r}")
-                    text = raw_text.txt
-                return raw_text, text
+        if isinstance(raw_text, str):
+            return raw_text, PlainText(raw_text)
         
-        return raw_text, PlainText(raw_text)
+        try:
+            raw_text = Drafty.model_validate(raw_text)
+        except Exception:
+            logger.warning(f"unknown text format {raw_text!r}")
+            raw_text = text = str(raw_text)
+        else:
+            try:
+                text = drafty2text(raw_text)
+            except Exception:
+                logger.error(f"cannot decode drafty {raw_text!r}")
+                text = raw_text.txt
+        return raw_text, text
+        
+    @property
+    def plain_text(self) -> str:
+        return str(self.text)

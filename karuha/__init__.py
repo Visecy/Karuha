@@ -15,12 +15,13 @@ from .version import __version__
 from .config import get_config, load_config, init_config, save_config, Config
 from .config import Server as ServerConfig, Bot as BotConfig
 from .bot import Bot
-from .event import *
-from .text import Drafty, BaseText, PlainText
-from .command import *
+from .exception import KaruhaException
+from .command import CommandCollection, AbstractCommand, AbstractCommandNameParser, BaseSession, MessageSession, get_collection, on_command
+from .event import on, Event
+from .event.message import reset_message_lock
+from .text import Drafty, BaseText, PlainText, Message, TextChain
 from .plugin_server import init_server
 from .logger import logger
-from .exception import KaruhaException
 
 
 _bot_cache: Dict[str, Bot] = {}
@@ -50,6 +51,7 @@ def add_bot(bot: Bot) -> None:
 async def async_run() -> None:
     config = get_config()
     loop = asyncio.get_running_loop()
+    reset_message_lock()
 
     for i in config.bots:
         if i.name in _bot_cache:
@@ -84,23 +86,46 @@ async def async_run() -> None:
     
 
 def run() -> None:
-    asyncio.run(async_run())
+    try:
+        asyncio.run(async_run())
+    except KeyboardInterrupt:  # pragma: no cover
+        pass
 
 
 __all__ = [
+    # bot
     "add_bot",
+    "try_add_bot",
     "get_bot",
     "async_run",
     "run",
+    "Bot",
+    # config
     "get_config",
     "init_config",
     "load_config",
     "save_config",
-    "Bot",
     "Config",
     "BotConfig",
     "ServerConfig",
+    # event
+    "Event",
+    # text
+    "Drafty",
+    "BaseText",
+    "PlainText",
+    "Message",
+    "TextChain",
+    # command
+    "CommandCollection",
+    "AbstractCommand",
+    "AbstractCommandNameParser",
+    "get_collection",
+    "BaseSession",
+    "MessageSession",
+    # decorator
     "on",
     "on_command",
+    # exception
     "KaruhaException"
 ]

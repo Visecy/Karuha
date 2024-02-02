@@ -1,5 +1,5 @@
 """
-Copyright 2023 Ovizro
+Copyright 2024 Ovizro
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ setup(
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
         "pydantic>2.0",
+        "aiofiles"
     ],
 
     classifiers=[

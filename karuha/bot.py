@@ -1,5 +1,4 @@
 import asyncio
-import json
 import platform
 import sys
 from asyncio.queues import Queue
@@ -22,6 +21,11 @@ from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
+
+try:
+    import ujson as json
+except ImportError:  # pragma: no cover
+    import json
 
 
 class State(IntEnum):

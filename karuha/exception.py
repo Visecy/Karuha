@@ -8,6 +8,11 @@ class KaruhaException(Exception):
     __slots__ = []
 
 
+class KaruhaRuntimeError(KaruhaException):
+    """unspecified chatbot run-time error"""
+    __slots__ = []
+
+
 class KaruhaBotError(KaruhaException):
     """unspecified chatbot run-time error"""
     __slots__ = ["bot"]
@@ -39,6 +44,11 @@ class KaruhaCommandError(KaruhaException):
             return self._command
         elif self.collection is not None:
             return self.collection.commands.get(self.name)
+
+
+class KaruhaCommandCanceledError(KaruhaCommandError):
+    """command cancelled"""
+    __slots__ = []
 
 
 class KaruhaParserError(KaruhaException):

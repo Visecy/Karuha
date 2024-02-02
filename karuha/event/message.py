@@ -1,13 +1,13 @@
+import asyncio
 import json
-from asyncio import Future
 from functools import partial
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Union
 
 from typing_extensions import Self
 
 from ..bot import Bot
 from ..text import BaseText, Drafty, Message
-from ..utils.dispatcher import AbstractDispatcher, FutureDispatcher
+from ..utils.dispatcher import AbstractDispatcher
 from ..utils.proxy_propery import ProxyProperty
 from .bot import BotEvent, DataEvent
 
@@ -47,33 +47,22 @@ class MessageEvent(BotEvent):
     text: ProxyProperty[Union[str, BaseText]] = MessageProperty()
 
 
-class MessageDispatcher(AbstractDispatcher[MessageEvent]):
+class MessageDispatcher(AbstractDispatcher[Message]):
     __slots__ = []
 
     dispatchers = set()
 
 
-class ButtonReplyDispatcher(MessageDispatcher, FutureDispatcher[MessageEvent]):
-    __slots__ = ["seq_id", "name", "value"]
+_message_lock = None
 
-    def __init__(self, /, future: Future, seq_id: int, name: Optional[str] = None, value: Optional[str] = None) -> None:
-        super().__init__(future)
-        self.seq_id = seq_id
-        self.name = name
-        self.value = value
-    
-    def match(self, message: MessageEvent) -> float:
-        text = message.raw_text
 
-        val: Dict[str, Any] = {"seq": self.seq_id}
-        if self.name:
-            val["resp"] = {self.name: self.value or 1}
-        if isinstance(text, Drafty):
-            for i in text.ent:
-                if (
-                    i.tp == "EX" and
-                    i.data.get("mime") == "application/json" and
-                    i.data.get("value") == val
-                ):
-                    return 2.5
-        return 0
+def get_message_lock() -> asyncio.Lock:
+    global _message_lock
+    if _message_lock is None:
+        _message_lock = asyncio.Lock()
+    return _message_lock
+
+
+def reset_message_lock() -> None:
+    global _message_lock
+    _message_lock = None
