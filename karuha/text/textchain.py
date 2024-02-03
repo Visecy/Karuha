@@ -1,10 +1,12 @@
 from abc import abstractmethod
 from base64 import encodebytes
+from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal, Mapping, MutableMapping,
+                    Optional, SupportsIndex, Type, Union)
+
 from pydantic import AnyHttpUrl, BaseModel, model_validator
-from typing import Any, ClassVar, Dict, Final, List, Literal, MutableMapping, Optional, SupportsIndex, Type, Union
 from typing_extensions import Self
 
-from .drafty import Drafty, DraftyFormat, DraftyExtend, ExtendType, InlineType
+from .drafty import Drafty, DraftyExtend, DraftyFormat, ExtendType, InlineType
 
 
 class BaseText(BaseModel):
@@ -17,6 +19,18 @@ class BaseText(BaseModel):
     def __len__(self) -> int:
         return len(str(self))
 
+    def __add__(self, other: Union[str, "BaseText"]) -> "BaseText":
+        if isinstance(other, str):
+            other = PlainText(other)
+        if not isinstance(other, TextChain) and isinstance(other, BaseText):
+            return TextChain(self, other)
+        return NotImplemented
+    
+    def __radd__(self, other: str) -> "BaseText":
+        if isinstance(other, str):
+            return TextChain(PlainText(other), self)
+        return NotImplemented
+    
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {str(self)!r}>"
     
@@ -52,8 +66,17 @@ class PlainText(_Text):
     def __init__(self, text: str) -> None:
         super().__init__(text=text)
     
+    def __iadd__(self, other: Union[str, BaseText]) -> BaseText:
+        if not isinstance(other, (str, PlainText)):
+            return NotImplemented
+        self.text += other if isinstance(other, str) else other.text
+        return self
+    
     def __getitem__(self, index: Union[SupportsIndex, slice], /) -> "PlainText":
         return self.__class__(text=self.text[index])
+
+
+NewLine = PlainText("\n")
 
 
 class InlineCode(_Text):
@@ -63,15 +86,12 @@ class InlineCode(_Text):
         return df
     
 
-class TextChain(BaseText):
+class TextChain(BaseText, Mapping):
     contents: List[BaseText]
 
     def __init__(self, *args: BaseText) -> None:
         super().__init__(contents=args)  # type: ignore
     
-    def __getitem__(self, key: SupportsIndex, /) -> BaseText:
-        return self.contents[key]
-
     def to_drafty(self) -> Drafty:
         if not self.contents:
             return Drafty(txt=" ")
@@ -80,6 +100,43 @@ class TextChain(BaseText):
         for i in it:
             base += i.to_drafty()
         return base
+    
+    def __getitem__(self, key: SupportsIndex, /) -> BaseText:
+        return self.contents[key]
+
+    def __iter__(self) -> Generator[BaseText, None, None]:
+        yield from self.contents
+    
+    def __len__(self) -> int:
+        return len(self.contents)
+    
+    def __add__(self, other: Union[str, BaseText]) -> Self:
+        if not isinstance(other, (str, BaseText, TextChain)):
+            return NotImplemented
+        chain = self.model_copy()
+        chain.__iadd__(other)
+        return chain
+    
+    def __iadd__(self, other: Union[str, BaseText]) -> Self:
+        if isinstance(other, str):
+            self.contents.append(PlainText(other))
+        elif isinstance(other, TextChain):
+            self.contents.extend(other.contents)
+        elif isinstance(other, BaseText):
+            self.contents.append(other)
+        else:
+            return NotImplemented
+        return self
+    
+    def __radd__(self, other: Union[str, BaseText]) -> Self:
+        chain = self.model_copy()
+        if isinstance(other, str):
+            chain.contents.insert(0, PlainText(other))
+        elif isinstance(other, BaseText):
+            chain.contents.insert(0, other)
+        else:
+            return NotImplemented
+        return chain
     
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.contents}>"
@@ -218,7 +275,7 @@ class Button(_ExtensionText):
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(include={"name", "val", "act", "ref"}, exclude_none=True)
     
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         if self.name is None:
             return "<button>"
         if self.val:
@@ -265,7 +322,7 @@ class _Attachment(_ExtensionText):
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(exclude={"text", "type"}, exclude_none=True)
     
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         name = self.__class__.__name__
         if self.ref:
             return f"<{name} from {self.ref}>"

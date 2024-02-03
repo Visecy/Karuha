@@ -14,7 +14,7 @@ formatter = logging.Formatter('[%(asctime)s %(name)s][%(levelname)s] %(message)s
 
 class NameFilter(logging.Filter):
     def filter(self, record: LogRecord) -> bool:
-        if not self.name:
+        if not self.name:  # pragma: no cover
             return True
         return record.name == self.name
 

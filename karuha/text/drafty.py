@@ -4,7 +4,7 @@ Tinode Drafty Message Support
 For details see: https://github.com/tinode/chat/blob/master/docs/drafty.md
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, NonNegativeInt
 from typing import Any, Dict, List, Literal, Optional, Union
 from typing_extensions import Self
 
@@ -15,8 +15,8 @@ ExtendType = Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC",
 
 class DraftyFormat(BaseModel, frozen=True):
     at: int = 0     # -1 means not applying any styling to text.
-    len: int = 0
-    key: int = 0
+    len: NonNegativeInt = 0
+    key: NonNegativeInt = 0
     tp: Optional[InlineType] = None
 
     def rebase(self, offset: int, k_base: int = 0) -> Self:
@@ -40,7 +40,7 @@ class Drafty(BaseModel):
 
     @classmethod
     def from_str(cls, string: str) -> Self:
-        return Drafty(txt=string)
+        return cls(txt=string)
 
     def __add__(self, other: Union[str, "Drafty"]) -> Self:
         obj = self.model_copy()
@@ -48,7 +48,7 @@ class Drafty(BaseModel):
         return obj
     
     def __radd__(self, other: str) -> Self:
-        if not isinstance(other, str):
+        if not isinstance(other, str):  # pragma: no cover
             return NotImplemented
         obj = self.model_copy()
         obj.txt = other + obj.txt
@@ -58,7 +58,7 @@ class Drafty(BaseModel):
         if isinstance(other, str):
             self.txt += other
             return self
-        elif not isinstance(other, Drafty):
+        elif not isinstance(other, Drafty):  # pragma: no cover
             return NotImplemented
         offset = len(self.txt)
         k_base = len(self.ent)

@@ -29,7 +29,7 @@ class Span:
         self.children: Optional[List["Span"]] = None
 
     def __gt__(self, other: "Span", /) -> bool:
-        if not isinstance(other, Span):
+        if not isinstance(other, Span):  # pragma: no cover
             return NotImplemented
         if diff := self.start - other.start:
             return diff > 0
@@ -101,12 +101,12 @@ def converter(tp: Union[InlineType, ExtendType]) -> Callable[[_T_Converter], _T_
 def _convert(text: str, span: Span) -> BaseText:
     try:
         return _converters.get(span.tp, _default_converter)(text, span)
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.error(f"message decode error on span {span}", exc_info=True)
         return PlainText(text=text[span.start:span.end])
 
 
-def _default_converter(text: str, span: Span) -> BaseText:
+def _default_converter(text: str, span: Span) -> BaseText:  # pragma: no cover
     text = text[span.start:span.end]
     logger.warn(f"unknown text {text!r}[{span.tp}]")
     return PlainText(text=text)
@@ -155,7 +155,7 @@ def _container_converter(text: str, span: Span) -> BaseText:
 
 
 def _attachment_converter(text: str, span: Span) -> BaseText:
-    if span.children:
+    if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
     return _ExtensionText.tp_map[span.tp](text=text[span.start:span.end], **(span.data or {}))
 
@@ -173,7 +173,7 @@ def BR_converter(text: str, span: Span) -> PlainText:
 
 @converter("CO")
 def CO_converter(text: str, span: Span) -> BaseText:
-    if span.children:
+    if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
     return InlineCode(text=text[span.start:span.end])
 

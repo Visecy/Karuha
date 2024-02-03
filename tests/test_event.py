@@ -2,7 +2,7 @@ import asyncio
 from unittest import IsolatedAsyncioTestCase
 
 from karuha.event import Event, on
-from karuha.event.dispatcher import AbstractDispatcher, FutureDispatcher
+from karuha.utils.dispatcher import AbstractDispatcher, FutureDispatcher
 
 from .utils import EventCatcher
 
@@ -99,8 +99,8 @@ class TestEvent(IsolatedAsyncioTestCase):
         class FutureDispatcherTester(FutureDispatcher[Event]):
             __slots__ = ["match_rate"]
 
-            def __init__(self, /, future: asyncio.Future, match_rate: float, *, once: bool = False) -> None:
-                super().__init__(future, once=once)
+            def __init__(self, /, future: asyncio.Future, match_rate: float) -> None:
+                super().__init__(future)
                 self.match_rate = match_rate
             
             def match(self, message: Event) -> float:

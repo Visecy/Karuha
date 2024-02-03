@@ -8,16 +8,16 @@ from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
                               LoginEvent, MetaEvent, PresEvent, PublishEvent,
                               SubscribeEvent)
 
-from .utils import TEST_TIME_OUT, AsyncBotTestCase, BotSimulation
+from .utils import TEST_TIME_OUT, AsyncBotTestCase, BotMock
 
 
 class TestBot(AsyncBotTestCase):
-    bot = BotSimulation("test", "basic", "123456", log_level="DEBUG")
+    bot = BotMock("test_bot", "basic", "123456", log_level="DEBUG")
 
     def test_bot_init(self) -> None:
         self.assertEqual(
             self.bot.config,
-            BotConfig(name="test", schema="basic", secret="123456")
+            BotConfig(name="test_bot", schema="basic", secret="123456")
         )
         self.assertEqual(
             self.bot.server,

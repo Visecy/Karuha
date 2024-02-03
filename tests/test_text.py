@@ -1,10 +1,11 @@
 from unittest import TestCase
 
 from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
+from karuha.text.textchain import TextChain, Bold, Hidden
 from karuha.text.convert import eval_spans, to_span_tree
-from karuha.event import MessageEvent
+from karuha.event.message import MessageEvent
 
-from .utils import bot_simulation
+from .utils import bot_mock, new_test_message
 
 
 example1 = Drafty.model_validate_json(
@@ -58,6 +59,15 @@ class TestText(TestCase):
             "https://www.example.com/abc#fragment and another www.tinode.co this "
             "is a @mention and a #hashtag in a string second #hashtag"
         )
+        t = PlainText("Hello world!\n")
+        self.assertEqual(str(t), "Hello world!\n")
+        self.assertEqual(len(t), 13)
+        self.assertEqual(str(t[0]), "H")
+        self.assertEqual(str(t[1:]), "ello world!\n")
+        empty = TextChain()
+        self.assertEqual(len(empty), 0)
+        self.assertEqual(str(empty), "")
+        self.assertEqual(empty.to_drafty(), Drafty.from_str(' '))
 
     def test_span(self) -> None:
         spans, attachments = eval_spans(example1)
@@ -73,6 +83,7 @@ class TestText(TestCase):
     def test_convert(self) -> None:
         txt = PlainText("Hello world!\n")
         df = txt.to_drafty()
+        
         self.assertEqual(df.txt, "Hello world! ")
         self.assertTrue(df.fmt)
         self.assertFalse(df.ent)
@@ -86,20 +97,71 @@ class TestText(TestCase):
         df2 = tx2.to_drafty()
         self.assertEqual(df2.txt, example2.txt)
         self.assertListEqual(df2.ent, example2.ent)
-        self.assertLessEqual(df2.fmt, example2.fmt)
-        # print(df1.model_dump_json(indent=4))
+        self.assertListEqual(df2.fmt, example2.fmt)
         self.assertSetEqual(set(df1.fmt), set(example1.fmt))
+    
+    def test_message(self) -> None:
+        message = new_test_message(b"test")
+        self.assertEqual(message.text, "test")
+        self.assertEqual(message.raw_text, "test")
+        self.assertEqual(message.content, b"test")
+
+        message = new_test_message(b"\"test\"")
+        self.assertIsInstance(message.text, PlainText)
+        self.assertEqual(message.text, PlainText("test"))
+        self.assertEqual(message.raw_text, "test")
+
+        message = new_test_message(b"{\"txt\": \"test\"}")
+        self.assertIsInstance(message.text, PlainText)
+        self.assertEqual(message.text, PlainText("test"))
+        self.assertIsInstance(message.raw_text, Drafty)
+        self.assertEqual(message.raw_text, Drafty(txt="test"))
+
+        message = new_test_message(
+            b"{\"txt\": \"test\", \"fmt\": [{\"at\": 0, \"len\": 4, \"tp\": \"ST\"}]}"
+        )
+        assert isinstance(message.text, Bold)
+        self.assertEqual(message.text.content, PlainText("test"))
+        self.assertEqual(
+            message.raw_text,
+            Drafty(txt="test", fmt=[{"at": 0, "len": 4, "tp": "ST"}])  # type: ignore
+        )
+
+        message = new_test_message(
+            b"{\"txt\": \"test\", \"fmt\": [{\"at\": 0, \"len\": -1, \"tp\": \"ST\"}]}"
+        )
+        self.assertIsInstance(message.text, str)
+        self.assertIsInstance(message.raw_text, str)
+
+        message = new_test_message(
+            b"{\"txt\": \"hello world\", \"fmt\": [{\"at\": 6, \"len\": 15, \"tp\": \"ST\"}]}"
+        )
+        assert isinstance(message.text, TextChain)
+        world = message.text[1]
+        assert isinstance(world, Bold)
+        self.assertEqual(world.content, PlainText("world"))
+        self.assertIsInstance(message.raw_text, Drafty)
+
+        message = new_test_message(
+            b"{\"txt\": \"test\", \"fmt\": [{\"at\": 0, \"len\": 4}]}"
+        )
+        assert isinstance(message.text, Hidden)
+        self.assertEqual(message.text.content, PlainText("test"))
+        self.assertIsInstance(message.raw_text, Drafty)
     
     def test_message_event(self) -> None:
         ev = MessageEvent(
-            bot_simulation,
+            bot_mock,
             "", "", 0, {},
             b"\"\""
         )
         self.assertEqual(ev.text, "")
         self.assertEqual(ev.raw_text, "")
-        self.assertEqual(ev.raw_content, b"\"\"")
-        ev._set_text(b"{\"txt\": \"Hi\"}")
-        self.assertIsInstance(ev.text, PlainText)
-        self.assertEqual(ev.text, "Hi")
-        
+        self.assertEqual(ev.content, b"\"\"")
+    
+    def test_drafty_ops(self) -> None:
+        df = Drafty.from_str("Hello")
+        df = df + " world"
+        self.assertEqual(str(df), "Hello world")
+        df1 = "Hello" + Drafty.from_str(" world")
+        self.assertEqual(df, df1)

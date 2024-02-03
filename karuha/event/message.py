@@ -1,27 +1,28 @@
+import asyncio
 import json
-from asyncio import Future
-from typing import Any, Dict, Optional
+from functools import partial
+from typing import Dict, Union
 
 from typing_extensions import Self
 
 from ..bot import Bot
-from ..text import Drafty, PlainText, drafty2text
+from ..text import BaseText, Drafty, Message
+from ..utils.dispatcher import AbstractDispatcher
+from ..utils.proxy_propery import ProxyProperty
 from .bot import BotEvent, DataEvent
-from .dispatcher import FutureDispatcher
+
+
+MessageProperty = partial(ProxyProperty, "message", mutable=True)
 
 
 class MessageEvent(BotEvent):
     """a parsed DataMessage"""
 
-    __slots__ = ["topic", "uid", "seq_id", "head", "raw_content", "raw_text", "text"]
+    __slots__ = ["message"]
 
-    def __init__(self, bot: Bot, /, topic: str, uid: str, seq_id: int, head: Dict[str, str], content: bytes) -> None:
+    def __init__(self, bot: Bot, /, topic: str, user_id: str, seq_id: int, head: Dict[str, str], content: bytes) -> None:
         super().__init__(bot)
-        self.topic = topic
-        self.uid = uid
-        self.seq_id = seq_id
-        self.head = head
-        self._set_text(content)
+        self.message = Message.new(bot, topic, user_id, seq_id, head, content)
     
     @classmethod
     def from_data_event(cls, event: DataEvent, /) -> Self:
@@ -34,63 +35,34 @@ class MessageEvent(BotEvent):
             {k: json.loads(v) for k, v in message.head.items()},
             message.content
         )
+
+    def dump(self) -> Message:
+        return self.message
     
-    def _set_text(self, content: bytes, /) -> None:
-        self.raw_content = content
-
-        try:
-            raw_text = json.loads(content)
-        except json.JSONDecodeError:
-            raw_text = content.decode()
-            topic = self.topic
-            seq_id = self.seq_id
-            self.bot.logger.error(f"cannot decode text {raw_text} ({topic=},{seq_id=})")
-        
-        if not isinstance(raw_text, str):
-            try:
-                self.raw_text = Drafty.model_validate(raw_text)
-            except Exception:
-                self.bot.logger.error(f"unknown text format {raw_text}")
-                raw_text = str(raw_text)
-            else:
-                try:
-                    self.text = drafty2text(self.raw_text)
-                except Exception:
-                    self.bot.logger.error(f"cannot decode drafty {self.raw_text}")
-                    self.text = self.raw_text.txt
-                return
-        
-        self.raw_text = raw_text
-        self.text = PlainText(raw_text)
+    topic: ProxyProperty[str] = MessageProperty()
+    user_id: ProxyProperty[str] = MessageProperty()
+    seq_id: ProxyProperty[int] = MessageProperty()
+    content: ProxyProperty[bytes] = MessageProperty()
+    raw_text: ProxyProperty[Union[str, Drafty]] = MessageProperty()
+    text: ProxyProperty[Union[str, BaseText]] = MessageProperty()
 
 
-class MessageDispatcher(FutureDispatcher[MessageEvent]):
+class MessageDispatcher(AbstractDispatcher[Message]):
     __slots__ = []
 
     dispatchers = set()
 
 
-class ButtonReplyDispatcher(MessageDispatcher):
-    __slots__ = ["seq_id", "name", "value"]
+_message_lock = None
 
-    def __init__(self, /, future: Future, seq_id: int, name: Optional[str] = None, value: Optional[str] = None) -> None:
-        super().__init__(future)
-        self.seq_id = seq_id
-        self.name = name
-        self.value = value
-    
-    def match(self, message: MessageEvent) -> float:
-        text = message.raw_text
 
-        val: Dict[str, Any] = {"seq": self.seq_id}
-        if self.name:
-            val["resp"] = {self.name: self.value or 1}
-        if isinstance(text, Drafty):
-            for i in text.ent:
-                if (
-                    i.tp == "EX" and
-                    i.data.get("mime") == "application/json" and
-                    i.data.get("value") == val
-                ):
-                    return 2.5
-        return 0
+def get_message_lock() -> asyncio.Lock:
+    global _message_lock
+    if _message_lock is None:
+        _message_lock = asyncio.Lock()
+    return _message_lock
+
+
+def reset_message_lock() -> None:
+    global _message_lock
+    _message_lock = None
