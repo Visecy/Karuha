@@ -53,8 +53,8 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         except KaruhaCommandCanceledError:
             logger.info(f"command {self.name} canceled")
             raise
-        args, kwargs = self.parse_message(message)
         try:
+            args, kwargs = self.parse_message(message)
             result = self.__func__(*args, **kwargs)  # type: ignore
             if asyncio.iscoroutine(result):
                 result = await result
