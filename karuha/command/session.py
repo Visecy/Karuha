@@ -1,4 +1,5 @@
 import asyncio
+import mimetypes
 import os
 import re
 from collections import deque
@@ -12,7 +13,8 @@ from ..event.bot import PublishEvent
 from ..event.message import Message, MessageDispatcher, get_message_lock
 from ..exception import KaruhaRuntimeError
 from ..text import BaseText, Drafty
-from ..text.textchain import Bold, Button, Form, PlainText, TextChain, File, NewLine
+from ..text.textchain import (Bold, Button, File, Form, NewLine, PlainText,
+                              TextChain)
 from ..utils.dispatcher import FutureDispatcher
 from ..utils.event_catcher import EventCatcher
 
@@ -34,7 +36,7 @@ class BaseSession(object):
         if isinstance(text, BaseText):
             text = text.to_drafty()
         if isinstance(text, Drafty):
-            text = text.model_dump()
+            text = text.model_dump(exclude_defaults=True)
             head = head or {}
             head["mime"] = "text/x-drafty"
         with EventCatcher(PublishEvent) as catcher:
@@ -51,17 +53,22 @@ class BaseSession(object):
 
     async def send_file(
             self,
-            path: Union[str, bytes, os.PathLike],
+            path: Union[str, os.PathLike],
             /, *,
-            name: Optional[str] = None
+            name: Optional[str] = None,
+            mime: Optional[str] = None,
+            **kwds: Any
     ) -> Optional[int]:  # pragma: no cover
         async with aio_open(path, "rb") as f:
             data = await f.read()
+        mime = mime or mimetypes.guess_type(path)[0] or "text/plain"
         file = File(
-            raw_value=data,  # type: ignore
-            name=name
+            raw_val=data,  # type: ignore
+            name=name or os.fspath(path),
+            size=len(data),
+            mime=mime
         )
-        return await self.send(file)
+        return await self.send(file, **kwds)
     
     async def wait_reply(
             self,

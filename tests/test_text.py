@@ -1,7 +1,7 @@
 from unittest import TestCase
 
 from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
-from karuha.text.textchain import TextChain, Bold, Hidden
+from karuha.text.textchain import File, TextChain, Bold, Hidden
 from karuha.text.convert import eval_spans, to_span_tree
 from karuha.event.message import MessageEvent
 
@@ -79,11 +79,11 @@ class TestText(TestCase):
         spans = drafty2tree(example2)
         # print(spans)
         self.assertEqual(len(spans), 1)
-    
+
     def test_convert(self) -> None:
         txt = PlainText("Hello world!\n")
         df = txt.to_drafty()
-        
+
         self.assertEqual(df.txt, "Hello world! ")
         self.assertTrue(df.fmt)
         self.assertFalse(df.ent)
@@ -99,7 +99,7 @@ class TestText(TestCase):
         self.assertListEqual(df2.ent, example2.ent)
         self.assertListEqual(df2.fmt, example2.fmt)
         self.assertSetEqual(set(df1.fmt), set(example1.fmt))
-    
+
     def test_message(self) -> None:
         message = new_test_message(b"test")
         self.assertEqual(message.text, "test")
@@ -148,7 +148,7 @@ class TestText(TestCase):
         assert isinstance(message.text, Hidden)
         self.assertEqual(message.text.content, PlainText("test"))
         self.assertIsInstance(message.raw_text, Drafty)
-    
+
     def test_message_event(self) -> None:
         ev = MessageEvent(
             bot_mock,
@@ -158,10 +158,37 @@ class TestText(TestCase):
         self.assertEqual(ev.text, "")
         self.assertEqual(ev.raw_text, "")
         self.assertEqual(ev.content, b"\"\"")
-    
+
     def test_drafty_ops(self) -> None:
         df = Drafty.from_str("Hello")
         df = df + " world"
         self.assertEqual(str(df), "Hello world")
         df1 = "Hello" + Drafty.from_str(" world")
         self.assertEqual(df, df1)
+
+    def test_file(self) -> None:
+        f = File(
+            name="test.txt",
+            raw_val=b"test"  # type: ignore
+        )
+        self.assertEqual(f.val, "dGVzdA==")
+        self.assertEqual(f.mime, "text/plain")
+        
+        df = Drafty.model_validate(
+            {
+                "ent": [
+                    {
+                        "data": {
+                            "mime": "text/plain",
+                            "name": "test.txt",
+                            "size": 4,
+                            "val": "dGVzdA==",
+                        },
+                        "tp": "EX",
+                    }
+                ],
+                "fmt": [{"at": -1}],
+            }
+        )
+        f = drafty2text(df)
+        self.assertIsInstance(f, File)

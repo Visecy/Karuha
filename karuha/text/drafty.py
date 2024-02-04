@@ -34,7 +34,7 @@ class DraftyExtend(BaseModel, frozen=True):
 
 
 class Drafty(BaseModel):
-    txt: str
+    txt: str = ''
     fmt: List[DraftyFormat] = []
     ent: List[DraftyExtend] = []
 

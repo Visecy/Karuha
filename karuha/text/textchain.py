@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from base64 import encodebytes
+from base64 import b64encode
 from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal, Mapping, MutableMapping,
                     Optional, SupportsIndex, Type, Union)
 
@@ -20,13 +20,19 @@ class BaseText(BaseModel):
         return len(str(self))
 
     def __add__(self, other: Union[str, "BaseText"]) -> "BaseText":
+        if not other:
+            return self
         if isinstance(other, str):
             other = PlainText(other)
+        if not self:
+            return other
         if not isinstance(other, TextChain) and isinstance(other, BaseText):
             return TextChain(self, other)
         return NotImplemented
     
     def __radd__(self, other: str) -> "BaseText":
+        if not other:
+            return self
         if isinstance(other, str):
             return TextChain(PlainText(other), self)
         return NotImplemented
@@ -101,6 +107,11 @@ class TextChain(BaseText, Mapping):
             base += i.to_drafty()
         return base
     
+    def take(self) -> BaseText:
+        if len(self.contents) == 1:
+            return self.contents[0]
+        return self
+    
     def __getitem__(self, key: SupportsIndex, /) -> BaseText:
         return self.contents[key]
 
@@ -111,24 +122,52 @@ class TextChain(BaseText, Mapping):
         return len(self.contents)
     
     def __add__(self, other: Union[str, BaseText]) -> Self:
-        if not isinstance(other, (str, BaseText, TextChain)):
+        if not other:
+            return self
+        elif not isinstance(other, (str, BaseText, TextChain)):
             return NotImplemented
         chain = self.model_copy()
-        chain.__iadd__(other)
+        chain += other
         return chain
     
     def __iadd__(self, other: Union[str, BaseText]) -> Self:
-        if isinstance(other, str):
-            self.contents.append(PlainText(other))
-        elif isinstance(other, TextChain):
-            self.contents.extend(other.contents)
-        elif isinstance(other, BaseText):
-            self.contents.append(other)
-        else:
+        if not other:  # filter empty text like PlainText('')
+            return self
+        elif isinstance(other, str):
+            other = PlainText(other)
+        elif not isinstance(other, BaseText):
             return NotImplemented
+        
+        if not self.contents:
+            # fast branch, no optimization
+            if isinstance(other, TextChain):
+                self.contents.extend(other.contents)
+            else:
+                self.contents.append(other)
+        else:
+            # merge with last item
+            last = self.contents[-1]
+            if isinstance(other, TextChain):
+                contents_iter = iter(other.contents)
+                for i in contents_iter:
+                    last += i
+                    if isinstance(last, TextChain):
+                        self.contents.append(i)
+                        break
+                    else:
+                        self.contents[-1] = last
+                self.contents.extend(contents_iter)
+            elif isinstance(other, BaseText):
+                last += other
+                if isinstance(last, TextChain):
+                    self.contents.append(other)
+                else:
+                    self.contents[-1] = last
         return self
     
     def __radd__(self, other: Union[str, BaseText]) -> Self:
+        if not other:
+            return self
         chain = self.model_copy()
         if isinstance(other, str):
             chain.contents.insert(0, PlainText(other))
@@ -137,7 +176,7 @@ class TextChain(BaseText, Mapping):
         else:
             return NotImplemented
         return chain
-    
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.contents}>"
 
@@ -225,6 +264,9 @@ class _ExtensionText(_Text):
         df.ent.append(DraftyExtend(tp=self.type, data=self.get_data()))
         return df
     
+    def __bool__(self) -> bool:
+        return bool(self.text or self.get_data())
+    
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         tp = getattr(cls, "type", cls.model_fields["type"].default)
@@ -277,10 +319,10 @@ class Button(_ExtensionText):
     
     def __repr__(self) -> str:
         if self.name is None:
-            return "<button>"
+            return f"<button {self.text!r}>"
         if self.val:
-            return f"<button {self.name}:{self.val}>"
-        return f"<button {self.name}>"
+            return f"<button {self.text!r} ({self.name}:{self.val})>"
+        return f"<button {self.text!r} ({self.name})>"
 
 
 class VideoCall(_ExtensionText):
@@ -301,21 +343,22 @@ class _Attachment(_ExtensionText):
 
     mime: str
     name: Optional[str] = None
-    value: Optional[str] = None
+    val: Optional[str] = None
     ref: Optional[str] = None
     size: Optional[int] = None
 
     @model_validator(mode="before")
     def convert_raw(cls, data: Any) -> Any:
         if isinstance(data, MutableMapping):
-            for k, v in data.items():
+            for k, v in tuple(data.items()):
                 if isinstance(k, str) and isinstance(v, bytes) and k.startswith("raw_"):
-                    data[k] = encodebytes(v).decode("ascii")
+                    data.pop(k)
+                    data[k[4:]] = b64encode(v).decode("ascii")
         return data
 
     @model_validator(mode="after")
     def check_data(self) -> Self:
-        if self.ref is None and self.value is None:
+        if self.ref is None and self.val is None:
             raise ValueError("no data provided")
         return self
 
@@ -326,8 +369,8 @@ class _Attachment(_ExtensionText):
         name = self.__class__.__name__
         if self.ref:
             return f"<{name} from {self.ref}>"
-        elif self.value:
-            value = self.value
+        elif self.val:
+            value = self.val
             if len(value) < 20:
                 return f"<{name} {value}>"
             return f"<{name} {value[:15]}..{value[-3:]}>"
