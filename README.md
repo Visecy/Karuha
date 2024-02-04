@@ -144,6 +144,27 @@ Features that may be added in the future include:
 - [ ] APIs related to user information getting and setting
 - [ ] Automatic argument parsing in argparse format for commands
 
+### Module Development
+Currently, Karuha's support for module development is relatively simple. There are no dedicated APIs for defining chatbot modules, but predefined commands can still be supported.
+
+The way to define commands in external modules is similar to the normal definition. But to avoid affecting the user's related command settings, we need to create a new CommandCollection. The method to establish a command collection and define commands in it is as follows:
+
+```python
+from karuha import MessageSession
+from karuha.command import new_collection, add_sub_collection
+
+
+collection = new_collection()
+add_sub_collection(collection)
+
+
+@collection.on_command
+async def hi(session: MessageSession, text: str) -> None:
+    ...
+```
+
+> Note that to make the command collection take effect, the add_sub_collection function needs to be called to add the command collection to the sub-command collection.
+
 ### Architecture Overview
 The overall architecture of Karuha is as follows:
 

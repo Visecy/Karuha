@@ -171,9 +171,14 @@ def FM_converter(text: str, span: Span) -> BaseText:
     return Form(content=content, **(span.data or {}))
 
 
+def drafty2tree_ex(drafty: Drafty) -> Tuple[List[Span], List[DraftyExtend]]:
+    spans, attachments = eval_spans(drafty)
+    spans = to_span_tree(spans)
+    return spans, attachments
+
+
 def drafty2tree(drafty: Drafty) -> List[Span]:
-    spans, _ = eval_spans(drafty)
-    return to_span_tree(spans)
+    return drafty2tree_ex(drafty)[0]
 
 
 def tree2text(text: str, spans: List[Span]) -> BaseText:
@@ -181,7 +186,7 @@ def tree2text(text: str, spans: List[Span]) -> BaseText:
 
 
 def drafty2text(drafty: Drafty) -> BaseText:
-    spans, attachments = eval_spans(drafty)
+    spans, attachments = drafty2tree_ex(drafty)
     text = tree2text(drafty.txt, spans)
     for i in attachments:
         text += _ExtensionText.tp_map[i.tp](**i.data)

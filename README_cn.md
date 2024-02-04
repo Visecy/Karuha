@@ -148,6 +148,28 @@ async def hi(session: MessageSession, text: str) -> None:
 - [ ] 用户信息获取与设置相关的API
 - [ ] argparse格式的命令参数自动解析
 
+### 模块开发
+
+目前，karuha对模块开发的支持较为简单。没有专门用于聊天机器人模块定义的API，但如果只是预设一些命令还是可以支持的。
+
+在外部模块定义命令的方式与正常的定义方式类似。但为了避免影响用户的相关命令设置，我们需要新建一个命令集合(CommandCollection)。建立命令集合并在其中定义命令的方法如下：
+
+```python
+from karuha import MessageSession
+from karuha.command import new_collection, add_sub_collection
+
+
+collection = new_collection()
+add_sub_collection(collection)
+
+
+@collection.on_command
+async def hi(session: MessageSession, text: str) -> None:
+    ...
+```
+
+> 注意，为了使命令集合生效，需要调用`add_sub_collection`函数将命令集合添加到子命令集合中。
+
 ### 架构说明
 
 Karuha的总体架构如下：
