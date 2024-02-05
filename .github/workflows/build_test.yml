@@ -13,7 +13,7 @@ jobs:
   build:
     strategy:
       matrix:
-        python-version: [3.8, 3.9, "3.10", "3.11"]
+        python-version: [3.8, 3.9, "3.10", "3.11", "3.12"]
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -27,10 +27,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install setuptools wheel
-    - name: Install typing-extensions
-      if: ${{ matrix.python-version == 3.6 }}
-      run: |
-        pip install typing-extensions==4.1.1
     - name: Build dist and test with unittest
       run: |
-        make build install test build_dist
+        make build install_all test build_dist

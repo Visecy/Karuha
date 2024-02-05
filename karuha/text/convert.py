@@ -112,29 +112,19 @@ def _default_converter(text: str, span: Span) -> BaseText:  # pragma: no cover
     return PlainText(text=text)
 
 
-def _split_text(text: str, /, spans: List[Span], start: int = 0, end: int = -1) -> List[BaseText]:
+def _split_text(text: str, /, spans: List[Span], start: int = 0, end: int = -1) -> BaseText:
     last = start
-    raw_contents = []
+    chain = TextChain()
     for i in spans:
         if last < i.start:
-            raw_contents.append(PlainText(text[last:i.start]))
+            chain += text[last:i.start]
         last = i.end
-        raw_contents.append(_convert(text, i))
+        chain += _convert(text, i)
     if end < 0:
         end = len(text)
     if last < end:
-        raw_contents.append(PlainText(text[last:]))
-
-    iter_raw = iter(raw_contents)
-    contents = [next(iter_raw)]
-    for i in iter_raw:
-        if isinstance(i, PlainText) and isinstance(contents[-1], PlainText):
-            contents[-1].text += i.text
-        elif isinstance(i, TextChain):
-            contents.extend(i.contents)
-        else:
-            contents.append(i)
-    return contents
+        chain += text[last:]
+    return chain.take()
 
 
 def _convert_spans(text: str, spans: Optional[List[Span]], /, start: int, end: int) -> BaseText:
@@ -142,10 +132,7 @@ def _convert_spans(text: str, spans: Optional[List[Span]], /, start: int, end: i
         return PlainText(text=text[start:end])
     elif spans[0].start == start and spans[0].end == end:
         return _convert(text, spans[0])
-    content = _split_text(text, spans, start, end)
-    if len(content) == 1:
-        return content[0]
-    return TextChain(*content)
+    return _split_text(text, spans, start, end)
 
 
 def _container_converter(text: str, span: Span) -> BaseText:
@@ -184,9 +171,14 @@ def FM_converter(text: str, span: Span) -> BaseText:
     return Form(content=content, **(span.data or {}))
 
 
+def drafty2tree_ex(drafty: Drafty) -> Tuple[List[Span], List[DraftyExtend]]:
+    spans, attachments = eval_spans(drafty)
+    spans = to_span_tree(spans)
+    return spans, attachments
+
+
 def drafty2tree(drafty: Drafty) -> List[Span]:
-    spans, _ = eval_spans(drafty)
-    return to_span_tree(spans)
+    return drafty2tree_ex(drafty)[0]
 
 
 def tree2text(text: str, spans: List[Span]) -> BaseText:
@@ -194,4 +186,10 @@ def tree2text(text: str, spans: List[Span]) -> BaseText:
 
 
 def drafty2text(drafty: Drafty) -> BaseText:
-    return tree2text(drafty.txt, drafty2tree(drafty))
+    spans, attachments = drafty2tree_ex(drafty)
+    text = tree2text(drafty.txt, spans)
+    for i in attachments:
+        text += _ExtensionText.tp_map[i.tp](**i.data)
+    if isinstance(text, TextChain):
+        return text.take()
+    return text

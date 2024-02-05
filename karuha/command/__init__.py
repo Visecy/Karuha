@@ -1,6 +1,6 @@
 from .command import AbstractCommand, FunctionCommand, ParamFunctionCommand
 from .collection import (CommandCollection, add_sub_collection, get_collection,
-                         remove_sub_collection, reset_collection,
+                         new_collection, remove_sub_collection, reset_collection,
                          set_collection, set_collection_factory, set_prefix)
 from .decoractor import on_command
 from .parser import (AbstractCommandNameParser, ParamParser, ParamParserFlag,
@@ -28,6 +28,7 @@ __all__ = [
     # collection
     "CommandCollection",
     "get_collection",
+    "new_collection",
     "add_sub_collection",
     "remove_sub_collection",
     "reset_collection",

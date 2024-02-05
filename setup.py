@@ -41,8 +41,8 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     
-    author="Ovizro",
-    author_email="Ovizro@visecy.org",
+    author="Visecy",
+    author_email="Visecy@visecy.org",
     maintainer="Ovizro",
     maintainer_email="Ovizro@visecy.org",
     license="Apache 2.0",
@@ -57,6 +57,10 @@ setup(
         "pydantic>2.0",
         "aiofiles"
     ],
+    extras_require={
+        "image": ["pillow"],
+        "all": ["pillow"],
+    },
 
     classifiers=[
         "Development Status :: 4 - Beta",

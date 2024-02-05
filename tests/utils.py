@@ -56,7 +56,7 @@ class BotMock(Bot):
         )
     
     async def consum_message(self) -> pb.ClientMsg:
-        return await self.queue.get()
+        return await asyncio.wait_for(self.queue.get(), TEST_TIME_OUT)
     
     def clear_message(self) -> None:
         while not self.queue.empty():
