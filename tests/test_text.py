@@ -92,7 +92,6 @@ class TestText(TestCase):
 
         tx1 = drafty2text(example1)
         tx2 = drafty2text(example2)
-        print(repr(tx2))
         self.assertIsInstance(tx2, Form)
         df1 = tx1.to_drafty()
         df2 = tx2.to_drafty()

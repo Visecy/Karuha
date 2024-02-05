@@ -90,7 +90,7 @@ class TestSession(AsyncBotTestCase):
     
     async def test_file(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
-        file_task = asyncio.create_task(ss.send_file("README.md"))
+        file_task = asyncio.create_task(ss.send_file("karuha/version.py"))
         msg = await self.bot.consum_message()
         self.assertTrue(msg.pub)
         pubmsg = msg.pub
@@ -98,7 +98,7 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(df.txt, '')
         ft = drafty2text(df)
         assert isinstance(ft, File)
-        self.assertEqual(ft.name, 'README.md')
+        self.assertEqual(ft.name, 'version.py')
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
         await asyncio.wait_for(file_task, timeout=TEST_TIME_OUT)

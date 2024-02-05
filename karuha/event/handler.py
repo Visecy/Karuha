@@ -4,9 +4,16 @@ from .bot import DataEvent, CtrlEvent, PresEvent, PublishEvent, LoginEvent
 from .message import MessageEvent, MessageDispatcher, get_message_lock
 
 
+def ensure_text_len(text: str, length: int = 128) -> str:
+    if len(text) < length:
+        return text
+    tail_length = length // 4
+    return f"{text[:length-tail_length]} ... {text[-tail_length:]}"
+
+
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
-    event.bot.logger.info(f"({event.topic})=> {event.text}")
+    event.bot.logger.info(f"({event.topic})=> {ensure_text_len(event.text)}")
     MessageEvent.from_data_event(event).trigger()
     await event.bot.note_read(event.topic, event.seq_id)
 
@@ -38,7 +45,7 @@ async def _(event: LoginEvent) -> None:
 
 @PublishEvent.add_handler
 async def _(event: PublishEvent) -> None:
-    event.bot.logger.info(f"({event.topic})<= {event.text}")
+    event.bot.logger.info(f"({event.topic})<= {ensure_text_len(event.text)}")
 
 
 @MessageEvent.add_handler
