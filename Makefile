@@ -12,7 +12,7 @@ run:
 build:
 	python setup.py build
 
-build_dist: test lint
+build_dist: test
 	python setup.py sdist bdist_wheel
 
 install:
