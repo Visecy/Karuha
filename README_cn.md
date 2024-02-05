@@ -8,11 +8,11 @@
 
 库的名称`Karuha`来自游戏星空列车与白的旅行中的角色 狩叶·朗姆柯妮（カルハ・ラムコネ）
 
-<center>
+<div align="center">
 
 ![Karuha](/docs/img/tw_icon-karuha2.png)
 
-</center>
+</div>
 
 > カルハ・ラムコネと申します。カルハちゃんって呼んでいいわよ
 

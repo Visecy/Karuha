@@ -8,11 +8,11 @@ A simple Tinode chatbot framework.
 
 The name of the library `Karuha` comes from the character Karuha Ramukone (カルハ・ラムコネ) in the game 星空鉄道とシロの旅.
 
-<center>
+<div align="center">
 
 ![Karuha](https://raw.githubusercontent.com/Visecy/Karuha/master/docs/img/tw_icon-karuha2.png)
 
-</center>
+</div>
 
 > カルハ・ラムコネと申します。カルハちゃんって呼んでいいわよ
 

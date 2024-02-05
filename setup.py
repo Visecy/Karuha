@@ -57,6 +57,10 @@ setup(
         "pydantic>2.0",
         "aiofiles"
     ],
+    extras_require={
+        "image": ["pillow"],
+        "all": ["pillow"],
+    },
 
     classifiers=[
         "Development Status :: 4 - Beta",

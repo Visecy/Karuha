@@ -1,8 +1,12 @@
+import mimetypes
+import os
 from abc import abstractmethod
-from base64 import b64encode
-from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal, Mapping, MutableMapping,
-                    Optional, SupportsIndex, Type, Union)
+from base64 import b64decode, b64encode
+from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal,
+                    Mapping, MutableMapping, Optional, SupportsIndex, Type,
+                    Union)
 
+from aiofiles import open as aio_open
 from pydantic import AnyHttpUrl, BaseModel, model_validator
 from typing_extensions import Self
 
@@ -90,7 +94,7 @@ class InlineCode(_Text):
         df = super().to_drafty()
         df.fmt.append(DraftyFormat(at=0, len=len(self), tp="CO"))
         return df
-    
+
 
 class TextChain(BaseText, Mapping):
     contents: List[BaseText]
@@ -210,11 +214,11 @@ class _Container(BaseText):
 
 class Bold(_Container):
     type: Final[InlineType] = "ST"
-    
+
 
 class Italic(_Container):
     type: Final[InlineType] = "EM"
-    
+
 
 class Strikethrough(_Container):
     type: Final[InlineType] = "DL"
@@ -226,7 +230,7 @@ class Highlight(_Container):
 
 class Hidden(_Container):
     type: Final[InlineType] = "HD"
-    
+
 
 class Row(_Container):
     type: Final[InlineType] = "RW"
@@ -280,7 +284,7 @@ class Link(_ExtensionText):
 
     def get_data(self) -> Dict[str, Any]:
         return {"url": self.url}
-    
+
 
 class Mention(_ExtensionText):
     type: Final[ExtendType] = "MN"
@@ -289,7 +293,7 @@ class Mention(_ExtensionText):
 
     def get_data(self) -> Dict[str, Any]:
         return {"val": self.val}
-    
+
 
 class Hashtag(_ExtensionText):
     type: Final[ExtendType] = "HT"
@@ -347,6 +351,67 @@ class _Attachment(_ExtensionText):
     ref: Optional[str] = None
     size: Optional[int] = None
 
+    @classmethod
+    def from_bytes(
+            cls,
+            content: bytes,
+            *,
+            mime: Optional[str] = None,
+            name: Optional[str] = None,
+            ref: Optional[str] = None,
+            **kwds: Any
+    ) -> Self:
+        return cls(  # type: ignore
+            mime=mime or "text/plain",
+            name=name,
+            ref=ref,
+            raw_val=content,  # type: ignore
+            size=len(content),
+            **kwds
+        )
+
+    @classmethod
+    async def from_file(
+            cls,
+            path: Union[str, os.PathLike],
+            *,
+            mime: Optional[str] = None,
+            name: Optional[str] = None,
+            ref: Optional[str] = None,
+            **kwds: Any
+    ) -> Self:
+        mime = mime or mimetypes.guess_type(path)[0]
+        async with aio_open(path, "rb") as f:
+            return cls.from_bytes(
+                await f.read(),
+                mime=mime, name=name or os.path.basename(path),
+                ref=ref,
+                **kwds
+            )
+
+    async def save(self, path: Union[str, os.PathLike, None] = None) -> None:
+        path = path or self.name
+        if path is None:
+            raise ValueError("no path provided")
+        value = self.raw_val
+        if value is None:
+            raise ValueError("no vaild file content")
+        async with aio_open(path, "wb") as f:
+            await f.write(value)
+
+    @property
+    def raw_val(self) -> Optional[bytes]:
+        if not self.val:
+            return
+        return b64decode(self.val)
+
+    @raw_val.setter
+    def raw_val(self, value: Optional[bytes]) -> None:
+        if value is None:
+            self.val = None
+            return
+        self.val = b64encode(value).decode("ascii")
+
     @model_validator(mode="before")
     def convert_raw(cls, data: Any) -> Any:
         if isinstance(data, MutableMapping):
@@ -364,7 +429,7 @@ class _Attachment(_ExtensionText):
 
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(exclude={"text", "type"}, exclude_none=True)
-    
+
     def __repr__(self) -> str:
         name = self.__class__.__name__
         if self.ref:
@@ -389,6 +454,38 @@ class Image(_Attachment):
     mime: str = "image/png"
     width: int
     height: int
+
+    @classmethod
+    async def from_file(
+            cls,
+            path: Union[str, os.PathLike],
+            *,
+            mime: Optional[str] = None,
+            name: Optional[str] = None,
+            ref: Optional[str] = None,
+            width: Optional[int] = None,
+            height: Optional[int] = None,
+            **kwds: Any
+    ) -> Self:
+        if width and height:
+            return await super().from_file(
+                path, mime=mime, name=name, ref=ref,
+                **kwds
+            )
+        from io import BytesIO
+
+        from PIL.Image import open as img_open
+        mime = mime or mimetypes.guess_type(path)[0]
+        async with aio_open(path, "rb") as f:
+            content = await f.read()
+        img = img_open(BytesIO(content))
+        return cls.from_bytes(
+            content,
+            mime=mime, name=name or os.path.basename(path),
+            ref=ref,
+            width=img.width, height=img.height,
+            **kwds
+        )
 
 
 class Audio(_Attachment):
