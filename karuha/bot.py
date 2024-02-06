@@ -1,4 +1,5 @@
 import asyncio
+from base64 import b64decode
 import platform
 import sys
 from asyncio.queues import Queue
@@ -6,13 +7,14 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
-                    List, Literal, Optional, Union, overload)
+                    List, Literal, Optional, Tuple, Union, overload)
 from weakref import WeakSet, ref
 
 import grpc
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
 from tinode_grpc import pb
+from aiofiles import open as aio_open
 from typing_extensions import Self, deprecated
 
 from .config import Bot as BotConfig
@@ -158,15 +160,26 @@ class Bot(object):
         :rtype: str
         """
         tid = self._get_tid()
+        schema, secret = self.config.schema_, self.config.secret
+        try:
+            if schema == "cookie":
+                schema, secret = await read_auth_cookie(self.config.secret)
+            else:
+                secret = secret.encode("ascii")
+        except Exception:  # pragma: no cover
+            self.logger.error("fail to read auth secret")
+            self.cancel()
+            return tid
         ctrl = await self.send_message(
             tid,
             login=pb.ClientLogin(
                 id=tid,
-                scheme=self.config.schema_,
-                secret=self.config.secret.encode("ascii")
+                scheme=schema,
+                secret=secret
             )
         )
         assert isinstance(ctrl, pb.ServerCtrl)
+        # Check for 409 "already authenticated".
         if ctrl.code == 409:  # pragma: no cover
             return tid
         elif ctrl.code < 200 or ctrl.code >= 400:
@@ -524,6 +537,21 @@ def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallab
         request_serializer=pb.ClientMsg.SerializeToString,
         response_deserializer=pb.ServerMsg.FromString
     )
+
+
+async def read_auth_cookie(cookie_file_name) -> Union[Tuple[str, bytes], Tuple[None, None]]:
+    """Read authentication token from a file"""
+    async with aio_open(cookie_file_name, 'r') as cookie:
+        params = json.loads(await cookie.read())
+    schema = params.get("schema")
+    secret = params.get('secret')
+    if schema is None or secret is None:
+        return None, None
+    if schema == 'token':
+        secret = b64decode(secret)
+    else:
+        secret = secret.encode('utf-8')
+    return schema, secret
 
 
 from .exception import KaruhaBotError

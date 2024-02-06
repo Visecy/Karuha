@@ -88,7 +88,7 @@ async def async_run() -> None:
 def run() -> None:
     try:
         asyncio.run(async_run())
-    except KeyboardInterrupt:  # pragma: no cover
+    except (KeyboardInterrupt, asyncio.CancelledError):  # pragma: no cover
         pass
 
 
