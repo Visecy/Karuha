@@ -7,7 +7,7 @@
 
 一个简单的Tinode聊天机器人框架
 
-语言: [English](README.md)/中文
+**语言: [English](README.md)/中文**
 
 库的名称`Karuha`来自游戏星空列车与白的旅行中的角色 狩叶·朗姆柯妮（カルハ・ラムコネ）
 

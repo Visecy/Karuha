@@ -7,7 +7,7 @@
 
 A simple Tinode chatbot framework.
 
-Language: English/[中文](README_cn.md)
+**Language: English/[中文](README_cn.md)**
 
 The name of the library `Karuha` comes from the character Karuha Ramukone (カルハ・ラムコネ) in the game 星空鉄道とシロの旅.
 

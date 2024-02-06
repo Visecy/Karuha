@@ -29,6 +29,7 @@ _quotes_lock = asyncio.Lock()
 
 
 async def get_quotes():
+    """lazy load quotes"""
     global _quotes
     if _quotes is not None:
         return _quotes
@@ -38,6 +39,7 @@ async def get_quotes():
         async with aio_open(_quotes_path, "r") as f:
             content = await f.read()
         _quotes = content.splitlines()
+        print(f"Loaded {len(_quotes)} quotes")
     return _quotes
 
 
@@ -58,7 +60,8 @@ if __name__ == "__main__":
     parser.add_argument('--listen', default=None, help='address to listen on for incoming Plugin API calls')
     parser.add_argument('--login-basic', help='login using basic authentication username:password')
     parser.add_argument('--login-token', help='login using token authentication')
-    parser.add_argument('--quotes', default=_quotes_path, help='file with messages for the chatbot to use, one message per line')
+    parser.add_argument('--login-cookie', default='.tn-cookie', help='read credentials from the provided cookie file')
+    parser.add_argument('--quotes', default=_quotes_path, type=Path, help='file with messages for the chatbot to use, one message per line')
     
     namespace = parser.parse_args()
     if namespace.login_basic:
@@ -67,6 +70,9 @@ if __name__ == "__main__":
     elif namespace.login_token:
         login_schema = "token"
         login_secret = namespace.login_token
+    elif namespace.login_cookie:
+        login_schema = "cookie"
+        login_secret = namespace.login_cookie
     else:
         raise ValueError("No login method specified")
     
@@ -86,5 +92,5 @@ if __name__ == "__main__":
             )
         ]
     )
-    _quotes_path = Path(namespace.quotes)
+    _quotes_path = namespace.quotes
     karuha.run()
