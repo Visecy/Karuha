@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import IntFlag
 from functools import partial
 from inspect import Signature, Parameter, isclass
-from typing import Any, Callable, Iterable, NamedTuple, Optional, Tuple, Type, Union, get_args
+from typing import Any, Callable, Iterable, List, NamedTuple, Optional, Tuple, Type, Union, get_args
 from typing_extensions import Self
 
 from ..utils.dispatcher import AbstractDispatcher
@@ -12,11 +12,11 @@ from ..bot import Bot
 from .session import MessageSession
 
 
-class AbstractCommandNameParser(ABC):
+class AbstractCommandParser(ABC):
     __slots__ = []
 
     @abstractmethod
-    def parse(self, message: Message) -> Optional[str]:
+    def parse(self, message: Message) -> Optional[Tuple[str, List[Union[str, BaseText]]]]:
         raise NotImplementedError
     
     def precheck(self, message: Message) -> bool:  # pragma: no cover
@@ -26,25 +26,26 @@ class AbstractCommandNameParser(ABC):
         return True
 
 
-class SimpleCommandNameParser(AbstractCommandNameParser):
+class SimpleCommandParser(AbstractCommandParser):
     __slots__ = ["prefixs"]
 
     def __init__(self, prefix: Iterable[str]) -> None:
         self.prefixs = tuple(prefix)
     
-    def parse(self, message: Message) -> Optional[str]:
-        if isinstance(message.raw_text, Drafty):
-            text = message.raw_text.txt
-        else:
-            text = message.raw_text
-        text = text.split(None, 1)
+    def parse(self, message: Message) -> Optional[Tuple[str, Union[List[str], List[BaseText]]]]:
+        text = message.text
+        text = text.split()
         if not text:
             return
         
-        name = text[0]
+        name = str(text[0])
         for prefix in self.prefixs:
             if name.startswith(prefix):
-                return name[len(prefix):]
+                name = name[len(prefix):]
+                break
+        else:
+            return
+        return name, text[1:]
     
     def precheck(self, message: Message) -> bool:
         for prefix in self.prefixs:

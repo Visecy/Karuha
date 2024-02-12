@@ -6,8 +6,8 @@ from asyncio.queues import Queue
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from enum import IntEnum
-from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
-                    List, Literal, Optional, Tuple, Union, overload)
+from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator, Iterable,
+                    List, Literal, Mapping, Optional, Tuple, Union, overload)
 from weakref import WeakSet, ref
 
 import grpc
@@ -48,9 +48,11 @@ class Bot(object):
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
 
+    initialize_event_callback: Callable[[Self], Any]
+    finalize_event_callback: Callable[[Self], Coroutine]
     server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
     client_event_callbacks: Dict[str, List[Callable[[Self, Message, Optional[Message]], Any]]] = defaultdict(list)
-    
+
     @overload
     def __init__(
         self,
@@ -117,15 +119,15 @@ class Bot(object):
         self._tid_counter = 100
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
         self._loop_task_ref = lambda: None
-    
-    async def hello(self, /, lang: str = "EN") -> str:
+
+    async def hello(self, /, lang: str = "EN") -> Tuple[str, Dict[str, Any]]:
         """
         send a hello message to the server and get the server id
         
         :param lang: the language of the chatbot
         :type lang: str
-        :return: tid
-        :rtype: str
+        :return: tid and server info
+        :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
         user_agent = ' '.join((
@@ -144,20 +146,21 @@ class Bot(object):
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
-            self.logger.error(f"fail to init chatbot: {ctrl.text}")
-            return tid
+            err_text = f"fail to init chatbot: {ctrl.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self)
         build = ctrl.params["build"].decode()
         ver = ctrl.params["ver"].decode()
         if build:
             self.logger.info(f"server: {build} {ver}")
-        return tid
-    
-    async def login(self) -> str:
+        return tid, decode_mapping(ctrl.params)
+
+    async def login(self) -> Tuple[str, Dict[str, Any]]:
         """
         login to the server and get the user id
         
-        :return: tid
-        :rtype: str
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
         schema, secret = self.config.schema_, self.config.secret
@@ -166,10 +169,11 @@ class Bot(object):
                 schema, secret = await read_auth_cookie(self.config.secret)
             else:
                 secret = secret.encode("ascii")
-        except Exception:  # pragma: no cover
-            self.logger.error("fail to read auth secret")
+        except Exception as e:  # pragma: no cover
+            err_text = f"fail to read auth secret: {e}"
+            self.logger.error(err_text)
             self.cancel()
-            return tid
+            raise KaruhaBotError(err_text, bot=self) from e
         ctrl = await self.send_message(
             tid,
             login=pb.ClientLogin(
@@ -181,76 +185,85 @@ class Bot(object):
         assert isinstance(ctrl, pb.ServerCtrl)
         # Check for 409 "already authenticated".
         if ctrl.code == 409:  # pragma: no cover
-            return tid
+            return tid, decode_mapping(ctrl.params)
         elif ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to login: {ctrl.text}")
+            err_text = f"fail to login: {ctrl.text}"
+            self.logger.error(err_text)
             self.cancel()
-            return tid
-        
+            raise KaruhaBotError(err_text, bot=self)
+
         self.logger.info("login successful")
 
         params = ctrl.params
         if not params:
-            return tid
+            return tid, {}
         if "user" in params:
             self.config.user = json.loads(params["user"].decode())
         if "token" in params:
             self.config.schema_ = "token"
             self.config.secret = json.loads(params["token"].decode())
-        return tid
-    
-    async def subscribe(self, /, topic: str, *, get_since: Optional[int] = None, limit: int = 24) -> str:
+        return tid, decode_mapping(params)
+
+    async def subscribe(
+        self,/, topic: str,
+        *, get: Optional[pb.GetQuery] = None,
+        get_since: Optional[int] = None, limit: int = 24
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         subscribe to a topic
         
         :param topic: topic to subscribe
         :type topic: str
+        :param get: get query
+        :type get: Optional[pb.GetQuery]
         :param get_since: get messages since this id
         :type get_since: int
         :param limit: number of messages to get
         :type limit: int
-        :return: tid
-        :rtype: str
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
         if get_since is not None:
-            query = pb.GetQuery(
+            if get is not None:
+                raise ValueError("get_since and get cannot be used at the same time")
+            get = pb.GetQuery(
                 data=pb.GetOpts(
                     since_id=get_since,
                     limit=limit
                 ),
                 what="data"
             )
-        else:
-            query = None
         ctrl = await self.send_message(
             tid,
             sub=pb.ClientSub(
                 id=tid,
                 topic=topic,
-                get_query=query
+                get_query=get
             )
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to subscribe topic {topic}: {ctrl.text}")
+            err_text = f"fail to subscribe topic {topic}: {ctrl.text}"
+            self.logger.error(err_text)
             if topic == "me":  # pragma: no cover
                 if ctrl.code == 502:
                     self.restart()
                 else:
                     self.cancel()
+            raise KaruhaBotError(err_text, bot=self)
         else:
             self.logger.info(f"subscribe topic {topic}")
-        return tid
-    
-    async def leave(self, /, topic: str) -> str:
+        return tid, decode_mapping(ctrl.params)
+
+    async def leave(self, /, topic: str) -> Tuple[str, Dict[str, Any]]:
         """
         leave a topic
 
         :param topic: topic to leave
         :type topic: str
-        :return: tid
-        :rtype: str
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
         ctrl = await self.send_message(
@@ -262,17 +275,19 @@ class Bot(object):
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to leave topic {topic}: {ctrl.text}")
-            if topic == "me":
+            err_text = f"fail to leave topic {topic}: {ctrl.text}"
+            self.logger.error(err_text)
+            if topic == "me":  # pragma: no cover
                 if ctrl.code == 502:
                     self.restart()
                 else:
                     self.cancel()
+            raise KaruhaBotError(err_text, bot=self)
         else:
             self.logger.info(f"leave topic {topic}")
-        return tid
-    
-    async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> str:
+        return tid, decode_mapping(ctrl.params)
+
+    async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]:
         """
         publish message to a topic
 
@@ -282,13 +297,13 @@ class Bot(object):
         :type text: Union[str, dict]
         :param head: message header
         :type head: Optional[Dict[str, Any]]
-        :return: tid or None
-        :rtype: str
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
         """
         if head is None:
             head = {}
         else:
-            head = {k: json.dumps(v).encode() for k, v in head.items()}
+            head = encode_mapping(head)
         if "auto" not in head:
             head["auto"] = b"true"
         tid = self._get_tid()
@@ -304,14 +319,96 @@ class Bot(object):
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
-            self.logger.error(f"fail to publish message to {topic}: {ctrl.text}")
-        return tid
-    
+            err_text = f"fail to publish message to {topic}: {ctrl.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self)
+        return tid, decode_mapping(ctrl.params)
+
+    @overload
+    async def get(
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["desc"]] = None,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+    ) -> Tuple[str, pb.ServerMeta]: ...
+
+    @overload
+    async def get(
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["sub"]] = None,
+        *,
+        sub: Optional[pb.GetOpts] = None,
+    ) -> Tuple[str, pb.ServerMeta]: ...
+
+    @overload
+    async def get(
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["data"]] = None,
+        *,
+        data: Optional[pb.GetOpts] = None,
+    ) -> Tuple[str, pb.ServerMeta]: ...
+
+    async def get(
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["desc", "sub", "data"]] = None,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+        sub: Optional[pb.GetOpts] = None,
+        data: Optional[pb.GetOpts] = None
+    ) -> Tuple[str, pb.ServerMeta]:
+        """
+        get data from a topic
+
+        NOTE: only one of `what` can be specified at a time
+
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get, defaults to None
+        :type what: Optional[Iterable[str]], optional
+        :param desc: topic description, defaults to None
+        :type desc: Optional[pb.GetOpts], optional
+        :param sub: subscription info, defaults to None
+        :type sub: Optional[pb.GetOpts], optional
+        :param data: topic data, defaults to None
+        :type data: Optional[pb.GetOpts], optional
+        :return: tid
+        :rtype: str
+        """
+        tid = self._get_tid()
+        meta = await self.send_message(
+            tid,
+            get=pb.ClientGet(
+                id=tid,
+                topic=topic,
+                query=pb.GetQuery(
+                    what=what,
+                    desc=desc,
+                    sub=sub,
+                    data=data
+                )
+            )
+        )
+        if isinstance(meta, pb.ServerCtrl):
+            err_text = f"fail to get topic {topic}: {meta.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self)
+        assert isinstance(meta, pb.ServerMeta)
+        return tid, meta
+
     async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
-    
+
     @overload
     async def send_message(self, wait_tid: str, /, **kwds: Message) -> Message: ...
+
     @overload
     async def send_message(self, wait_tid: None = None, /, **kwds: Message) -> None: ...
 
@@ -349,7 +446,7 @@ class Bot(object):
         server = server_config or self.server
         if server is None:
             raise ValueError("server not specified")
-        
+
         self._prepare_loop_task()
         while self.state == State.running:
             self.logger.info(f"starting the bot {self.name}")
@@ -370,7 +467,7 @@ class Bot(object):
                     self.state = State.running
                 else:
                     raise
-    
+
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
         """
@@ -397,7 +494,7 @@ class Bot(object):
             pass
         except asyncio.CancelledError:
             raise KaruhaBotError("the connection was closed", bot=self) from None
-    
+
     def cancel(self, cancel_loop: bool = True) -> None:
         if self.state in [State.stopped, State.disabled]:
             return
@@ -406,7 +503,7 @@ class Bot(object):
         loop_task = self._loop_task_ref()
         if cancel_loop and loop_task is not None:
             loop_task.cancel()
-    
+
     def restart(self) -> None:
         if self.state == State.disabled:
             raise KaruhaBotError(f"cannot restart disabled bot {self.name}", bot=self)
@@ -417,12 +514,12 @@ class Bot(object):
             loop_task.cancel()
         else:
             self.logger.warning(f"invalid restart operation for bot {self.name}, no valid running task found")
-    
+
     @classmethod
     def from_config(cls, name: Union[str, BotConfig], /, config: Optional[Config] = None) -> Self:
         if config is None:
             config = get_config()
-            
+
         if not isinstance(name, BotConfig):
             for i in config.bots:
                 if i.name == name:
@@ -439,7 +536,7 @@ class Bot(object):
     @property
     def name(self) -> str:
         return self.config.name
-    
+
     @property
     def uid(self) -> str:
         uid = self.config.user
@@ -475,7 +572,7 @@ class Bot(object):
         self.state = State.running
         self.queue = Queue()
         self._loop_task_ref = ref(asyncio.current_task())
-    
+
     def _get_channel(self, server_config: ServerConfig, /) -> grpc_aio.Channel:  # pragma: no cover
         host = server_config.host
         secure = server_config.ssl
@@ -486,10 +583,11 @@ class Bot(object):
         opts = (('grpc.ssl_target_name_override', ssl_host),) if ssl_host else None
         self.logger.info(f"connecting to secure server at {host} SNI={ssl_host or host}")
         return grpc_aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
-    
+
     @asynccontextmanager
     async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
         channel = self._get_channel(server_config)
+        self.initialize_event_callback(self)
         try:
             yield channel
         except:  # noqa: E722
@@ -498,24 +596,27 @@ class Bot(object):
                 self.cancel(cancel_loop=False)
             raise
         finally:
+            try:
+                await self.finalize_event_callback(self)
+            except Exception:
+                self.logger.exception("error while finalizing event callback", exc_info=True)
+            except asyncio.CancelledError:
+                pass
             # clean up for restarting
             while not self.queue.empty():
                 self.queue.get_nowait()
 
             for t in self._tasks:
                 t.cancel()
-    
+
     async def _message_generator(self) -> AsyncGenerator[pb.ClientMsg, None]:  # pragma: no cover
         while True:
             assert self.state == State.running
             msg: pb.ClientMsg = await self.queue.get()
             self.logger.debug(f"out: {msg}")
             yield msg
-    
+
     async def _loop(self, client: grpc_aio.StreamStreamCall) -> None:  # pragma: no cover
-        self._create_task(self.hello())
-        self._create_task(self.login())
-        
         message: pb.ServerMsg
         async for message in client:  # type: ignore
             self.logger.debug(f"in: {message}")
@@ -523,12 +624,20 @@ class Bot(object):
             for desc, msg in message.ListFields():
                 for e in self.server_event_callbacks[desc.name]:
                     e(self, msg)
-    
+
     def __repr__(self) -> str:
         state = self.state.name
         uid = self.config.user or ''
         host = self.server.host if self.server else 'unknown'
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
+
+
+def encode_mapping(data: Mapping[str, Any]) -> Dict[str, bytes]:
+    return {k: json.dumps(v).encode() for k, v in data.items()}
+
+
+def decode_mapping(data: Mapping[str, bytes]) -> Dict[str, Any]:
+    return {k: json.loads(v) for k, v in data.items()}
 
 
 def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:  # pragma: no cover

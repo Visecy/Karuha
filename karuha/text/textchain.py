@@ -1,5 +1,6 @@
 import mimetypes
 import os
+import operator as op
 from abc import abstractmethod
 from base64 import b64decode, b64encode
 from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal,
@@ -19,6 +20,15 @@ class BaseText(BaseModel):
     @abstractmethod
     def to_drafty(self) -> Drafty:
         raise NotImplementedError
+    
+    def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List["BaseText"]:
+        return [self]
+    
+    def startswith(self, /, prefix: str) -> bool:
+        return str(self).startswith(prefix)
+    
+    def endswith(self, /, suffix: str) -> bool:
+        return str(self).endswith(suffix)
     
     def __len__(self) -> int:
         return len(str(self))
@@ -76,6 +86,14 @@ class PlainText(_Text):
     def __init__(self, text: str) -> None:
         super().__init__(text=text)
     
+    def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
+        l = []
+        for p in self.text.split(sep, maxsplit):
+            t = self.model_copy()
+            t.text = p
+            l.append(t)
+        return l
+
     def __iadd__(self, other: Union[str, BaseText]) -> BaseText:
         if not isinstance(other, (str, PlainText)):
             return NotImplemented
@@ -110,6 +128,19 @@ class TextChain(BaseText, Mapping):
         for i in it:
             base += i.to_drafty()
         return base
+    
+    def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
+        maxsplit = op.index(maxsplit)
+        if maxsplit == 0:
+            return [self]
+        l = []
+        for i in self.contents:
+            l.extend(i.split(sep, maxsplit))
+        if maxsplit > 0 and len(l) > maxsplit + 1:
+            remain = TextChain(*l[maxsplit + 1:])
+            l = l[:maxsplit + 1]
+            l.append(remain)
+        return l
     
     def take(self) -> BaseText:
         if len(self.contents) == 1:
@@ -198,6 +229,12 @@ class _Container(BaseText):
         df = self.content.to_drafty()
         df.fmt.insert(0, DraftyFormat(at=0, len=len(df.txt), tp=self.type))
         return df
+    
+    @classmethod
+    def new(cls, text: Union[str, BaseText]) -> Self:
+        if isinstance(text, str):
+            text = PlainText(text)
+        return cls(content=text)  # type: ignore
     
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.content!r}>"
@@ -412,7 +449,7 @@ class _Attachment(_ExtensionText):
             return
         self.val = b64encode(value).decode("ascii")
 
-    @model_validator(mode="before")
+    @model_validator(mode="before")  # type: ignore
     def convert_raw(cls, data: Any) -> Any:
         if isinstance(data, MutableMapping):
             for k, v in tuple(data.items()):

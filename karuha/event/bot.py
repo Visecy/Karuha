@@ -9,10 +9,12 @@ from .. import bot
 from .base import Event
 from ..utils.proxy_propery import ProxyProperty
 
-try:
-    import ujson as json
-except ImportError:  # pragma: no cover
-    import json
+
+def ensure_text_len(text: str, length: int = 128) -> str:
+    if len(text) < length:
+        return text
+    tail_length = length // 4
+    return f"{text[:length-tail_length]} ... {text[-tail_length:]}"
 
 
 class BotEvent(Event):
@@ -23,6 +25,22 @@ class BotEvent(Event):
 
     def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
         return self.bot._create_task(handler(self))
+
+
+class BotInitEvent(BotEvent):
+    __slots__ = []
+
+    async def __default_handler__(self) -> None:
+        await self.bot.hello()
+        await self.bot.login()
+
+
+class BotFinishEvent(BotEvent):
+    __slots__ = []
+
+
+bot.Bot.initialize_event_callback = BotInitEvent.new
+bot.Bot.finalize_event_callback = BotFinishEvent.new_and_wait
 
 
 # Server Event Part
@@ -123,6 +141,11 @@ class CtrlEvent(ServerEvent, on_field="ctrl"):
     code: ProxyProperty[int] = ServerMessageProperty()
     text: ProxyProperty[str] = ServerMessageProperty()
     params: ProxyProperty[Mapping[str, bytes]] = ServerMessageProperty()
+    
+    async def __default_handler__(self) -> None:
+        tid = self.server_message.id
+        if tid in self.bot._wait_list:
+            self.bot._wait_list[tid].set_result(self.server_message)
 
 
 class MetaEvent(ServerEvent, on_field="meta"):
@@ -300,6 +323,17 @@ class PresEvent(ServerEvent, on_field="pres"):
     target_user_id: ProxyProperty[str] = ServerMessageProperty()
     actor_user_id: ProxyProperty[str] = ServerMessageProperty()
 
+    async def __default_handler__(self) -> None:
+        msg = self.server_message
+        if msg.topic != "me":
+            return
+        if msg.what == pb.ServerPres.ON:
+            await self.bot.subscribe(msg.src)
+        elif msg.what == pb.ServerPres.MSG:
+            await self.bot.subscribe(msg.src, get_since=msg.seq_id)
+        elif msg.what == pb.ServerPres.OFF:
+            await self.bot.leave(msg.src)
+
 
 class InfoEvent(ServerEvent, on_field="info"):
     """
@@ -393,6 +427,14 @@ class LoginEvent(ClientEvent, on_field="login"):
     scheme: ProxyProperty[str] = ClientMessageProperty()
     secret: ProxyProperty[bytes] = ClientMessageProperty()
 
+    async def __default_handler__(self) -> None:
+        await self.bot.subscribe(
+            "me",
+            get=pb.GetQuery(
+                what="sub desc tags cred"
+            )
+        )
+
 
 class PublishEvent(ClientEvent, on_field="pub"):
     """
@@ -464,6 +506,9 @@ class PublishEvent(ClientEvent, on_field="pub"):
     head: ProxyProperty[Mapping[str, bytes]] = ClientMessageProperty()
     content: ProxyProperty[bytes] = ClientMessageProperty()
     
+    async def __default_handler__(self) -> None:
+        self.bot.logger.info(f"({self.topic})<= {ensure_text_len(self.text)}")
+
     @property
     def text(self) -> str:
         return self.content.decode(errors="ignore")
@@ -472,7 +517,7 @@ class PublishEvent(ClientEvent, on_field="pub"):
     def seq_id(self) -> Optional[int]:
         if self.response_message is None:
             return
-        params = {k: json.loads(v) for k, v in self.response_message.params.items()}
+        params = bot.decode_mapping(self.response_message.params)
         return params.get("seq")
 
 

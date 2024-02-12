@@ -1,7 +1,6 @@
 from typing import Any, Callable, Type, TypeVar
 
 from .base import Event
-from . import handler
 
 
 T_Event = TypeVar("T_Event", bound=Event)
@@ -12,6 +11,9 @@ def on(event: Type[T_Event]) -> Callable[[Callable[[T_Event], Any]], Callable[[T
         event.add_handler(func)
         return func
     return wrapper
+
+
+on_event = on
 
 
 __all__ = [

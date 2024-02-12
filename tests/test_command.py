@@ -10,7 +10,7 @@ from karuha.command.collection import (add_sub_collection, get_collection, new_c
 from karuha.command.command import FunctionCommand, ParamFunctionCommand
 from karuha.command.parser import (BOT_PARAM, SESSION_PARAM,
                                    MetaParamDispatcher, ParamParser,
-                                   ParamParserFlag, SimpleCommandNameParser)
+                                   ParamParserFlag, SimpleCommandParser)
 from karuha.command.session import MessageSession
 from karuha.exception import KaruhaCommandError, KaruhaParserError
 
@@ -19,17 +19,20 @@ from .utils import bot_mock, new_test_message
 
 class TestCommand(TestCase):
     def test_name_parser(self) -> None:
-        simple_parser = SimpleCommandNameParser(["!"])
+        simple_parser = SimpleCommandParser(["!"])
         message0 = new_test_message(b"!test")
-        self.assertEqual(simple_parser.parse(message0), "test")
+        self.assertEqual(simple_parser.parse(message0), ("test", []))
         message1 = new_test_message(b"\"!test\"")
-        self.assertEqual(simple_parser.parse(message1), "test")
+        self.assertEqual(simple_parser.parse(message1), ("test", []))
         message2 = new_test_message(b"{\"txt\": \"test\"}")
         self.assertIsNone(simple_parser.parse(message2))
         message3 = new_test_message(b"\"!!test test test test\"")
-        self.assertEqual(simple_parser.parse(message3), "!test")
+        self.assertEqual(
+            simple_parser.parse(message3),
+            ("!test", [PlainText("test"), PlainText("test"), PlainText("test")])
+        )
         message4 = new_test_message(b"\"!\"")
-        self.assertEqual(simple_parser.parse(message4), '')
+        self.assertEqual(simple_parser.parse(message4), ('', []))
         message5 = new_test_message(b"\"\"")
         self.assertIsNone(simple_parser.parse(message5))
     
@@ -132,7 +135,7 @@ class TestCommand(TestCase):
         set_prefix('/', '#')
         c = new_collection()
         self.assertFalse(c.activated)
-        self.assertIsInstance(c.name_parser, SimpleCommandNameParser)
+        self.assertIsInstance(c.name_parser, SimpleCommandParser)
         self.assertEqual(c.name_parser.prefixs, ('/', '#'))  # type: ignore
         cd = get_collection()
         self.assertTrue(cd.activated)

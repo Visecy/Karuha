@@ -15,16 +15,16 @@ from .version import __version__
 from .config import get_config, load_config, init_config, save_config, Config
 from .config import Server as ServerConfig, Bot as BotConfig
 from .bot import Bot
+from .event import on, on_event, Event
 from .exception import KaruhaException
-from .command import CommandCollection, AbstractCommand, AbstractCommandNameParser, BaseSession, MessageSession, get_collection, on_command
-from .event import on, Event
+from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, get_collection, on_command
 from .event.message import reset_message_lock
 from .text import Drafty, BaseText, PlainText, Message, TextChain
-from .plugin_server import init_server
 from .logger import logger
 
 
 _bot_cache: Dict[str, Bot] = {}
+_loop = None
 
 
 def get_bot(name: str = "chatbot") -> Bot:
@@ -48,9 +48,20 @@ def add_bot(bot: Bot) -> None:
         raise ValueError(f"bot {bot.name} has existed")
 
 
+def get_all_bots() -> List[Bot]:
+    return list(_bot_cache.values())
+
+
+def _get_running_loop() -> asyncio.AbstractEventLoop:
+    if _loop is None:
+        raise RuntimeError("no running loop")
+    return _loop
+
+
 async def async_run() -> None:
+    global _loop
     config = get_config()
-    loop = asyncio.get_running_loop()
+    _loop = asyncio.get_running_loop()
     reset_message_lock()
 
     for i in config.bots:
@@ -61,16 +72,17 @@ async def async_run() -> None:
         
     tasks: List[asyncio.Task] = []
     for bot in _bot_cache.values():
-        tasks.append(loop.create_task(bot.async_run(config.server)))
+        logger.debug(f"run bot {bot.config}")
+        tasks.append(_loop.create_task(bot.async_run(config.server)))
     
     if config.server.enable_plugin:  # pragma: no cover
         server = init_server(config.server.listen)
-        loop.call_soon(server.start)
+        _loop.call_soon(server.start)
     else:
         server = None
     
     if config.log_level == "DEBUG":
-        loop.set_debug(True)
+        _loop.set_debug(True)
         
     if not tasks:  # pragma: no cover
         logger.warning("no bot found")
@@ -83,6 +95,7 @@ async def async_run() -> None:
         if server is not None:  # pragma: no cover
             logger.info("stop plugin server")
             server.stop(None)
+        _loop = None
     
 
 def run() -> None:
@@ -90,6 +103,9 @@ def run() -> None:
         asyncio.run(async_run())
     except (KeyboardInterrupt, asyncio.CancelledError):  # pragma: no cover
         pass
+
+
+from .plugin_server import init_server
 
 
 __all__ = [
@@ -119,12 +135,13 @@ __all__ = [
     # command
     "CommandCollection",
     "AbstractCommand",
-    "AbstractCommandNameParser",
+    "AbstractCommandParser",
     "get_collection",
     "BaseSession",
     "MessageSession",
     # decorator
     "on",
+    "on_event",
     "on_command",
     # exception
     "KaruhaException"

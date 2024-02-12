@@ -1,14 +1,17 @@
 import asyncio
+from cgitb import text
+import sys
 from abc import ABC, abstractmethod
 from inspect import signature
-import sys
-from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar
-from typing_extensions import Self, ParamSpec
+from typing import Any, Callable, Generic, Iterable, List, Optional, Tuple, TypeVar, Union
 from venv import logger
 
-from ..exception import KaruhaCommandCanceledError, KaruhaCommandError
+from typing_extensions import ParamSpec, Self
+
+from ..text.textchain import BaseText
 
 from ..event.message import Message
+from ..exception import KaruhaCommandCanceledError, KaruhaCommandError
 from .parser import ParamParser, ParamParserFlag
 
 
@@ -31,7 +34,7 @@ class AbstractCommand(ABC):
         return self.__name__
     
     @abstractmethod
-    async def call_command(self, collection: "CommandCollection", message: Message) -> Any:
+    async def call_command(self, message: "CommandMessage") -> Any:
         pass
 
 
@@ -45,9 +48,9 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
     def parse_message(self, message: Message) -> Tuple[tuple, dict]:  # pragma: no cover
         return (self, message), {}
     
-    async def call_command(self, collection: "CommandCollection", message: Message) -> Any:
+    async def call_command(self, message: "CommandMessage") -> Any:
         logger.debug(f"preparing command {self.name}")
-        prepare_event = CommandPrepareEvent(collection, self, message)
+        prepare_event = CommandPrepareEvent(message.collection, self, message)
         try:
             await prepare_event.trigger()
         except KaruhaCommandCanceledError:
@@ -59,12 +62,12 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             if asyncio.iscoroutine(result):
                 result = await result
         except Exception as e:  # pragma: no cover
-            CommandFailEvent.new(collection, self, sys.exc_info())  # type: ignore
+            CommandFailEvent.new(message.collection, self, sys.exc_info())  # type: ignore
             logger.error(f"run command {self.name} failed", exc_info=True)
             raise KaruhaCommandError(f"run command {self.name} failed", name=self.name, command=self) from e
         else:
             logger.info(f"command {self.name} complete")
-            CommandCompleteEvent.new(collection, self, result)
+            CommandCompleteEvent.new(message.collection, self, result)
         return result
     
     def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:
@@ -104,5 +107,38 @@ class ParamFunctionCommand(FunctionCommand[P, R]):
         return cls(name, func, parser, alias=alias)
 
 
+class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
+    name: str
+    argv: Tuple[Union[str, BaseText], ...]
+    command: AbstractCommand
+    collection: "CommandCollection"
+
+    @classmethod
+    def from_message(
+            cls,
+            message: Message,
+            /,
+            command: AbstractCommand,
+            collection: "CommandCollection",
+            name: str,
+            argv: Iterable[Union[str, BaseText]]
+    ) -> Self:
+        return cls(
+            bot=message.bot,
+            topic=message.topic,
+            user_id=message.user_id,
+            seq_id=message.seq_id,
+            head=message.head,
+            content=message.content,
+            raw_text=message.raw_text,
+            text=message.text,
+            command=command,
+            collection=collection,
+            name=name,
+            argv=tuple(argv)
+        )
+
+
+from ..event.command import (CommandCompleteEvent, CommandFailEvent,
+                             CommandPrepareEvent)
 from .collection import CommandCollection
-from ..event.command import CommandPrepareEvent, CommandCompleteEvent, CommandFailEvent

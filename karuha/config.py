@@ -19,6 +19,7 @@ class Bot(BaseModel):
     schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
     secret: str
     user: Optional[str] = None
+    auto_subscribe: bool = False
 
 
 class Config(BaseModel):
