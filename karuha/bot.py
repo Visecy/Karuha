@@ -1,8 +1,8 @@
 import asyncio
-from base64 import b64decode
 import platform
 import sys
 from asyncio.queues import Queue
+from base64 import b64decode
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from enum import IntEnum
@@ -11,10 +11,10 @@ from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator, I
 from weakref import WeakSet, ref
 
 import grpc
+from aiofiles import open as aio_open
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
 from tinode_grpc import pb
-from aiofiles import open as aio_open
 from typing_extensions import Self, deprecated
 
 from .config import Bot as BotConfig
@@ -148,7 +148,7 @@ class Bot(object):
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
             err_text = f"fail to init chatbot: {ctrl.text}"
             self.logger.error(err_text)
-            raise KaruhaBotError(err_text, bot=self)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         build = ctrl.params["build"].decode()
         ver = ctrl.params["ver"].decode()
         if build:
@@ -190,7 +190,7 @@ class Bot(object):
             err_text = f"fail to login: {ctrl.text}"
             self.logger.error(err_text)
             self.cancel()
-            raise KaruhaBotError(err_text, bot=self)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
 
         self.logger.info("login successful")
 
@@ -205,9 +205,11 @@ class Bot(object):
         return tid, decode_mapping(params)
 
     async def subscribe(
-        self,/, topic: str,
+        self, /, topic: str,
         *, get: Optional[pb.GetQuery] = None,
-        get_since: Optional[int] = None, limit: int = 24
+        get_since: Optional[int] = None,
+        limit: int = 24,
+        extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         subscribe to a topic
@@ -220,6 +222,8 @@ class Bot(object):
         :type get_since: int
         :param limit: number of messages to get
         :type limit: int
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
         :return: tid and params
         :rtype: Tuple[str, Dict[str, Any]]
         """
@@ -240,7 +244,8 @@ class Bot(object):
                 id=tid,
                 topic=topic,
                 get_query=get
-            )
+            ),
+            extra=extra
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
@@ -251,17 +256,19 @@ class Bot(object):
                     self.restart()
                 else:
                     self.cancel()
-            raise KaruhaBotError(err_text, bot=self)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         else:
             self.logger.info(f"subscribe topic {topic}")
         return tid, decode_mapping(ctrl.params)
 
-    async def leave(self, /, topic: str) -> Tuple[str, Dict[str, Any]]:
+    async def leave(self, /, topic: str, *, extra: Optional[pb.ClientExtra] = None) -> Tuple[str, Dict[str, Any]]:
         """
         leave a topic
 
         :param topic: topic to leave
         :type topic: str
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
         :return: tid and params
         :rtype: Tuple[str, Dict[str, Any]]
         """
@@ -271,7 +278,8 @@ class Bot(object):
             leave=pb.ClientLeave(
                 id=tid,
                 topic=topic
-            )
+            ),
+            extra=extra
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
@@ -282,12 +290,20 @@ class Bot(object):
                     self.restart()
                 else:
                     self.cancel()
-            raise KaruhaBotError(err_text, bot=self)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         else:
             self.logger.info(f"leave topic {topic}")
         return tid, decode_mapping(ctrl.params)
 
-    async def publish(self, /, topic: str, text: Union[str, dict], *, head: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]:
+    async def publish(
+            self,
+            /,
+            topic: str,
+            text: Union[str, dict],
+            *,
+            head: Optional[Dict[str, Any]] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         publish message to a topic
 
@@ -297,6 +313,8 @@ class Bot(object):
         :type text: Union[str, dict]
         :param head: message header
         :type head: Optional[Dict[str, Any]]
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
         :return: tid and params
         :rtype: Tuple[str, Dict[str, Any]]
         """
@@ -315,55 +333,80 @@ class Bot(object):
                 no_echo=True,
                 head=head,
                 content=json.dumps(text).encode()
-            )
+            ),
+            extra=extra
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
             err_text = f"fail to publish message to {topic}: {ctrl.text}"
             self.logger.error(err_text)
-            raise KaruhaBotError(err_text, bot=self)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         return tid, decode_mapping(ctrl.params)
 
     @overload
     async def get(
-        self,
-        /,
-        topic: str,
-        what: Optional[Literal["desc"]] = None,
-        *,
-        desc: Optional[pb.GetOpts] = None,
-    ) -> Tuple[str, pb.ServerMeta]: ...
+            self,
+            /,
+            topic: str,
+            what: Optional[Literal["desc"]] = None,
+            *,
+            desc: Optional[pb.GetOpts] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-        self,
-        /,
-        topic: str,
-        what: Optional[Literal["sub"]] = None,
-        *,
-        sub: Optional[pb.GetOpts] = None,
-    ) -> Tuple[str, pb.ServerMeta]: ...
+            self,
+            /,
+            topic: str,
+            what: Optional[Literal["sub"]] = None,
+            *,
+            sub: Optional[pb.GetOpts] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-        self,
-        /,
-        topic: str,
-        what: Optional[Literal["data"]] = None,
-        *,
-        data: Optional[pb.GetOpts] = None,
-    ) -> Tuple[str, pb.ServerMeta]: ...
+            self,
+            /,
+            topic: str,
+            what: Optional[Literal["data"]] = None,
+            *,
+            data: Optional[pb.GetOpts] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+
+    @overload
+    async def get(
+            self,
+            /,
+            topic: str,
+            what: Literal["tags"],
+            *,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+
+    @overload
+    async def get(
+            self,
+            /,
+            topic: str,
+            what: Literal["cred"],
+            *,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     async def get(
-        self,
-        /,
-        topic: str,
-        what: Optional[Literal["desc", "sub", "data"]] = None,
-        *,
-        desc: Optional[pb.GetOpts] = None,
-        sub: Optional[pb.GetOpts] = None,
-        data: Optional[pb.GetOpts] = None
-    ) -> Tuple[str, pb.ServerMeta]:
+            self,
+            /,
+            topic: str,
+            what: Optional[Literal["desc", "sub", "data", "tags", "cred"]] = None,
+            *,
+            desc: Optional[pb.GetOpts] = None,
+            sub: Optional[pb.GetOpts] = None,
+            data: Optional[pb.GetOpts] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
         get data from a topic
 
@@ -371,7 +414,7 @@ class Bot(object):
 
         :param topic: topic to get
         :type topic: str
-        :param what: fields to get, defaults to None
+        :param what: fields to get
         :type what: Optional[Iterable[str]], optional
         :param desc: topic description, defaults to None
         :type desc: Optional[pb.GetOpts], optional
@@ -379,10 +422,24 @@ class Bot(object):
         :type sub: Optional[pb.GetOpts], optional
         :param data: topic data, defaults to None
         :type data: Optional[pb.GetOpts], optional
-        :return: tid
-        :rtype: str
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra], optional
+        :return: tid and meta
+        :rtype: Tuple[str, Optional[pb.ServerMeta]]
         """
         tid = self._get_tid()
+        if what is None:
+            if desc is not None:
+                assert sub is None and data is None
+                what = "desc"
+            elif sub is not None:
+                assert desc is None and data is None
+                what = "sub"
+            elif data is not None:
+                assert desc is None and sub is None
+                what = "data"
+            else:
+                raise ValueError("what must be specified")
         meta = await self.send_message(
             tid,
             get=pb.ClientGet(
@@ -394,32 +451,133 @@ class Bot(object):
                     sub=sub,
                     data=data
                 )
-            )
+            ),
+            extra=extra
         )
-        if isinstance(meta, pb.ServerCtrl):
+        if isinstance(meta, pb.ServerCtrl):  # pragma: no cover
+            if meta.code == 204:  # no content
+                return tid, None
             err_text = f"fail to get topic {topic}: {meta.text}"
             self.logger.error(err_text)
-            raise KaruhaBotError(err_text, bot=self)
+            raise KaruhaBotError(err_text, bot=self, code=meta.code)
         assert isinstance(meta, pb.ServerMeta)
         return tid, meta
+
+    async def get_query(
+        self,
+        /,
+        topic: str,
+        what: str,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+        sub: Optional[pb.GetOpts] = None,
+        data: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, None]:
+        """
+        get data from a topic
+
+        NOTE: different from `get` method, multiple fields can be specified at a time
+
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get
+        :type what: str
+        :param desc: topic description, defaults to None
+        :type desc: Optional[pb.GetOpts], optional
+        :param sub: subscription info, defaults to None
+        :type sub: Optional[pb.GetOpts], optional
+        :param data: topic data, defaults to None
+        :type data: Optional[pb.GetOpts], optional
+        :return: tid
+        :rtype: Tuple[str, None]
+        """
+        tid = self._get_tid()
+        await self.send_message(
+            get=pb.ClientGet(
+                id=tid,
+                topic=topic,
+                query=pb.GetQuery(
+                    what=what,
+                    desc=desc,
+                    sub=sub,
+                    data=data
+                )
+            ),
+            extra=extra
+        )
+        return tid, None
+    
+    async def set(
+            self,
+            /,
+            topic: str,
+            *,
+            desc: Optional[pb.SetDesc] = None,
+            sub: Optional[pb.SetSub] = None,
+            tags: Optional[Iterable[str]] = None,
+            cred: Optional[pb.ClientCred] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        set data to a topic
+
+        :param topic: topic to set
+        :type topic: str
+        :param desc: topic description, defaults to None
+        :type desc: Optional[pb.SetDesc], optional
+        :param sub: subscription info, defaults to None
+        :type sub: Optional[pb.SetSub], optional
+        :param tags: topic tags, defaults to None
+        :type tags: Optional[Iterable[str]], optional
+        :param cred: topic credential, defaults to None
+        :type cred: Optional[pb.ClientCred], optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: fail to set topic
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
+        tid = self._get_tid()
+        ctrl = await self.send_message(
+            tid,
+            set=pb.ClientSet(
+                id=tid,
+                topic=topic,
+                query=pb.SetQuery(
+                    desc=desc,
+                    sub=sub,
+                    tags=tags,
+                    cred=cred
+                )
+            ),
+            extra=extra
+        )
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
+            err_text = f"fail to set topic {topic}: {ctrl.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
+        return tid, decode_mapping(ctrl.params)
 
     async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
     @overload
-    async def send_message(self, wait_tid: str, /, **kwds: Message) -> Message: ...
+    async def send_message(self, wait_tid: str, /, **kwds: Optional[Message]) -> Message: ...
 
     @overload
-    async def send_message(self, wait_tid: None = None, /, **kwds: Message) -> None: ...
+    async def send_message(self, wait_tid: None = None, /, **kwds: Optional[Message]) -> None: ...
 
-    async def send_message(self, wait_tid: Optional[str] = None, /, **kwds: Message) -> Optional[Message]:
-        """set a message to Tinode server
+    async def send_message(self, wait_tid: Optional[str] = None, /, **kwds: Optional[Message]) -> Optional[Message]:
+        """set messages to Tinode server
 
         :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
         :type wait_tid: Optional[str], optional
         :return: message which has the same tid
         :rtype: Optional[Message]
         """
+
         if self.state != State.running:
             raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds)  # type: ignore
@@ -431,6 +589,8 @@ class Bot(object):
                 await self.queue.put(client_msg)
                 ret = await future
         for k, v in kwds.items():
+            if v is None:
+                continue
             for cb in self.client_event_callbacks[k]:
                 cb(self, v, ret)
         return ret
@@ -450,23 +610,11 @@ class Bot(object):
         self._prepare_loop_task()
         while self.state == State.running:
             self.logger.info(f"starting the bot {self.name}")
-            try:
-                async with self._run_context(server) as channel:
-                    stream = get_stream(channel)  # type: ignore
-                    msg_gen = self._message_generator()
-                    client = stream(msg_gen)
-                    await self._loop(client)
-            except grpc.RpcError:
-                self.logger.error(f"disconnected from {server.host}, retrying...", exc_info=sys.exc_info())
-                await asyncio.sleep(0.5)
-            except KeyboardInterrupt:
-                break
-            except asyncio.CancelledError:
-                if self.state == State.restarting:
-                    # uncancel from Bot.restart()
-                    self.state = State.running
-                else:
-                    raise
+            async with self._run_context(server) as channel:
+                stream = get_stream(channel)  # type: ignore
+                msg_gen = self._message_generator()
+                client = stream(msg_gen)
+                await self._loop(client)
 
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
@@ -590,18 +738,28 @@ class Bot(object):
         self.initialize_event_callback(self)
         try:
             yield channel
-        except:  # noqa: E722
-            await channel.close()
-            if self.state != State.restarting:
+        except grpc.RpcError:
+            self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
+            await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            if self.state == State.restarting:
+                # uncancel from Bot.restart()
+                self.state = State.running
+            else:
                 self.cancel(cancel_loop=False)
+                raise
+        except:  # noqa: E722
+            self.cancel(cancel_loop=False)
             raise
         finally:
             try:
+                await channel.close()
                 await self.finalize_event_callback(self)
             except Exception:
                 self.logger.exception("error while finalizing event callback", exc_info=True)
             except asyncio.CancelledError:
                 pass
+            
             # clean up for restarting
             while not self.queue.empty():
                 self.queue.get_nowait()

@@ -87,12 +87,12 @@ class PlainText(_Text):
         super().__init__(text=text)
     
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
-        l = []
+        result = []
         for p in self.text.split(sep, maxsplit):
             t = self.model_copy()
             t.text = p
-            l.append(t)
-        return l
+            result.append(t)
+        return result
 
     def __iadd__(self, other: Union[str, BaseText]) -> BaseText:
         if not isinstance(other, (str, PlainText)):
@@ -133,14 +133,14 @@ class TextChain(BaseText, Mapping):
         maxsplit = op.index(maxsplit)
         if maxsplit == 0:
             return [self]
-        l = []
+        result = []
         for i in self.contents:
-            l.extend(i.split(sep, maxsplit))
-        if maxsplit > 0 and len(l) > maxsplit + 1:
-            remain = TextChain(*l[maxsplit + 1:])
-            l = l[:maxsplit + 1]
-            l.append(remain)
-        return l
+            result.extend(i.split(sep, maxsplit))
+        if maxsplit > 0 and len(result) > maxsplit + 1:
+            remain = TextChain(*result[maxsplit + 1:])
+            result = result[:maxsplit + 1]
+            result.append(remain)
+        return result
     
     def take(self) -> BaseText:
         if len(self.contents) == 1:

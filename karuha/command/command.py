@@ -1,22 +1,46 @@
 import asyncio
-from cgitb import text
 import sys
 from abc import ABC, abstractmethod
 from inspect import signature
-from typing import Any, Callable, Generic, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar, Union
 from venv import logger
 
 from typing_extensions import ParamSpec, Self
 
 from ..text.textchain import BaseText
-
 from ..event.message import Message
 from ..exception import KaruhaCommandCanceledError, KaruhaCommandError
-from .parser import ParamParser, ParamParserFlag
 
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
+    name: str
+    argv: Tuple[Union[str, BaseText], ...]
+    command: "AbstractCommand"
+    collection: "CommandCollection"
+
+    @classmethod
+    def from_message(
+            cls,
+            message: Message,
+            /,
+            command: "AbstractCommand",
+            collection: "CommandCollection",
+            name: str,
+            argv: Iterable[Union[str, BaseText]]
+    ) -> Self:
+        data = dict(message)
+        data["command"] = command
+        data["collection"] = collection
+        data["name"] = name
+        data["argv"] = tuple(argv)
+        return cls(**data)
+
+
+from .parser import ParamParser, ParamParserFlag
 
 
 class AbstractCommand(ABC):
@@ -87,7 +111,7 @@ class ParamFunctionCommand(FunctionCommand[P, R]):
         super().__init__(name, func, alias)
         self.parser = parser
     
-    def parse_message(self, message: Message) -> Tuple[tuple, dict]:
+    def parse_message(self, message: "CommandMessage") -> Tuple[tuple, dict]:
         return self.parser.parse(message)
     
     @classmethod
@@ -105,38 +129,6 @@ class ParamFunctionCommand(FunctionCommand[P, R]):
         sig = signature(func)
         parser = ParamParser.from_signature(sig, flags=flags)
         return cls(name, func, parser, alias=alias)
-
-
-class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
-    name: str
-    argv: Tuple[Union[str, BaseText], ...]
-    command: AbstractCommand
-    collection: "CommandCollection"
-
-    @classmethod
-    def from_message(
-            cls,
-            message: Message,
-            /,
-            command: AbstractCommand,
-            collection: "CommandCollection",
-            name: str,
-            argv: Iterable[Union[str, BaseText]]
-    ) -> Self:
-        return cls(
-            bot=message.bot,
-            topic=message.topic,
-            user_id=message.user_id,
-            seq_id=message.seq_id,
-            head=message.head,
-            content=message.content,
-            raw_text=message.raw_text,
-            text=message.text,
-            command=command,
-            collection=collection,
-            name=name,
-            argv=tuple(argv)
-        )
 
 
 from ..event.command import (CommandCompleteEvent, CommandFailEvent,

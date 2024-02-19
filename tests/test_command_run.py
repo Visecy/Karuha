@@ -1,4 +1,3 @@
-
 from tinode_grpc import pb
 
 from karuha.command import MessageSession, get_collection, on_command, set_collection

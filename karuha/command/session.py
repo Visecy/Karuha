@@ -40,7 +40,6 @@ class BaseSession(object):
             timeout
         )
         return params.get("seq")
-        
     
     send_text = send
 

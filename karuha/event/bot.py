@@ -333,6 +333,8 @@ class PresEvent(ServerEvent, on_field="pres"):
             await self.bot.subscribe(msg.src, get_since=msg.seq_id)
         elif msg.what == pb.ServerPres.OFF:
             await self.bot.leave(msg.src)
+        elif msg.what == pb.ServerPres.UPD:
+            await self.bot.get(msg.src, "desc")
 
 
 class InfoEvent(ServerEvent, on_field="info"):

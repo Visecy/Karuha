@@ -18,14 +18,13 @@ class TestBot(AsyncBotTestCase):
     def test_bot_init(self) -> None:
         self.assertEqual(
             self.bot.config,
-            BotConfig(name="test_bot", schema="basic", secret="123456")
+            BotConfig(name="test_bot", schema="basic", secret="123456", user="usr")
         )
         self.assertEqual(
             self.bot.server,
             None
         )
         self.assertTrue(self.bot.queue.empty())
-        self.assertFalse(self.bot._tasks)
         self.assertEqual(self.bot.state, State.running)
 
     async def test_server_message(self) -> None:

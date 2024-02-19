@@ -5,6 +5,8 @@ from typing import Awaitable, Callable, Coroutine, Union
 from tinode_grpc import pb
 from typing_extensions import Self
 
+from ..command.session import BaseSession
+
 from .. import get_all_bots, _get_running_loop
 from ..bot import Bot
 from ..logger import logger
@@ -55,7 +57,6 @@ class AccountEvent(PluginServerEvent):
 
     async def __default_handler__(self) -> None:
         action = self.action
-        logger.debug(f"account event {action}")
         if action == pb.Crud.CREATE:
             for i in get_all_bots():
                 if not i.config.auto_subscribe:
@@ -98,6 +99,9 @@ class AccountCreateEvent(BotEvent):
     def __init__(self, bot: Bot, message: pb.AccountEvent) -> None:
         super().__init__(bot)
         self.raw_message = message
+    
+    def get_session(self) -> BaseSession:
+        return BaseSession(self.bot, self.user_id)
 
 
 on_new_account = on(AccountCreateEvent)

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from enum import IntFlag
+from enum import IntFlag, auto
 from functools import partial
 from inspect import Signature, Parameter, isclass
 from typing import Any, Callable, Iterable, List, NamedTuple, Optional, Tuple, Type, Union, get_args
@@ -59,13 +59,16 @@ class SimpleCommandParser(AbstractCommandParser):
 
 class ParamParserFlag(IntFlag):
     NONE = 0
-    META = 1
-    MESSAGE_DATA = 2
-    SESSION = 4
-    BOT = 8
-    MESSAGE = 16
+    META = auto()
 
-    FULL = META | MESSAGE_DATA | SESSION | BOT | MESSAGE
+    MESSAGE_DATA = auto()
+    COMMAND_DATA = auto()
+
+    SESSION = auto()
+    BOT = auto()
+    MESSAGE = auto()
+
+    FULL = META | MESSAGE_DATA | SESSION | BOT | MESSAGE | COMMAND_DATA
 
 
 class ParamDispatcher(AbstractDispatcher[Parameter]):
@@ -86,10 +89,10 @@ class ParamDispatcher(AbstractDispatcher[Parameter]):
     
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} flag={self.flag}>"
-    
 
-RawParamGetter = Callable[["MetaParamDispatcher", Message], Any]
-ParamGetter = Callable[[Message], Any]
+
+RawParamGetter = Callable[["MetaParamDispatcher", "CommandMessage"], Any]
+ParamGetter = Callable[["CommandMessage"], Any]
 
 
 class MetaParamDispatcher(ParamDispatcher):
@@ -128,7 +131,7 @@ class MetaParamDispatcher(ParamDispatcher):
             else:
                 rate += 0.2
         elif parameter.annotation not in [Any, Parameter.empty]:
-            rate -= 0.4
+            rate -= 0.6
         return rate
     
     def run(self, param: Parameter, /) -> ParamGetter:
@@ -153,7 +156,7 @@ class TextParamDispatcher(ParamDispatcher):
             return 1.8
         elif isclass(param.annotation) and issubclass(param.annotation, BaseText):
             return 2.0
-        return 0.8  # pragma: no cover
+        return 0.5  # pragma: no cover
 
     def run(self, param: Parameter, /) -> ParamGetter:
         if param.annotation in [Any, Parameter.empty, Union[str, BaseText]]:
@@ -183,7 +186,7 @@ class RawTextParamDispatcher(ParamDispatcher):
             return 1.2
         elif param.annotation in [str, Drafty, Union[str, Drafty]]:
             return 1.8
-        return 0.8  # pragma: no cover
+        return 0.5  # pragma: no cover
     
     def run(self, param: Parameter, /) -> ParamGetter:
         if param.annotation in [Any, Parameter.empty, Union[str, BaseText]]:
@@ -198,6 +201,62 @@ class RawTextParamDispatcher(ParamDispatcher):
             return getter
         else:  # pragma: no cover
             raise KaruhaParserError(f"cannot parse {param}")
+
+
+class ArgvParamDispatcher(ParamDispatcher):
+    __slots__ = []
+
+    def __init__(self) -> None:
+        super().__init__(flag=ParamParserFlag.COMMAND_DATA | ParamParserFlag.META)
+
+    def match(self, param: Parameter, /) -> float:
+        if param.name != "argv":
+            if param.name == "argc":
+                if param.annotation in [Any, Parameter.empty]:
+                    return 1.2
+                elif param.annotation == int:
+                    return 1.8
+                return 0.5  # pragma: no cover
+            return 0
+        elif param.annotation in [Any, Parameter.empty]:
+            return 1.2
+        elif param.annotation in [list, tuple, List, Tuple, Iterable]:
+            return 1.6
+        elif param.annotation in [
+            List[str],
+            List[BaseText],
+            List[Union[str, BaseText]],
+            Tuple[str, ...],
+            Tuple[BaseText, ...],
+            Tuple[Union[str, BaseText], ...],
+        ]:
+            return 1.8
+        return 0.5  # pragma: no cover
+
+    def run(self, param: Parameter, /) -> ParamGetter:
+        if param.name == "argc":
+            return lambda message: len(message.argv)
+        elif param.annotation == List[str]:
+            return lambda message: list(map(str, message.argv))
+        elif param.annotation == List[BaseText]:
+            def list_getter(message: CommandMessage) -> List[BaseText]:
+                argv = message.argv
+                if not all(isinstance(arg, BaseText) for arg in argv):  # pragma: no cover
+                    raise KaruhaParserError(f"cannot parse {argv}")
+                return list(argv)  # type: ignore
+            return list_getter
+        elif param.annotation in [list, List, List[Union[str, BaseText]]]:
+            return lambda message: list(message.argv)
+        elif param.annotation == Tuple[str, ...]:
+            return lambda message: tuple(map(str, message.argv))
+        elif param.annotation == Tuple[BaseText, ...]:
+            def tuple_getter(message: CommandMessage) -> Tuple[BaseText, ...]:
+                argv = message.argv
+                if not all(isinstance(arg, BaseText) for arg in argv):  # pragma: no cover
+                    raise KaruhaParserError(f"cannot parse {argv}")
+                return argv  # type: ignore
+            return tuple_getter
+        return lambda message: message.argv
 
 
 class ParamParser(NamedTuple):
@@ -221,7 +280,7 @@ class ParamParser(NamedTuple):
                 kwargs[name] = dispatcher
         return cls(tuple(args), tuple(kwargs.items()), flags)
     
-    def parse(self, message: Message) -> Tuple[Tuple[Any, ...], dict]:
+    def parse(self, message: "CommandMessage") -> Tuple[Tuple[Any, ...], dict]:
         args = tuple(i(message) for i in self.args)
         kwargs = {k: v(message) for k, v in self.kwargs}
         return args, kwargs
@@ -243,6 +302,7 @@ PLAIN_TEXT_PARAM = MessageParamDispatcher("plain_text", type=str)
 
 TEXT_PARAM = TextParamDispatcher()
 RAW_TEXT_DISPATCHER = RawTextParamDispatcher()
+ARGV_PARAM = ArgvParamDispatcher()
 
 SESSION_PARAM = MetaParamDispatcher(
     "session",
@@ -265,3 +325,12 @@ MESSAGE_PARAM = MetaParamDispatcher(
     flag=ParamParserFlag.MESSAGE | ParamParserFlag.META,
     special_type=True
 )
+NAME_PARAM = MetaParamDispatcher(
+    "name",
+    type=str,
+    getter=lambda _, m: m.name,
+    flag=ParamParserFlag.COMMAND_DATA | ParamParserFlag.META,
+)
+
+
+from .command import CommandMessage

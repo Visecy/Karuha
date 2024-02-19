@@ -15,11 +15,12 @@ class KaruhaRuntimeError(KaruhaException):
 
 class KaruhaBotError(KaruhaException):
     """unspecified chatbot run-time error"""
-    __slots__ = ["bot"]
+    __slots__ = ["bot", "code"]
 
-    def __init__(self, *args: object, bot: Optional["bot.Bot"] = None) -> None:
+    def __init__(self, *args: object, bot: Optional["bot.Bot"] = None, code: Optional[int] = None) -> None:
         super().__init__(*args)
         self.bot = bot
+        self.code = code
 
 
 class KaruhaCommandError(KaruhaException):
