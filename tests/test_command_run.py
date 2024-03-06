@@ -1,4 +1,3 @@
-
 from tinode_grpc import pb
 
 from karuha.command import MessageSession, get_collection, on_command, set_collection
@@ -31,7 +30,7 @@ def has_return() -> int:
 
 
 @on(CommandPrepareEvent)
-async def command_prepare(event: CommandPrepareEvent) -> None:
+def command_prepare(event: CommandPrepareEvent) -> None:
     if event.command is should_cancel:
         raise KaruhaCommandCanceledError(name=event.command.name, command=event.command)
 

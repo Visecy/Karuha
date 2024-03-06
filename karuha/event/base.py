@@ -26,18 +26,27 @@ class Event(object):
     @classmethod  # type: ignore
     def new(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
         event = cls(*args, **kwds)
-        event.trigger()
+        event.trigger(return_exceptions=True)
+        return event
+    
+    @classmethod  # type: ignore
+    async def new_and_wait(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
+        event = cls(*args, **kwds)
+        await event.trigger()
         return event
     
     def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
         return asyncio.create_task(handler(self))
     
-    def trigger(self) -> "asyncio.Future[list]":
+    def trigger(self, *, return_exceptions: bool = False) -> "asyncio.Future[list]":
         logger.debug(f"trigger event {self.__class__.__name__}")
         return asyncio.gather(
-            *(self.call_handler(i) for i in self.__handlers__)
+            *(self.call_handler(i) for i in self.__handlers__),
+            return_exceptions=return_exceptions
         )
     
     def __init_subclass__(cls, **kwds: Any) -> None:
         if "__handlers__" not in cls.__dict__:
             cls.__handlers__ = cls.__handlers__.copy()
+        if "__default_handler__" in cls.__dict__:
+            cls.__handlers__.append(cls.__default_handler__)  # type: ignore

@@ -6,5 +6,6 @@ async def hi(session: MessageSession, text: str) -> None:
     total = text.split(' ', 1)
     if len(total) == 1:
         await session.send("Hello!")
+        return
     name = total[1]
     await session.send(f"Hello {name}!")

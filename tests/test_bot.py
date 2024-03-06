@@ -7,6 +7,7 @@ from karuha.config import Bot as BotConfig
 from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
                               LoginEvent, MetaEvent, PresEvent, PublishEvent,
                               SubscribeEvent)
+from karuha.exception import KaruhaBotError
 
 from .utils import TEST_TIME_OUT, AsyncBotTestCase, BotMock
 
@@ -17,14 +18,13 @@ class TestBot(AsyncBotTestCase):
     def test_bot_init(self) -> None:
         self.assertEqual(
             self.bot.config,
-            BotConfig(name="test_bot", schema="basic", secret="123456")
+            BotConfig(name="test_bot", schema="basic", secret="123456", user="usr")
         )
         self.assertEqual(
             self.bot.server,
             None
         )
         self.assertTrue(self.bot.queue.empty())
-        self.assertFalse(self.bot._tasks)
         self.assertEqual(self.bot.state, State.running)
 
     async def test_server_message(self) -> None:
@@ -119,7 +119,8 @@ class TestBot(AsyncBotTestCase):
         self.assertEqual(sub_msg_inner.topic, "topic_test")
         tid = bot.confirm_message(code=400)
         self.assertEqual(tid, sub_msg_inner.id)
-        await asyncio.wait_for(sub_task, TEST_TIME_OUT)
+        with self.assertRaises(KaruhaBotError):
+            await asyncio.wait_for(sub_task, TEST_TIME_OUT)
         
         pub_task = asyncio.create_task(bot.publish("topic_test", "Hello world!"))
         pub_msg = await bot.consum_message()
