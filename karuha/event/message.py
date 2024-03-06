@@ -9,7 +9,7 @@ from ..text import BaseText, Drafty, Message
 from ..utils.dispatcher import AbstractDispatcher
 from ..utils.proxy_propery import ProxyProperty
 from . import on
-from .bot import BotEvent, DataEvent, ensure_text_len
+from .bot import BotEvent, DataEvent, BotInitEvent, ensure_text_len
 
 
 MessageProperty = partial(ProxyProperty, "message", mutable=True)
@@ -80,3 +80,8 @@ def reset_message_lock() -> None:
 
 
 on_message = on(MessageEvent)
+
+
+@on(BotInitEvent)
+def _(event: BotInitEvent) -> None:
+    reset_message_lock()

@@ -7,7 +7,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from enum import IntEnum
 from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator, Iterable,
-                    List, Literal, Mapping, Optional, Tuple, Union, overload)
+                    List, Literal, Optional, Tuple, Union, overload)
 from weakref import WeakSet, ref
 
 import grpc
@@ -23,11 +23,7 @@ from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
-
-try:
-    import ujson as json
-except ImportError:  # pragma: no cover
-    import json
+from .utils.decode import decode_mapping, encode_mapping, json
 
 
 class State(IntEnum):
@@ -199,14 +195,16 @@ class Bot(object):
             return tid, {}
         if "user" in params:
             self.config.user = json.loads(params["user"].decode())
-        if "token" in params:
-            self.config.schema_ = "token"
-            self.config.secret = json.loads(params["token"].decode())
+        # if "token" in params:
+        #     self.config.schema_ = "token"
+        #     self.config.secret = json.loads(params["token"].decode())
         return tid, decode_mapping(params)
 
     async def subscribe(
         self, /, topic: str,
-        *, get: Optional[pb.GetQuery] = None,
+        *,
+        mode: Optional[str] = None,
+        get: Optional[Union[pb.GetQuery, str]] = None,
         get_since: Optional[int] = None,
         limit: int = 24,
         extra: Optional[pb.ClientExtra] = None
@@ -238,12 +236,19 @@ class Bot(object):
                 ),
                 what="data"
             )
+        elif isinstance(get, str):
+            get = pb.GetQuery(
+                what=get
+            )
         ctrl = await self.send_message(
             tid,
             sub=pb.ClientSub(
                 id=tid,
                 topic=topic,
-                get_query=get
+                get_query=get,
+                set_query=pb.SetQuery(
+                    sub=pb.SetSub(mode=mode)
+                )
             ),
             extra=extra
         )
@@ -788,14 +793,6 @@ class Bot(object):
         uid = self.config.user or ''
         host = self.server.host if self.server else 'unknown'
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
-
-
-def encode_mapping(data: Mapping[str, Any]) -> Dict[str, bytes]:
-    return {k: json.dumps(v).encode() for k, v in data.items()}
-
-
-def decode_mapping(data: Mapping[str, bytes]) -> Dict[str, Any]:
-    return {k: json.loads(v) for k, v in data.items()}
 
 
 def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:  # pragma: no cover

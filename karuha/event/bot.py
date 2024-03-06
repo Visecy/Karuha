@@ -262,6 +262,11 @@ class MetaEvent(ServerEvent, on_field="meta"):
 
     id: ProxyProperty[str] = ServerMessageProperty()
     topic: ProxyProperty[str] = ServerMessageProperty()
+    
+    async def __default_handler__(self) -> None:
+        tid = self.server_message.id
+        if tid in self.bot._wait_list:
+            self.bot._wait_list[tid].set_result(self.server_message)
 
 
 class PresEvent(ServerEvent, on_field="pres"):
@@ -325,12 +330,25 @@ class PresEvent(ServerEvent, on_field="pres"):
 
     async def __default_handler__(self) -> None:
         msg = self.server_message
+        if msg.what == pb.ServerPres.ACS:
+            topic = msg.topic
+            _, meta = await self.bot.get(topic, "desc")
+            if meta:
+                await self.bot.set(topic, sub=pb.SetSub(mode=meta.desc.acs.given))
         if msg.topic != "me":
             return
         if msg.what == pb.ServerPres.ON:
-            await self.bot.subscribe(msg.src)
+            await self.bot.subscribe(msg.src, get="desc sub")
         elif msg.what == pb.ServerPres.MSG:
-            await self.bot.subscribe(msg.src, get_since=msg.seq_id)
+            await self.bot.subscribe(
+                msg.src,
+                get=pb.GetQuery(
+                    what="desc sub data",
+                    data=pb.GetOpts(
+                        since_id=msg.seq_id
+                    )
+                )
+            )
         elif msg.what == pb.ServerPres.OFF:
             await self.bot.leave(msg.src)
         elif msg.what == pb.ServerPres.UPD:
@@ -432,9 +450,7 @@ class LoginEvent(ClientEvent, on_field="login"):
     async def __default_handler__(self) -> None:
         await self.bot.subscribe(
             "me",
-            get=pb.GetQuery(
-                what="sub desc tags cred"
-            )
+            get="sub desc tags cred"
         )
 
 

@@ -85,6 +85,9 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             result = self.__func__(*args, **kwargs)  # type: ignore
             if asyncio.iscoroutine(result):
                 result = await result
+        except asyncio.CancelledError:
+            logger.info(f"command {self.name} canceled")
+            raise
         except Exception as e:  # pragma: no cover
             CommandFailEvent.new(message.collection, self, sys.exc_info())  # type: ignore
             logger.error(f"run command {self.name} failed", exc_info=True)

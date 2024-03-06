@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 from collections import deque
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Deque, Dict, Optional, Tuple, Union
 
 from ..bot import Bot
 from ..event.message import Message, MessageDispatcher, get_message_lock
@@ -146,8 +146,14 @@ class MessageSession(BaseSession):
             priority: float = 1.2
     ) -> Message:
         message = await super().wait_reply(topic, user_id, pattern, priority)
-        self._messages.append(message)
+        self._add_message(message)
         return message
+    
+    def _add_message(self, message: Message) -> None:
+        assert message.bot is self.bot
+        if message.topic != self.topic:
+            return
+        self._messages.append(message)
 
     @property
     def messages(self) -> Tuple[Message, ...]:
@@ -155,6 +161,20 @@ class MessageSession(BaseSession):
     
     @property
     def last_message(self) -> Message:
+        return self._messages[-1]
+
+
+class CommandSession(MessageSession):
+    __slots__ = []
+
+    _messages: Deque["CommandMessage"]
+    
+    @property
+    def messages(self) -> Tuple["CommandMessage", ...]:
+        return tuple(self._messages)
+    
+    @property
+    def last_message(self) -> "CommandMessage":
         return self._messages[-1]
 
 
@@ -228,3 +248,6 @@ class ButtonReplyDispatcher(SessionDispatcher):
     def run(self, message: Message) -> None:
         resp = self._cache.get((id(message)))
         self.future.set_result(resp)
+
+
+from .command import CommandMessage

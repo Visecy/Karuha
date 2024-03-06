@@ -59,7 +59,7 @@ class AccountEvent(PluginServerEvent):
         action = self.action
         if action == pb.Crud.CREATE:
             for i in get_all_bots():
-                if not i.config.auto_subscribe:
+                if not i.config.auto_subscribe_new_user:
                     logger.debug(f"ignore auto subscribe for {i.name}")
                     continue
                 await i.subscribe(self.user_id)

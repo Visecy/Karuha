@@ -62,7 +62,7 @@ class TestCommand(TestCase):
         self.assertAlmostEqual(
             SESSION_PARAM.match(
                 Parameter("sess", Parameter.POSITIONAL_OR_KEYWORD, annotation=MessageSession)
-            ), 1.0
+            ), 0.8
         )
 
         message = new_test_command_message()

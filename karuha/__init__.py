@@ -62,7 +62,6 @@ async def async_run() -> None:
     global _loop
     config = get_config()
     _loop = asyncio.get_running_loop()
-    reset_message_lock()
 
     for i in config.bots:
         if i.name in _bot_cache:

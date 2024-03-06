@@ -9,7 +9,7 @@ from ..utils.dispatcher import AbstractDispatcher
 from ..text import Drafty, BaseText, Message
 from ..exception import KaruhaParserError
 from ..bot import Bot
-from .session import MessageSession
+from .session import CommandSession
 
 
 class AbstractCommandParser(ABC):
@@ -112,7 +112,7 @@ class MetaParamDispatcher(ParamDispatcher):
         self.type = type
         self.raw_getter = getter
         self.special_type = special_type
-    
+
     def match(self, parameter: Parameter, /) -> float:
         rate = 0.0
         if parameter.name == self.name:
@@ -125,6 +125,11 @@ class MetaParamDispatcher(ParamDispatcher):
                 rate += 1.0
             else:
                 rate += 0.4
+        elif isclass(self.type) and parameter.annotation in self.type.__mro__:
+            if self.special_type:
+                rate += 0.8
+            else:
+                rate += 0.3
         elif self.type in get_args(parameter.annotation):
             if self.special_type:
                 rate += 0.5
@@ -133,10 +138,10 @@ class MetaParamDispatcher(ParamDispatcher):
         elif parameter.annotation not in [Any, Parameter.empty]:
             rate -= 0.6
         return rate
-    
+
     def run(self, param: Parameter, /) -> ParamGetter:
         return partial(self.raw_getter, self)
-    
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} name={self.name} type={self.type} flag={self.flag}>"
 
@@ -306,8 +311,8 @@ ARGV_PARAM = ArgvParamDispatcher()
 
 SESSION_PARAM = MetaParamDispatcher(
     "session",
-    type=MessageSession,
-    getter=lambda _, m: MessageSession(m.bot, m),
+    type=CommandSession,
+    getter=lambda _, m: CommandSession(m.bot, m),
     flag=ParamParserFlag.SESSION | ParamParserFlag.META,
     special_type=True
 )
