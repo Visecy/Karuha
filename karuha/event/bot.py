@@ -331,7 +331,7 @@ class PresEvent(ServerEvent, on_field="pres"):
     async def __default_handler__(self) -> None:
         msg = self.server_message
         if msg.what == pb.ServerPres.ACS:
-            topic = msg.topic
+            topic = msg.src
             _, meta = await self.bot.get(topic, "desc")
             if meta:
                 await self.bot.set(topic, sub=pb.SetSub(mode=meta.desc.acs.given))
