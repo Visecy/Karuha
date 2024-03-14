@@ -1,7 +1,7 @@
 from unittest import TestCase
 
 from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
-from karuha.text.textchain import File, TextChain, Bold, Hidden
+from karuha.text.textchain import File, Mention, NewLine, Quote, TextChain, Bold, Hidden
 from karuha.text.convert import eval_spans, to_span_tree
 from karuha.event.message import MessageEvent
 
@@ -192,3 +192,27 @@ class TestText(TestCase):
         )
         f = drafty2text(df)
         self.assertIsInstance(f, File)
+    
+    def test_quote(self) -> None:
+        df = Drafty.model_validate(
+            {
+                "txt": "user quote textuser text",
+                "fmt": [
+                    {"len": 4},
+                    {"at": 4, "len": 1, "tp": "BR"},
+                    {"len": 15, "tp": "QQ"}
+                ],
+                "ent": [
+                    {"tp": "MN", "data": {"val": "user_id"}}
+                ]
+            }
+        )
+        t = drafty2text(df)
+        assert isinstance(t, TextChain)
+        self.assertEqual(len(t), 2)
+        qq = t[0]
+        assert isinstance(qq, Quote) and isinstance(qq.content, TextChain)
+        self.assertEqual(len(qq.content), 2)
+        self.assertEqual(qq.content[0], Mention(text="user", val="user_id"))
+        self.assertEqual(qq.content[1], PlainText("\nquote text"))
+        self.assertEqual(t[1], PlainText("user text"))

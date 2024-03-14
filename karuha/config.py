@@ -12,6 +12,7 @@ class Server(BaseModel):
     ssl_host: Optional[str] = None
     enable_plugin: bool = False
     listen: Annotated[str, AnyUrl] = "0.0.0.0:40051"
+    timeout: float = 5
 
 
 class Bot(BaseModel):

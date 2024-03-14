@@ -26,7 +26,7 @@ class Event(object):
     @classmethod  # type: ignore
     def new(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
         event = cls(*args, **kwds)
-        event.trigger(return_exceptions=True)
+        event.trigger(return_exceptions=False)
         return event
     
     @classmethod  # type: ignore

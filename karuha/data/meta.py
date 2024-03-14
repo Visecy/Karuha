@@ -1,7 +1,11 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+from typing_extensions import Self
 
 from pydantic import BaseModel, Json, model_validator
+from tinode_grpc import pb
+
+from ..utils.decode import msg2dict
 
 
 class AccessPermission(BaseModel):
@@ -89,46 +93,111 @@ class TimeInfo(BaseModel):
     touched: Optional[datetime] = None
 
 
-class SeqInfo(BaseModel):
-    read: Optional[int] = None
-    recv: Optional[int] = None
-    clear: Optional[int] = None
-
-
-class TopicInfo(TimeInfo, SeqInfo):
+class TopicInfo(TimeInfo):
     seq: int
+
+    @classmethod
+    def from_meta(cls, desc: pb.TopicDesc) -> Self:
+        return cls(
+            seq=desc.seq_id,
+            created=desc.created_at,  # type: ignore
+            updated=desc.updated_at,  # type: ignore
+            touched=desc.touched_at,  # type: ignore
+        )
 
 
 class BaseDesc(BaseModel):
     public: Optional[Json[Dict[str, Any]]] = None
     trusted: Optional[Json[Dict[str, Any]]] = None
 
+    @classmethod
+    def from_meta(cls, meta: Union[pb.TopicDesc, pb.TopicSub]) -> Self:
+        return cls(
+            public=meta.public,  # type: ignore
+            trusted=meta.trusted  # type: ignore
+        )
+
 
 class CommonDesc(BaseDesc):
     defacs: Optional[DefaultAccess] = None
 
 
-class P2PTopic(TopicInfo):
-    pass
+class P2PTopicDesc(TopicInfo):
+    @classmethod
+    def from_meta(cls, desc: pb.TopicDesc) -> Self:
+        return cls(
+            seq=desc.seq_id,
+            created=desc.created_at,  # type: ignore
+            updated=desc.updated_at,  # type: ignore
+            touched=desc.touched_at,  # type: ignore
+        )
 
 
-class GroupTopic(TopicInfo, CommonDesc):
+class GroupTopicDesc(TopicInfo, CommonDesc):
     is_chan: bool = False
 
+    @classmethod
+    def from_meta(cls, desc: pb.TopicDesc) -> Self:
+        return cls(
+            public=desc.public,  # type: ignore
+            trusted=desc.trusted,  # type: ignore
+            defacs=msg2dict(desc.defacs),  # type: ignore
+            seq=desc.seq_id,
+            created=desc.created_at,  # type: ignore
+            updated=desc.updated_at,  # type: ignore
+            touched=desc.touched_at,  # type: ignore
+            is_chan=desc.is_chan
+        )
 
-class User(TimeInfo, CommonDesc):
+
+class UserDesc(TimeInfo, CommonDesc):
     state: Optional[str] = None
     state_at: Optional[datetime] = None
+
+    @classmethod
+    def from_meta(cls, desc: pb.TopicDesc) -> Self:
+        return cls(
+            public=desc.public,  # type: ignore
+            trusted=desc.trusted,  # type: ignore
+            state=desc.state,
+            state_at=desc.state_at,  # type: ignore
+            created=desc.created_at,  # type: ignore
+            updated=desc.updated_at,  # type: ignore
+            touched=desc.touched_at,  # type: ignore
+            defacs=msg2dict(desc.defacs)  # type: ignore
+        )
 
 
 class BaseSubscription(BaseModel):
     acs: Access
     private: Optional[Dict[str, Any]] = None
 
+    @classmethod
+    def from_meta(cls, meta: Union[pb.TopicDesc, pb.TopicSub]) -> Self:
+        return cls(
+            acs=msg2dict(meta.acs),  # type: ignore
+            private=meta.private,  # type: ignore
+        )
 
-class Subscription(BaseSubscription, SeqInfo):
+
+class Subscription(BaseSubscription):
     updated: datetime
     deleted: datetime
+    read: Optional[int] = None
+    recv: Optional[int] = None
+    clear: Optional[int] = None
+
+    @classmethod
+    def from_meta(cls, meta: pb.TopicSub) -> Self:
+        return cls(
+            acs=msg2dict(meta.acs),  # type: ignore
+            private=meta.private,  # type: ignore
+            updated=meta.updated_at,  # type: ignore
+            deleted=meta.deleted_at,  # type: ignore
+            read=meta.read,  # type: ignore
+            recv=meta.recv,  # type: ignore
+            clear=meta.clear,  # type: ignore
+        )
 
 
 UserTags = List[str]

@@ -123,7 +123,7 @@ def _split_text(text: str, /, spans: List[Span], start: int = 0, end: int = -1) 
     if end < 0:
         end = len(text)
     if last < end:
-        chain += text[last:]
+        chain += text[last:end]
     return chain.take()
 
 

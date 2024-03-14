@@ -1,6 +1,6 @@
 from tinode_grpc import pb
 
-from karuha.data.meta import AccessPermission, BaseDesc, User
+from karuha.data.meta import AccessPermission, BaseDesc, UserDesc
 from karuha.data.cache import UserCache, user_cache
 
 from .utils import AsyncBotTestCase
@@ -52,7 +52,7 @@ class TestData(AsyncBotTestCase):
         assert cache and isinstance(cache.desc, BaseDesc)
         self.assertEqual(cache.desc, base_desc)
         
-        desc = User(
+        desc = UserDesc(
             created=1709214504076,  # type: ignore
             updated=1709466962755,  # type: ignore
             public=b"{\"fn\": \"user\"}",  # type: ignore
@@ -60,12 +60,12 @@ class TestData(AsyncBotTestCase):
         )
         user_cache.add(UserCache(user="user", desc=desc))
         cache = user_cache.get("user")
-        assert cache and isinstance(cache.desc, User)
+        assert cache and isinstance(cache.desc, UserDesc)
         self.assertEqual(cache.desc, desc)
 
         user_cache.add(UserCache(user="user", desc=base_desc))
         cache = user_cache.get("user")
-        assert cache and isinstance(cache.desc, User)
+        assert cache and isinstance(cache.desc, UserDesc)
         self.assertEqual(cache.desc.public, base_desc.public)
         self.assertEqual(cache.desc.created, desc.created)
 
@@ -84,4 +84,4 @@ class TestData(AsyncBotTestCase):
             )
         )
         self.bot.receive_message(pb.ServerMsg(meta=meta))
-        
+

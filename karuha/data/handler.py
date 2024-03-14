@@ -2,66 +2,35 @@ from typing import Iterable
 from tinode_grpc import pb
 
 from ..event import on
-from ..event.bot import MetaEvent
+from ..event.bot import LeaveEvent, MetaEvent, SubscribeEvent
 from ..utils.decode import msg2dict
 from .cache import (GroupTopicCache, P2PTopicCache, SubscriptionCache,
                     UserCache, group_cache, p2p_cache, subscription_cache,
                     user_cache)
-from .meta import (BaseDesc, BaseSubscription, GroupTopic, P2PTopic,
-                   Subscription, User)
+from .meta import (BaseDesc, BaseSubscription, GroupTopicDesc, P2PTopicDesc,
+                   Subscription, TopicInfo, UserDesc)
+from .sub import _sub_topic, _leave_topic
 
 
 def cache_user(user_id: str, desc: pb.TopicDesc) -> None:
-    user = User(
-        public=desc.public,  # type: ignore
-        trusted=desc.trusted,  # type: ignore
-        state=desc.state,
-        state_at=desc.state_at,  # type: ignore
-        created=desc.created_at,  # type: ignore
-        updated=desc.updated_at,  # type: ignore
-        touched=desc.touched_at,  # type: ignore
-        defacs=msg2dict(desc.defacs)  # type: ignore
-    )
+    user = UserDesc.from_meta(desc)
     user_cache.add(UserCache(user=user_id, desc=user))
 
 
 def cache_p2p_topic(user_id: str, topic_id: str, desc: pb.TopicDesc) -> None:
-    topic = P2PTopic(
-        seq=desc.seq_id,
-        read=desc.read_id,
-        recv=desc.recv_id,
-        clear=desc.del_id,
-        created=desc.created_at,  # type: ignore
-        updated=desc.updated_at,  # type: ignore
-        touched=desc.touched_at,  # type: ignore
-    )
-    user = BaseDesc(
-        public=desc.public,  # type: ignore
-        trusted=desc.trusted,  # type: ignore
-    )
-    sub = BaseSubscription(
-        acs=msg2dict(desc.acs),  # type: ignore
-        private=desc.private  # type: ignore
-    )
-    p2p_cache.add(P2PTopicCache(user_pair={user_id, topic_id}, desc=topic))
+    topic = P2PTopicDesc.from_meta(desc)
+    user = BaseDesc.from_meta(desc)
+    sub = BaseSubscription.from_meta(desc)
+    p2p_cache.add(P2PTopicCache(user_pair=frozenset((user_id, topic_id)), desc=topic))
     user_cache.add(UserCache(user=topic_id, desc=user))
     subscription_cache.add(SubscriptionCache(user=user_id, topic=topic_id, sub=sub))
 
 
 def cache_group_topic(user_id: str, topic_id: str, desc: pb.TopicDesc) -> None:
-    topic = GroupTopic(
-        public=desc.public,  # type: ignore
-        trusted=desc.trusted,  # type: ignore
-        defacs=msg2dict(desc.defacs),  # type: ignore
-        seq=desc.seq_id,
-        read=desc.read_id,
-        recv=desc.recv_id,
-        clear=desc.del_id,
-        created=desc.created_at,  # type: ignore
-        updated=desc.updated_at,  # type: ignore
-        touched=desc.touched_at,  # type: ignore
-        is_chan=desc.is_chan
-    )
+    if topic_id.startswith("p2p"):
+        topic = TopicInfo.from_meta(desc)
+    else:
+        topic = GroupTopicDesc.from_meta(desc)
     sub = BaseSubscription(
         acs=msg2dict(desc.acs),  # type: ignore
         private=desc.private  # type: ignore
@@ -144,3 +113,13 @@ def cache_meta(event: MetaEvent) -> None:
     if meta.cred:
         assert topic == "me" or topic.startswith("usr")
         user_cache.add(UserCache(user=topic, cred=meta.cred))  # type: ignore
+
+
+@on(SubscribeEvent)
+def handle_sub(event: SubscribeEvent) -> None:
+    _sub_topic(event.bot, event.topic)
+
+
+@on(LeaveEvent)
+def handle_leave(event: LeaveEvent) -> None:
+    _leave_topic(event.bot, event.topic)

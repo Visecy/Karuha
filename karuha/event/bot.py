@@ -1,3 +1,4 @@
+import asyncio
 from functools import partial
 from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional
 from typing_extensions import Self
@@ -32,7 +33,19 @@ class BotInitEvent(BotEvent):
 
     async def __default_handler__(self) -> None:
         await self.bot.hello()
-        await self.bot.login()
+        for i in range(4):
+            try:
+                await self.bot.login()
+            except asyncio.TimeoutError:
+                self.bot.logger.warning(f"login failed, retrying {i+1} times")
+            else:
+                break
+        else:
+            try:
+                await self.bot.login()
+            except asyncio.TimeoutError:
+                self.bot.logger.error("login failed, cancel the bot")
+                self.bot.cancel()
 
 
 class BotFinishEvent(BotEvent):
@@ -330,11 +343,6 @@ class PresEvent(ServerEvent, on_field="pres"):
 
     async def __default_handler__(self) -> None:
         msg = self.server_message
-        if msg.what == pb.ServerPres.ACS:
-            topic = msg.src
-            _, meta = await self.bot.get(topic, "desc")
-            if meta:
-                await self.bot.set(topic, sub=pb.SetSub(mode=meta.desc.acs.given))
         if msg.topic != "me":
             return
         if msg.what == pb.ServerPres.ON:
@@ -353,6 +361,11 @@ class PresEvent(ServerEvent, on_field="pres"):
             await self.bot.leave(msg.src)
         elif msg.what == pb.ServerPres.UPD:
             await self.bot.get(msg.src, "desc")
+        elif msg.what == pb.ServerPres.ACS:
+            topic = msg.src
+            _, meta = await self.bot.get(topic, "desc")
+            if meta:
+                await self.bot.set(topic, sub=pb.SetSub(mode=meta.desc.acs.given))
 
 
 class InfoEvent(ServerEvent, on_field="info"):

@@ -18,7 +18,6 @@ from .bot import Bot
 from .event import on, on_event, Event
 from .exception import KaruhaException
 from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, get_collection, on_command
-from .event.message import reset_message_lock
 from .text import Drafty, BaseText, PlainText, Message, TextChain
 from .logger import logger
 

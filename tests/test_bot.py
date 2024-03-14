@@ -3,7 +3,7 @@ import asyncio
 from tinode_grpc import pb
 
 from karuha.bot import State
-from karuha.config import Bot as BotConfig
+from karuha.config import Bot as BotConfig, Server
 from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
                               LoginEvent, MetaEvent, PresEvent, PublishEvent,
                               SubscribeEvent)
@@ -22,7 +22,7 @@ class TestBot(AsyncBotTestCase):
         )
         self.assertEqual(
             self.bot.server,
-            None
+            Server()
         )
         self.assertTrue(self.bot.queue.empty())
         self.assertEqual(self.bot.state, State.running)

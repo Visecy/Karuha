@@ -273,6 +273,10 @@ class Row(_Container):
     type: Final[InlineType] = "RW"
 
 
+class Quote(_Container):
+    type: Final[InlineType] = "QQ"
+
+
 class Form(_Container):
     type: Final[InlineType] = "FM"
 

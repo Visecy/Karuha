@@ -14,6 +14,8 @@ import grpc
 from aiofiles import open as aio_open
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
+from pydantic import GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
 from tinode_grpc import pb
 from typing_extensions import Self, deprecated
 
@@ -205,6 +207,7 @@ class Bot(object):
         *,
         mode: Optional[str] = None,
         get: Optional[Union[pb.GetQuery, str]] = None,
+        set: Optional[pb.SetQuery] = None,
         get_since: Optional[int] = None,
         limit: int = 24,
         extra: Optional[pb.ClientExtra] = None
@@ -227,8 +230,7 @@ class Bot(object):
         """
         tid = self._get_tid()
         if get_since is not None:
-            if get is not None:
-                raise ValueError("get_since and get cannot be used at the same time")
+            assert get is None, "get_since and get cannot be used at the same time"
             get = pb.GetQuery(
                 data=pb.GetOpts(
                     since_id=get_since,
@@ -240,15 +242,18 @@ class Bot(object):
             get = pb.GetQuery(
                 what=get
             )
+        if mode is not None:
+            assert set is None, "mode and set cannot be used at the same time"
+            set = pb.SetQuery(
+                sub=pb.SetSub(mode=mode)
+            )
         ctrl = await self.send_message(
             tid,
             sub=pb.ClientSub(
                 id=tid,
                 topic=topic,
                 get_query=get,
-                set_query=pb.SetQuery(
-                    sub=pb.SetSub(mode=mode)
-                )
+                set_query=set
             ),
             extra=extra
         )
@@ -703,12 +708,18 @@ class Bot(object):
         return tid
 
     @contextmanager
-    def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
+    def _wait_reply(self, tid: Optional[str] = None) -> Generator[Coroutine, None, None]:
+        if self.server:
+            timeout = self.server.timeout
+        else:
+            timeout = 10
         tid = tid or self._get_tid()
         future = asyncio.get_running_loop().create_future()
         self._wait_list[tid] = future
         try:
-            yield future
+            yield asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            raise KaruhaTimeoutError(f"timeout while waiting for reply from bot {self.name}") from None
         finally:
             assert self._wait_list.pop(tid, None) is future
 
@@ -740,8 +751,10 @@ class Bot(object):
     @asynccontextmanager
     async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
         channel = self._get_channel(server_config)
-        self.initialize_event_callback(self)
+        old_server_config = self.server
+        self.server = server_config
         try:
+            self.initialize_event_callback(self)
             yield channel
         except grpc.RpcError:
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
@@ -764,6 +777,7 @@ class Bot(object):
                 self.logger.exception("error while finalizing event callback", exc_info=True)
             except asyncio.CancelledError:
                 pass
+            self.server = old_server_config
             
             # clean up for restarting
             while not self.queue.empty():
@@ -787,6 +801,14 @@ class Bot(object):
             for desc, msg in message.ListFields():
                 for e in self.server_event_callbacks[desc.name]:
                     e(self, msg)
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.no_info_plain_validator_function(
+            lambda x: x if isinstance(x, source_type) else Bot(x)
+        )
 
     def __repr__(self) -> str:
         state = self.state.name
@@ -818,4 +840,4 @@ async def read_auth_cookie(cookie_file_name) -> Union[Tuple[str, bytes], Tuple[N
     return schema, secret
 
 
-from .exception import KaruhaBotError
+from .exception import KaruhaBotError, KaruhaTimeoutError
