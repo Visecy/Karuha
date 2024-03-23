@@ -2,11 +2,11 @@ import asyncio
 import os
 import re
 from collections import deque
-from typing import Any, Deque, Dict, Optional, Tuple, Union
+from typing import Any, Deque, Dict, NoReturn, Optional, Tuple, Union
 
 from ..bot import Bot
 from ..event.message import Message, MessageDispatcher, get_message_lock
-from ..exception import KaruhaRuntimeError
+from ..exception import KaruhaRuntimeError, KaruhaCommandCanceledError
 from ..text import BaseText, Drafty
 from ..text.textchain import (Bold, Button, File, Form, Image, NewLine, PlainText,
                               TextChain)
@@ -168,6 +168,9 @@ class CommandSession(MessageSession):
     __slots__ = []
 
     _messages: Deque["CommandMessage"]
+
+    def cancel(self) -> NoReturn:
+        raise KaruhaCommandCanceledError
     
     @property
     def messages(self) -> Tuple["CommandMessage", ...]:

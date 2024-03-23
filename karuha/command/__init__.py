@@ -5,7 +5,7 @@ from .collection import (CommandCollection, add_sub_collection, get_collection,
 from .decoractor import on_command
 from .parser import (AbstractCommandParser, ParamParser, ParamParserFlag,
                      SimpleCommandParser)
-from .session import BaseSession, MessageSession
+from .session import BaseSession, MessageSession, CommandSession
 
 from ..event.command import (BaseCommandEvent, CommandCompleteEvent, CommandEvent,
                     CommandFailEvent, CommandNotFoundEvent,

@@ -42,7 +42,7 @@
 ```json
 {
     "server": {
-        "host": "localhost:16060",
+        "host": "localhost:16060"
     },
     "bots": [
         {
@@ -94,7 +94,7 @@ async def hi(session: MessageSession) -> None:
 在完成编写命令后，我们可以来运行一下机器人来测试一下。使用如下的命令运行机器人：
 
 ```sh
-python -m Karuha ./config.json -m hi
+python -m karuha ./config.json -m hi
 ```
 
 然后在与机器人的对话中，输入以下内容：
@@ -115,25 +115,26 @@ python -m Karuha ./config.json -m hi
 更加方便的方法是直接修改函数签名，比如：
 
 ```python
+from typing import List
+
 @on_command
-async def hi(session: MessageSession, text: str) -> None:
+async def hi(session: MessageSession, argv: List[str]) -> None:
     ...
 ```
 
-我们增加了一个`text`参数，类型为`str`，表示用户输入的内容。让我们稍微修改一下`hi`函数的内容，使它可以：
+我们增加了一个`argv`参数，类型为`List[str]`，表示用户输入的内容。让我们稍微修改一下`hi`函数的内容：
 
 ```python
 @on_command
-async def hi(session: MessageSession, text: str) -> None:
-    total = text.split(' ', 1)
-    if len(total) == 1:
+async def hi(session: MessageSession, argv: List[str]) -> None:
+    if nor argv:
         await session.send("Hello!")
         return
-    name = total[1]
+    name = argv[0]
     await session.send(f"Hello {name}!")
 ```
 
-以上代码中，我们在之前的逻辑的基础上，在命令的回复内容中增加要打招呼的名称。其中涉及到了一些字符串处理相关的操作，这里暂时不做过多的解释。
+以上代码中，我们在之前的逻辑的基础上，在命令的回复内容中增加要打招呼的名称。
 
 让我们运行机器人，然后向它发送以下内容试试：
 
@@ -159,6 +160,8 @@ async def hi(session: MessageSession, text: str) -> None:
 在外部模块定义命令的方式与正常的定义方式类似。但为了避免影响用户的相关命令设置，我们需要新建一个命令集合(CommandCollection)。建立命令集合并在其中定义命令的方法如下：
 
 ```python
+from typing import List
+
 from karuha import MessageSession
 from karuha.command import new_collection, add_sub_collection
 
@@ -168,7 +171,7 @@ add_sub_collection(collection)
 
 
 @collection.on_command
-async def hi(session: MessageSession, text: str) -> None:
+async def hi(session: MessageSession, argv: List[str]) -> None:
     ...
 ```
 

@@ -49,7 +49,7 @@ class Bot(object):
     initialize_event_callback: Callable[[Self], Any]
     finalize_event_callback: Callable[[Self], Coroutine]
     server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
-    client_event_callbacks: Dict[str, List[Callable[[Self, Message, Optional[Message]], Any]]] = defaultdict(list)
+    client_event_callbacks: Dict[str, List[Callable[[Self, Message, Optional[Message], Optional[pb.ClientExtra]], Any]]] = defaultdict(list)
 
     @overload
     def __init__(
@@ -197,9 +197,9 @@ class Bot(object):
             return tid, {}
         if "user" in params:
             self.config.user = json.loads(params["user"].decode())
-        # if "token" in params:
-        #     self.config.schema_ = "token"
-        #     self.config.secret = json.loads(params["token"].decode())
+        if "token" in params:
+            self.config.schema_ = "token"
+            self.config.secret = json.loads(params["token"].decode())
         return tid, decode_mapping(params)
 
     async def subscribe(
@@ -574,12 +574,12 @@ class Bot(object):
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
     @overload
-    async def send_message(self, wait_tid: str, /, **kwds: Optional[Message]) -> Message: ...
+    async def send_message(self, wait_tid: str, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]) -> Message: ...
 
     @overload
-    async def send_message(self, wait_tid: None = None, /, **kwds: Optional[Message]) -> None: ...
+    async def send_message(self, wait_tid: None = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]) -> None: ...
 
-    async def send_message(self, wait_tid: Optional[str] = None, /, **kwds: Optional[Message]) -> Optional[Message]:
+    async def send_message(self, wait_tid: Optional[str] = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]) -> Optional[Message]:
         """set messages to Tinode server
 
         :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
@@ -595,14 +595,15 @@ class Bot(object):
         if wait_tid is None:
             await self.queue.put(client_msg)
         else:
+            timeout = self.server.timeout if self.server is not None else 10
             with self._wait_reply(wait_tid) as future:
                 await self.queue.put(client_msg)
-                ret = await future
+                ret = await asyncio.wait_for(future, timeout=timeout)
         for k, v in kwds.items():
             if v is None:
                 continue
             for cb in self.client_event_callbacks[k]:
-                cb(self, v, ret)
+                cb(self, v, ret, extra)
         return ret
 
     async def async_run(self, server_config: Optional[ServerConfig] = None) -> None:  # pragma: no cover
@@ -708,20 +709,22 @@ class Bot(object):
         return tid
 
     @contextmanager
-    def _wait_reply(self, tid: Optional[str] = None) -> Generator[Coroutine, None, None]:
-        if self.server:
-            timeout = self.server.timeout
-        else:
-            timeout = 10
+    def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
         tid = tid or self._get_tid()
         future = asyncio.get_running_loop().create_future()
         self._wait_list[tid] = future
         try:
-            yield asyncio.wait_for(future, timeout=timeout)
+            yield future
         except asyncio.TimeoutError:
             raise KaruhaTimeoutError(f"timeout while waiting for reply from bot {self.name}") from None
         finally:
             assert self._wait_list.pop(tid, None) is future
+    
+    def _set_reply_message(self, tid: str, message: Any) -> None:
+        if tid in self._wait_list:
+            f = self._wait_list[tid]
+            if not f.done():
+                f.set_result(message)
 
     def _create_task(self, coro: Coroutine, /) -> asyncio.Task:
         task = asyncio.create_task(coro)

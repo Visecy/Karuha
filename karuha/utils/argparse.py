@@ -4,6 +4,7 @@ from typing import Any, NoReturn, Optional
 from weakref import WeakSet
 
 from ..command import BaseSession
+from ..exception import KaruhaCommandCanceledError
 
 
 class ArgumentParser(_ArgumentParser):
@@ -21,7 +22,7 @@ class ArgumentParser(_ArgumentParser):
     def exit(self, status: int = 0, message: Optional[str] = None) -> NoReturn:
         if message:
             self._print_message(message)
-        raise asyncio.CancelledError(status)
+        raise KaruhaCommandCanceledError(status)
     
     async def wait_tasks(self) -> None:
         await asyncio.gather(*self.tasks)

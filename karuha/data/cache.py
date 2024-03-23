@@ -5,7 +5,7 @@ from typing_extensions import Self
 from pydantic import BaseModel
 
 from ..bot import Bot
-from .meta import BaseDesc, GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo, BaseSubscription, UserDesc, UserCred, UserTags
+from .meta import BaseDesc, Cred, GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo, BaseSubscription, UserDesc, UserCred, UserTags
 from .sub import ensure_sub
 
 
@@ -150,7 +150,11 @@ subscription_cache = CachePool[SubscriptionCache]({"user", "topic"})
 
 async def get_user_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False) -> BaseDesc:
     assert user_id.startswith("usr") or user_id == "me", "user_id must be a user"
-    user = user_cache.get(user_id)
+    if user_id == "me":
+        user = user_cache.get(bot.uid)
+    else:
+        assert not ensure_meta, "only 'me' can be used with ensure_meta=True"
+        user = user_cache.get(user_id)
     if user is not None and user.desc is not None and (not ensure_meta or isinstance(user.desc, UserDesc)):
         return user.desc
     await ensure_sub(bot, user_id)
@@ -174,6 +178,7 @@ async def _get_p2p_topic(bot: Bot, /, topic_id: str, *, ensure_meta: bool = Fals
     topic = group_cache.get(topic_id)
     if topic is not None and topic.desc is not None and isinstance(topic.desc, TopicInfo) and (not ensure_meta or isinstance(topic.desc, P2PTopicDesc)):
         return topic.desc
+    await ensure_sub(bot, topic_id)
     _, topic = await bot.get(topic_id, "desc")
     assert topic is not None
     return P2PTopicDesc.from_meta(topic.desc)
@@ -188,6 +193,7 @@ async def get_p2p_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False) 
     topic = p2p_cache.get(user_pair)
     if topic is not None and (not ensure_meta or isinstance(topic.desc, P2PTopicDesc)):
         return topic.desc
+    await ensure_sub(bot, user_id)
     _, topic = await bot.get(user_id, "desc")
     assert topic is not None
     return P2PTopicDesc.from_meta(topic.desc)
@@ -198,6 +204,7 @@ async def get_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> B
     sub = subscription_cache.get((bot.uid, topic_id))
     if sub is not None and (not ensure_meta or isinstance(sub.sub, Subscription)):
         return sub.sub
+    await ensure_sub(bot, topic_id)
     _, sub_meta = await bot.get("me", "sub")
     assert sub_meta is not None
     for i in sub_meta.sub:
@@ -206,20 +213,42 @@ async def get_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> B
     raise ValueError(f"bot not subscribed to topic {topic_id}")
 
 
-async def get_topic_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False, ensure_all: bool = False) -> List[Tuple[str, BaseSubscription]]:
+async def get_topic_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False, ensure_all: bool = True) -> List[Tuple[str, BaseSubscription]]:
     assert topic_id != "me", "topic_id must not be 'me'"
     sub = [(c.user, c.sub) for c in subscription_cache.values() if c.topic == topic_id]
     if sub and not ensure_all and (not ensure_meta or all(isinstance(s[1], Subscription) for s in sub)):
         return sub
+    await ensure_sub(bot, topic_id)
     _, sub_meta = await bot.get(topic_id, "sub")
     assert sub_meta is not None
     return [(s.user_id, Subscription.from_meta(s)) for s in sub_meta.sub]
 
 
-async def get_my_sub(bot: Bot, /, *, ensure_meta: bool = False, ensure_all: bool = False) -> List[Tuple[str, BaseSubscription]]:
+async def get_my_sub(bot: Bot, /, *, ensure_meta: bool = False, ensure_all: bool = True) -> List[Tuple[str, BaseSubscription]]:
     sub = [(c.topic, c.sub) for c in subscription_cache.values() if c.user == bot.uid]
     if sub and not ensure_all and (not ensure_meta or all(isinstance(s[1], Subscription) for s in sub)):
         return sub
+    await ensure_sub(bot, "me")
     _, sub_meta = await bot.get("me", "sub")
     assert sub_meta is not None
     return [(s.topic, Subscription.from_meta(s)) for s in sub_meta.sub]
+
+
+async def get_user_tags(bot: Bot) -> List[str]:
+    cache = user_cache.get(bot.uid)
+    if cache is not None and cache.tags is not None:
+        return cache.tags.copy()
+    await ensure_sub(bot, "me")
+    _, tag_meta = await bot.get("me", "tags")
+    assert tag_meta is not None
+    return list(tag_meta.tags)
+
+
+async def get_user_cred(bot: Bot) -> List[Cred]:
+    cache = user_cache.get(bot.uid)
+    if cache is not None and cache.cred is not None:
+        return cache.cred.copy()
+    await ensure_sub(bot, "me")
+    _, cred_meta = await bot.get("me", "cred")
+    assert cred_meta is not None
+    return [Cred(method=c.method, value=c.value, done=c.done) for c in cred_meta.cred]

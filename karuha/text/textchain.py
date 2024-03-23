@@ -276,6 +276,23 @@ class Row(_Container):
 class Quote(_Container):
     type: Final[InlineType] = "QQ"
 
+    @property
+    def mention(self) -> Optional["Mention"]:
+        if not isinstance(self.content, TextChain) or not self.content:
+            return
+        mn = self.content[0]
+        assert isinstance(mn, Mention)
+        return mn
+
+    @property
+    def quote_content(self) -> Optional[BaseText]:
+        if not isinstance(self.content, TextChain):
+            return
+        elif len(self.content) == 2 and isinstance(self.content[1], PlainText):
+            return PlainText(str(self.content[1])[1:])
+        elif len(self.content) == 3:
+            return self.content[2]
+
 
 class Form(_Container):
     type: Final[InlineType] = "FM"
@@ -388,7 +405,7 @@ class _Attachment(_ExtensionText):
 
     mime: str
     name: Optional[str] = None
-    val: Optional[str] = None
+    val: Optional[Any] = None
     ref: Optional[str] = None
     size: Optional[int] = None
 
@@ -461,12 +478,6 @@ class _Attachment(_ExtensionText):
                     data.pop(k)
                     data[k[4:]] = b64encode(v).decode("ascii")
         return data
-
-    @model_validator(mode="after")
-    def check_data(self) -> Self:
-        if self.ref is None and self.val is None:
-            raise ValueError("no data provided")
-        return self
 
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(exclude={"text", "type"}, exclude_none=True)

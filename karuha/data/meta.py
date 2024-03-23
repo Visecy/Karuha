@@ -94,7 +94,7 @@ class TimeInfo(BaseModel):
 
 
 class TopicInfo(TimeInfo):
-    seq: int
+    seq: Optional[int] = None
 
     @classmethod
     def from_meta(cls, desc: pb.TopicDesc) -> Self:
@@ -182,7 +182,7 @@ class BaseSubscription(BaseModel):
 
 class Subscription(BaseSubscription):
     updated: datetime
-    deleted: datetime
+    deleted: Optional[datetime] = None
     read: Optional[int] = None
     recv: Optional[int] = None
     clear: Optional[int] = None

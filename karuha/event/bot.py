@@ -1,5 +1,7 @@
 import asyncio
 from functools import partial
+from logging import Logger
+import sys
 from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional
 from typing_extensions import Self
 
@@ -7,7 +9,7 @@ from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from .. import bot
-from .base import Event
+from .base import Event, handler_runner
 from ..utils.proxy_propery import ProxyProperty
 
 
@@ -25,16 +27,18 @@ class BotEvent(Event):
         self.bot = bot
 
     def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
-        return self.bot._create_task(handler(self))
+        return self.bot._create_task(handler_runner(self, self.bot.logger, handler))
 
 
 class BotInitEvent(BotEvent):
     __slots__ = []
 
     async def __default_handler__(self) -> None:
-        await self.bot.hello()
-        for i in range(4):
+        bot = self.bot
+        retry = bot.server.retry if bot.server is not None else 0
+        for i in range(retry):
             try:
+                await self.bot.hello()
                 await self.bot.login()
             except asyncio.TimeoutError:
                 self.bot.logger.warning(f"login failed, retrying {i+1} times")
@@ -157,8 +161,7 @@ class CtrlEvent(ServerEvent, on_field="ctrl"):
     
     async def __default_handler__(self) -> None:
         tid = self.server_message.id
-        if tid in self.bot._wait_list:
-            self.bot._wait_list[tid].set_result(self.server_message)
+        self.bot._set_reply_message(tid, self.server_message)
 
 
 class MetaEvent(ServerEvent, on_field="meta"):
@@ -278,8 +281,7 @@ class MetaEvent(ServerEvent, on_field="meta"):
     
     async def __default_handler__(self) -> None:
         tid = self.server_message.id
-        if tid in self.bot._wait_list:
-            self.bot._wait_list[tid].set_result(self.server_message)
+        self.bot._set_reply_message(tid, self.server_message)
 
 
 class PresEvent(ServerEvent, on_field="pres"):
@@ -414,12 +416,13 @@ class ClientEvent(BotEvent):
     NOTE: Such events will be triggered after the corresponding action is completed.
     """
 
-    __slots__ = ["client_message", "response_message"]
+    __slots__ = ["client_message", "response_message", "extra"]
 
-    def __init__(self, bot: "bot.Bot", message: Message, response_message: Optional[Message] = None) -> None:
+    def __init__(self, bot: "bot.Bot", message: Message, response_message: Optional[Message] = None, extra: Optional[pb.ClientExtra] = None) -> None:
         super().__init__(bot)
         self.client_message = message
         self.response_message = response_message
+        self.extra = extra
     
     def __init_subclass__(cls, on_field: str, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)

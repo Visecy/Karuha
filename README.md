@@ -42,7 +42,7 @@ Create a new file config.json and write the configuration in it:
 ```json
 {
     "server": {
-        "host": "localhost:16060",
+        "host": "localhost:16060"
     },
     "bots": [
         {
@@ -92,7 +92,7 @@ Then comes the function body, which is very short with only one line. `session` 
 After writing the command, we can run the chatbot to test it. Use the following command:
 
 ```sh
-python -m Karuha ./config.json -m hi
+python -m karuha ./config.json -m hi
 ```
 
 Then in the conversation with the bot, enter the following:

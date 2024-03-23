@@ -59,7 +59,8 @@ setup(
     ],
     extras_require={
         "image": ["pillow"],
-        "all": ["pillow"],
+        "data": ["greenback"],
+        "all": ["pillow", "greenback"],
     },
 
     classifiers=[

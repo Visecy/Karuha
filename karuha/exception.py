@@ -53,7 +53,7 @@ class KaruhaCommandError(KaruhaException):
             return self.collection.commands.get(self.name)
 
 
-class KaruhaCommandCanceledError(KaruhaCommandError):
+class KaruhaCommandCanceledError(asyncio.CancelledError):
     """command cancelled"""
     __slots__ = []
 

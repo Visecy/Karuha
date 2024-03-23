@@ -117,9 +117,13 @@ def cache_meta(event: MetaEvent) -> None:
 
 @on(SubscribeEvent)
 def handle_sub(event: SubscribeEvent) -> None:
+    if event.extra is not None and event.extra.on_behalf_of:
+        return
     _sub_topic(event.bot, event.topic)
 
 
 @on(LeaveEvent)
 def handle_leave(event: LeaveEvent) -> None:
+    if event.extra is not None and event.extra.on_behalf_of:
+        return
     _leave_topic(event.bot, event.topic)
