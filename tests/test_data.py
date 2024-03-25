@@ -1,3 +1,4 @@
+import asyncio
 import json
 import aiofiles
 import greenback
@@ -9,14 +10,14 @@ from karuha.data.meta import AccessPermission, BaseDesc, UserDesc
 from karuha.data.store import (DataModel, JsonFileStore, MemoryStore,
                                PrimaryKey, get_store, is_pk_annotation)
 
-from .utils import AsyncBotTestCase
+from .utils import TEST_TIME_OUT, AsyncBotTestCase
 
 
-class DataNoPk(DataModel):
+class DataNoPk(DataModel, pk=()):
     content: str
 
 
-class DataPk1(DataModel, pk=("pk1",)):
+class DataPk1(DataModel, pk="pk1"):
     pk1: str
     content: str
 
@@ -120,20 +121,21 @@ class TestData(AsyncBotTestCase):
         with self.assertRaises(AssertionError):
             data.get_primary_key()
         
-        self.assertEqual(DataPk1.__primary_key__, frozenset(("pk1",)))
+        self.assertEqual(DataPk1.__primary_key__, ("pk1",))
         data = DataPk1(pk1="test", content="test")
         self.assertEqual(data.get_primary_key(), "test")
         with self.assertRaises(ValidationError):
             data.pk1 = "test1"
         self.assertEqual(data.pk1, "test")
 
-        self.assertEqual(DataPk2.__primary_key__, frozenset(("pk1", "pk2")))
+        self.assertEqual(DataPk2.__primary_key__, ("pk1", "pk2"))
         data = DataPk2(pk1="test1", pk2="test2", content="test")
         self.assertEqual(set(data.get_primary_key()), set(("test1", "test2")))
     
     def test_memory_store(self) -> None:
-        store = MemoryStore[DataModel].get_store()
+        store = MemoryStore[DataModel]('test')
         self.assertIsInstance(store, MemoryStore)
+        self.assertIs(store.data_type, DataModel)
 
         self.assertEqual(store.get_all(), [])
         self.assertEqual(tuple(store.keys()), ())
@@ -167,15 +169,28 @@ class TestData(AsyncBotTestCase):
         self.assertIn(data, store)
         self.assertIn(data1, store)
 
+        store.remove(data)
+        self.assertEqual(list(store.get_all()), [data1])
+        self.assertNotIn(data, store)
+        store.remove(data1)
+        self.assertEqual(list(store.get_all()), [])
+        self.assertNotIn(data1, store)
+
+        self.assertFalse(store.discard(data))
+        self.assertFalse(store.discard(data1))
+        self.assertFalse(store)
+
     async def test_json_store(self) -> None:
         await greenback.ensure_portal()
         store = get_store("json", data_type=DataPk1)
-        assert isinstance(store, JsonFileStore)
+        self.assertIsInstance(store, JsonFileStore)
         self.assertIs(store, get_store("json", data_type=DataPk1))
         self.assertTrue(store.async_backend_available())
         store.clear()
+        self.assertTrue(not store._load_tasks or all(t.done() for t in store._load_tasks))
         self.assertTrue(store._save_tasks)
         await store.wait_tasks()
+        self.assertFalse(store._should_wait())
         
         async with aiofiles.open(store.path, "rb") as f:
             content = await f.read()
@@ -191,14 +206,33 @@ class TestData(AsyncBotTestCase):
         async with aiofiles.open(store.path, "rb") as f:
             content = await f.read()
         self.assertEqual(json.loads(content), [data.model_dump()])
+
+        data.content = "test2"
+        self.assertTrue(store._save_tasks)
+        await store.wait_tasks()
+        async with aiofiles.open(store.path, "rb") as f:
+            content = await f.read()
+        self.assertEqual(json.loads(content), [data.model_dump()])
+
+        store.load_backend()
+        store.save_backend()
+        store.load_backend()
+        store.save_backend()
+        store.save_backend()
+        await asyncio.wait_for(store.wait_tasks(), timeout=TEST_TIME_OUT)
+        self.assertFalse(store._should_wait())
     
     def test_sync_json_store(self) -> None:
-        store = JsonFileSyncStore.get_store()
+        store = JsonFileSyncStore.get_store(indent=4)
+        self.assertFalse(store.enable_async_backend)
         store.clear()
-        self.assertFalse(store._save_tasks)
         
         data = DataPk1(pk1="test", content="test")
         store.add(data)
+        self.assertFalse(store._save_tasks)
         self.assertEqual(store.get_all(), [data])
         self.assertEqual(store.get("test"), data)
 
+        with open(store.path, "rb") as f:
+            content = f.read()
+        self.assertEqual(json.loads(content), [data.model_dump()])

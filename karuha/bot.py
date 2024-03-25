@@ -48,8 +48,15 @@ class Bot(object):
 
     initialize_event_callback: Callable[[Self], Any]
     finalize_event_callback: Callable[[Self], Coroutine]
-    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
-    client_event_callbacks: Dict[str, List[Callable[[Self, Message, Optional[Message], Optional[pb.ClientExtra]], Any]]] = defaultdict(list)
+    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = (
+        defaultdict(list)
+    )
+    client_event_callbacks: Dict[
+        str,
+        List[
+            Callable[[Self, Message, Optional[Message], Optional[pb.ClientExtra]], Any]
+        ],
+    ] = defaultdict(list)
 
     @overload
     def __init__(
@@ -355,55 +362,55 @@ class Bot(object):
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["desc"]] = None,
-            *,
-            desc: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["desc"]] = None,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["sub"]] = None,
-            *,
-            sub: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["sub"]] = None,
+        *,
+        sub: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["data"]] = None,
-            *,
-            data: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["data"]] = None,
+        *,
+        data: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Literal["tags"],
-            *,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Literal["tags"],
+        *,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Literal["cred"],
-            *,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Literal["cred"],
+        *,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     async def get(
@@ -517,7 +524,7 @@ class Bot(object):
             extra=extra
         )
         return tid, None
-    
+
     async def set(
             self,
             /,
@@ -574,12 +581,32 @@ class Bot(object):
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
     @overload
-    async def send_message(self, wait_tid: str, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]) -> Message: ...
+    async def send_message(
+        self,
+        wait_tid: str,
+        /,
+        *,
+        extra: Optional[pb.ClientExtra] = None,
+        **kwds: Optional[Message],
+    ) -> Message: ...
 
     @overload
-    async def send_message(self, wait_tid: None = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]) -> None: ...
+    async def send_message(
+        self,
+        wait_tid: None = None,
+        /,
+        *,
+        extra: Optional[pb.ClientExtra] = None,
+        **kwds: Optional[Message],
+    ) -> None: ...
 
-    async def send_message(self, wait_tid: Optional[str] = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]) -> Optional[Message]:
+    async def send_message(
+            self,
+            wait_tid: Optional[str] = None,
+            /, *,
+            extra: Optional[pb.ClientExtra] = None,
+            **kwds: Optional[Message]
+    ) -> Optional[Message]:
         """set messages to Tinode server
 
         :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
@@ -719,7 +746,7 @@ class Bot(object):
             raise KaruhaTimeoutError(f"timeout while waiting for reply from bot {self.name}") from None
         finally:
             assert self._wait_list.pop(tid, None) is future
-    
+
     def _set_reply_message(self, tid: str, message: Any) -> None:
         if tid in self._wait_list:
             f = self._wait_list[tid]
@@ -781,7 +808,7 @@ class Bot(object):
             except asyncio.CancelledError:
                 pass
             self.server = old_server_config
-            
+
             # clean up for restarting
             while not self.queue.empty():
                 self.queue.get_nowait()

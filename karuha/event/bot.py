@@ -1,7 +1,5 @@
 import asyncio
 from functools import partial
-from logging import Logger
-import sys
 from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional
 from typing_extensions import Self
 
@@ -405,7 +403,7 @@ class InfoEvent(ServerEvent, on_field="info"):
 
 # Client Event Part
 # =========================
-    
+
 
 ClientMessageProperty = partial(ProxyProperty, "client_message")
 
@@ -418,12 +416,18 @@ class ClientEvent(BotEvent):
 
     __slots__ = ["client_message", "response_message", "extra"]
 
-    def __init__(self, bot: "bot.Bot", message: Message, response_message: Optional[Message] = None, extra: Optional[pb.ClientExtra] = None) -> None:
+    def __init__(
+        self,
+        bot: "bot.Bot",
+        message: Message,
+        response_message: Optional[Message] = None,
+        extra: Optional[pb.ClientExtra] = None,
+    ) -> None:
         super().__init__(bot)
         self.client_message = message
         self.response_message = response_message
         self.extra = extra
-    
+
     def __init_subclass__(cls, on_field: str, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)
         bot.Bot.client_event_callbacks[on_field].append(cls.new)

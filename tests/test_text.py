@@ -1,7 +1,7 @@
 from unittest import TestCase
 
 from karuha.text import PlainText, Form, Drafty, drafty2tree, drafty2text
-from karuha.text.textchain import File, Mention, NewLine, Quote, TextChain, Bold, Hidden
+from karuha.text.textchain import File, Mention, Quote, TextChain, Bold, Hidden
 from karuha.text.convert import eval_spans, to_span_tree
 from karuha.event.message import MessageEvent
 

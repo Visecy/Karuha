@@ -1,11 +1,14 @@
-from typing import (Any, Dict, FrozenSet, ItemsView, Iterator, KeysView, List, Mapping,
-                    Optional, Set, Tuple, TypeVar, Union, ValuesView, overload)
-from typing_extensions import Self
+from typing import (Any, Dict, FrozenSet, ItemsView, Iterator, KeysView, List,
+                    Mapping, Optional, Set, Tuple, TypeVar, Union, ValuesView,
+                    overload)
 
 from pydantic import BaseModel
+from typing_extensions import Self
 
 from ..bot import Bot
-from .meta import BaseDesc, Cred, GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo, BaseSubscription, UserDesc, UserCred, UserTags
+from .meta import (BaseDesc, BaseSubscription, Cred, GroupTopicDesc,
+                   P2PTopicDesc, Subscription, TopicInfo, UserCred, UserDesc,
+                   UserTags)
 from .sub import ensure_sub
 
 
@@ -163,10 +166,17 @@ async def get_user_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False)
     return UserDesc.from_meta(user.desc)
 
 
-async def get_group_desc(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> BaseDesc:
+async def get_group_desc(
+    bot: Bot, /, topic_id: str, *, ensure_meta: bool = False
+) -> BaseDesc:
     assert topic_id.startswith("grp"), "topic_id must be a group topic"
     topic = group_cache.get(topic_id)
-    if topic is not None and topic.desc is not None and isinstance(topic.desc, BaseDesc) and (not ensure_meta or isinstance(topic.desc, GroupTopicDesc)):
+    if (
+        topic is not None
+        and topic.desc is not None
+        and isinstance(topic.desc, BaseDesc)
+        and (not ensure_meta or isinstance(topic.desc, GroupTopicDesc))
+    ):
         return topic.desc
     await ensure_sub(bot, topic_id)
     _, topic = await bot.get(topic_id, "desc")
@@ -174,9 +184,16 @@ async def get_group_desc(bot: Bot, /, topic_id: str, *, ensure_meta: bool = Fals
     return GroupTopicDesc.from_meta(topic.desc)
 
 
-async def _get_p2p_topic(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> TopicInfo:
+async def _get_p2p_topic(
+    bot: Bot, /, topic_id: str, *, ensure_meta: bool = False
+) -> TopicInfo:
     topic = group_cache.get(topic_id)
-    if topic is not None and topic.desc is not None and isinstance(topic.desc, TopicInfo) and (not ensure_meta or isinstance(topic.desc, P2PTopicDesc)):
+    if (
+        topic is not None
+        and topic.desc is not None
+        and isinstance(topic.desc, TopicInfo)
+        and (not ensure_meta or isinstance(topic.desc, P2PTopicDesc))
+    ):
         return topic.desc
     await ensure_sub(bot, topic_id)
     _, topic = await bot.get(topic_id, "desc")
@@ -213,10 +230,16 @@ async def get_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> B
     raise ValueError(f"bot not subscribed to topic {topic_id}")
 
 
-async def get_topic_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False, ensure_all: bool = True) -> List[Tuple[str, BaseSubscription]]:
+async def get_topic_sub(
+    bot: Bot, /, topic_id: str, *, ensure_meta: bool = False, ensure_all: bool = True
+) -> List[Tuple[str, BaseSubscription]]:
     assert topic_id != "me", "topic_id must not be 'me'"
     sub = [(c.user, c.sub) for c in subscription_cache.values() if c.topic == topic_id]
-    if sub and not ensure_all and (not ensure_meta or all(isinstance(s[1], Subscription) for s in sub)):
+    if (
+        sub
+        and not ensure_all
+        and (not ensure_meta or all(isinstance(s[1], Subscription) for s in sub))
+    ):
         return sub
     await ensure_sub(bot, topic_id)
     _, sub_meta = await bot.get(topic_id, "sub")
@@ -224,9 +247,15 @@ async def get_topic_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False
     return [(s.user_id, Subscription.from_meta(s)) for s in sub_meta.sub]
 
 
-async def get_my_sub(bot: Bot, /, *, ensure_meta: bool = False, ensure_all: bool = True) -> List[Tuple[str, BaseSubscription]]:
+async def get_my_sub(
+    bot: Bot, /, *, ensure_meta: bool = False, ensure_all: bool = True
+) -> List[Tuple[str, BaseSubscription]]:
     sub = [(c.topic, c.sub) for c in subscription_cache.values() if c.user == bot.uid]
-    if sub and not ensure_all and (not ensure_meta or all(isinstance(s[1], Subscription) for s in sub)):
+    if (
+        sub
+        and not ensure_all
+        and (not ensure_meta or all(isinstance(s[1], Subscription) for s in sub))
+    ):
         return sub
     await ensure_sub(bot, "me")
     _, sub_meta = await bot.get("me", "sub")
