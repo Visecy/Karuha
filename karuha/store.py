@@ -3,7 +3,7 @@ import os
 import warnings
 from abc import abstractmethod
 from collections import deque
-from inspect import isabstract, isclass
+from inspect import isabstract
 from typing import (Any, ClassVar, Dict, Generic, Iterable, Iterator, List,
                     Literal, Optional, Tuple, Type, TypeVar, Union, cast,
                     overload)
@@ -40,9 +40,7 @@ def is_pk_annotation(annotation: Any) -> bool:
 class DataModel(BaseModel, validate_assignment=True):
     __primary_key__: ClassVar[Optional[Tuple[str, ...]]] = None
 
-    data_store: Annotated[Optional["AbstractDataStore[Self]"], Field(exclude=True)] = (
-        None
-    )
+    data_store: Annotated[Optional["AbstractDataStore[Self]"], Field(exclude=True)] = None
 
     def set_data_store(self, store: "AbstractDataStore[Self]", /) -> Self:
         assert (
@@ -72,7 +70,7 @@ class DataModel(BaseModel, validate_assignment=True):
         return self
 
     def get_primary_key(self) -> Any:
-        assert self.__class__.__primary_key__, "primary key not defined"
+        assert self.__class__.__primary_key__ is not None, "primary key not defined"
         pk = tuple(getattr(self, key) for key in self.__class__.__primary_key__)
         if len(pk) == 1:
             return pk[0]
@@ -88,9 +86,9 @@ class DataModel(BaseModel, validate_assignment=True):
     ) -> None:
         super().__init_subclass__(**kwds)
         if isinstance(pk, str):
-            pk = (pk,)
+            pk = [pk]
         if pk is not None:
-            pk = tuple(pk)
+            pk = list(pk)
             for name in pk:
                 ann = cls.__annotations__.get(name)
                 if ann is None:  # pragma: no cover
@@ -102,18 +100,19 @@ class DataModel(BaseModel, validate_assignment=True):
                 if not is_pk_annotation(ann):
                     cls.__annotations__[name] = PrimaryKey[ann]
         else:
-            pk = tuple(
+            pk = [
                 name
                 for name, annotation in cls.__annotations__.items()
                 if is_pk_annotation(annotation)
-            )
-
-        if not pk:
-            return
-        if cls.__primary_key__ is None:
-            cls.__primary_key__ = pk
-        else:
-            cls.__primary_key__ += pk
+            ]
+        
+        pk_inherited = []
+        for c in cls.__bases__:
+            if issubclass(c, DataModel) and c.__primary_key__ is not None:
+                pk_inherited.extend(filter(lambda x: x not in pk_inherited, c.__primary_key__))
+        if pk:
+            pk_inherited.extend(filter(lambda x: x not in pk_inherited, pk))
+        cls.__primary_key__ = tuple(pk_inherited) or None
 
 
 class TopicBoundDataModel(DataModel):
@@ -137,6 +136,7 @@ class AbstractDataStore(Generic[T_Data]):
     __orig_bases__: Tuple[Type, ...]
 
     __store_collection__: ClassVar[Dict[str, Type[Self]]] = {}
+    __store_type_var__: ClassVar[TypeVar] = T_Data
     __store_cache__: ClassVar[Dict[str, Self]]
     __store_type__: ClassVar[Type[DataModel]]
 
@@ -208,10 +208,10 @@ class AbstractDataStore(Generic[T_Data]):
             typed_cls = self.__orig_class__
             parameters = getattr(get_origin(typed_cls), "__parameters__", ())
             for tv, t in zip(parameters, get_args(typed_cls)):
-                if tv == T_Data:
+                if tv == self.__store_type_var__:
                     self._data_type = cast(Type[T_Data], t)
                     return self._data_type
-        raise TypeError("data_type not specified")  # type: ignore
+        raise TypeError("data_type not specified")
 
     def __contains__(self, __key: Any) -> bool:
         if isinstance(__key, DataModel):
@@ -243,22 +243,27 @@ class AbstractDataStore(Generic[T_Data]):
         cls, *, store_type: Optional[str] = None, **kwds: Any
     ) -> None:
         super().__init_subclass__(**kwds)
-        for i in cls.__orig_bases__:
-            orig = get_origin(i)
-            args = get_args(i)
-            if (
-                isclass(orig)
-                and issubclass(orig, AbstractDataStore)
-                and len(args) == 1
-                and not isinstance(args[0], TypeVar)
-            ):
-                cls.__store_type__ = args[0]
-                break
         if store_type:
             assert not isabstract(cls), "cannot specify store_type for abstract class"
             cls.__store_collection__[store_type] = cls
         if not isabstract(cls):
             cls.__store_cache__ = {}
+        if hasattr(cls, "__store_type__"):
+            return
+        for i in cls.__orig_bases__:
+            orig = get_origin(i)
+            args = get_args(i)
+            params = getattr(orig, "__parameters__", ())
+            try:
+                type_index = params.index(cls.__store_type_var__)
+            except ValueError:
+                continue
+            type_annotation = args[type_index]
+            if isinstance(type_annotation, TypeVar):
+                cls.__store_type_var__ = type_annotation
+            else:
+                cls.__store_type__ = type_annotation
+            break
 
 
 DataModel.model_rebuild()
@@ -485,8 +490,8 @@ class AbstractAsyncCachedStore(AbstractCachedDataStore[T_Data]):
     def update_data(self) -> None:
         self.save_backend()
 
-    @classmethod
-    def async_backend_available(cls) -> bool:
+    @staticmethod
+    def async_backend_available() -> bool:
         return greenback is not None and greenback.has_portal()
 
 

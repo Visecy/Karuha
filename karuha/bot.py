@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import platform
 import sys
 from asyncio.queues import Queue
@@ -14,8 +15,8 @@ import grpc
 from aiofiles import open as aio_open
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
-from pydantic import GetCoreSchemaHandler
-from pydantic_core import CoreSchema, core_schema
+from pydantic import GetCoreSchemaHandler, TypeAdapter
+from pydantic_core import CoreSchema, core_schema, from_json, to_json
 from tinode_grpc import pb
 from typing_extensions import Self, deprecated
 
@@ -25,7 +26,7 @@ from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
-from .utils.decode import decode_mapping, encode_mapping, json
+from .utils.decode import decode_mapping, encode_mapping
 
 
 class State(IntEnum):
@@ -42,7 +43,7 @@ class Bot(object):
     Provides many low-level API interfaces.
     """
     __slots__ = [
-        "queue", "state", "client", "logger", "config", "server",
+        "queue", "state", "client", "logger", "config", "server", "user_id", "token", "token_expires", "authlvl",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
 
@@ -120,6 +121,7 @@ class Bot(object):
         if server is not None and not isinstance(server, ServerConfig):
             server = ServerConfig.model_validate(server)
         self.server = server
+        self.token = None
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
@@ -170,7 +172,9 @@ class Bot(object):
         tid = self._get_tid()
         schema, secret = self.config.schema_, self.config.secret
         try:
-            if schema == "cookie":
+            if self.token is not None and self.token_expires > datetime.now(timezone.utc):
+                schema, secret = "token", self.token.encode("ascii")
+            elif schema == "cookie":
                 schema, secret = await read_auth_cookie(self.config.secret)
             else:
                 secret = secret.encode("ascii")
@@ -197,17 +201,16 @@ class Bot(object):
             self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
 
-        self.logger.info("login successful")
+        self.logger.info(f"login successful (schema {schema})")
 
-        params = ctrl.params
-        if not params:
-            return tid, {}
+        params = decode_mapping(ctrl.params)
         if "user" in params:
-            self.config.user = json.loads(params["user"].decode())
+            self.user_id = params["user"]
         if "token" in params:
-            self.config.schema_ = "token"
-            self.config.secret = json.loads(params["token"].decode())
-        return tid, decode_mapping(params)
+            self.token = params["token"]
+            # datetime.fromisoformat before 3.11 does not support any iso 8601 format, use pydantic instead
+            self.token_expires = TypeAdapter(datetime).validate_python(params["expires"])
+        return tid, params
 
     async def subscribe(
         self, /, topic: str,
@@ -349,7 +352,7 @@ class Bot(object):
                 topic=topic,
                 no_echo=True,
                 head=head,
-                content=json.dumps(text).encode()
+                content=to_json(text)
             ),
             extra=extra
         )
@@ -725,10 +728,7 @@ class Bot(object):
 
     @property
     def uid(self) -> str:
-        uid = self.config.user
-        if uid is None:
-            raise ValueError(f"cannot fetch the uid of bot {self.name}")
-        return uid
+        return self.user_id
 
     def _get_tid(self) -> str:
         tid = str(self._tid_counter)
@@ -842,7 +842,7 @@ class Bot(object):
 
     def __repr__(self) -> str:
         state = self.state.name
-        uid = self.config.user or ''
+        uid = getattr(self, "user_id", 'unknown uid')
         host = self.server.host if self.server else 'unknown'
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
@@ -858,7 +858,7 @@ def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallab
 async def read_auth_cookie(cookie_file_name) -> Union[Tuple[str, bytes], Tuple[None, None]]:
     """Read authentication token from a file"""
     async with aio_open(cookie_file_name, 'r') as cookie:
-        params = json.loads(await cookie.read())
+        params = from_json(await cookie.read())
     schema = params.get("schema")
     secret = params.get('secret')
     if schema is None or secret is None:

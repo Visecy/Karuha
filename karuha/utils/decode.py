@@ -2,25 +2,21 @@ from typing import Any, Dict, Mapping, Union
 
 from google.protobuf.internal import containers
 from google.protobuf.message import Message
-
-try:
-    import ujson as json
-except ImportError:  # pragma: no cover
-    import json
+from pydantic_core import from_json, to_json
 
 
 def load_json(obj: Union[str, bytes], **kwds: Any) -> Any:
     if not obj:
         return
-    return json.loads(obj, **kwds)
+    return from_json(obj, **kwds)
 
 
 def encode_mapping(data: Mapping[str, Any]) -> Dict[str, bytes]:
-    return {k: json.dumps(v).encode() for k, v in data.items()}
+    return {k: to_json(v) for k, v in data.items()}
 
 
 def decode_mapping(data: Mapping[str, bytes]) -> Dict[str, Any]:
-    return {k: json.loads(v) for k, v in data.items()}
+    return {k: from_json(v) for k, v in data.items()}
 
 
 def msg2dict(msg: Message) -> Dict[str, Any]:

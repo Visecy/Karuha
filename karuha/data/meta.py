@@ -74,7 +74,7 @@ class AccessPermission(BaseModel):
 class Cred(BaseModel):
     method: str
     value: str
-    done: bool
+    done: bool = False
 
 
 class DefaultAccess(BaseModel):
@@ -113,13 +113,21 @@ class BaseDesc(BaseModel):
     @classmethod
     def from_meta(cls, meta: Union[pb.TopicDesc, pb.TopicSub]) -> Self:
         return cls(
-            public=meta.public,  # type: ignore
-            trusted=meta.trusted  # type: ignore
+            public=meta.public or None,  # type: ignore
+            trusted=meta.trusted or None  # type: ignore
         )
 
 
 class CommonDesc(BaseDesc):
     defacs: Optional[DefaultAccess] = None
+
+    @classmethod
+    def from_meta(cls, meta: Union[pb.TopicDesc, pb.TopicSub]) -> Self:
+        return cls(
+            public=meta.public or None,  # type: ignore
+            trusted=meta.trusted or None,  # type: ignore
+            defacs=msg2dict(meta.defacs) or None,  # type: ignore
+        )
 
 
 class P2PTopicDesc(TopicInfo):
@@ -139,9 +147,9 @@ class GroupTopicDesc(TopicInfo, CommonDesc):
     @classmethod
     def from_meta(cls, desc: pb.TopicDesc) -> Self:
         return cls(
-            public=desc.public,  # type: ignore
-            trusted=desc.trusted,  # type: ignore
-            defacs=msg2dict(desc.defacs),  # type: ignore
+            public=desc.public or None,  # type: ignore
+            trusted=desc.trusted or None,  # type: ignore
+            defacs=msg2dict(desc.defacs) or None,  # type: ignore
             seq=desc.seq_id,
             created=desc.created_at,  # type: ignore
             updated=desc.updated_at,  # type: ignore
@@ -157,46 +165,51 @@ class UserDesc(TimeInfo, CommonDesc):
     @classmethod
     def from_meta(cls, desc: pb.TopicDesc) -> Self:
         return cls(
-            public=desc.public,  # type: ignore
-            trusted=desc.trusted,  # type: ignore
+            public=desc.public or None,  # type: ignore
+            trusted=desc.trusted or None,  # type: ignore
             state=desc.state,
             state_at=desc.state_at,  # type: ignore
             created=desc.created_at,  # type: ignore
             updated=desc.updated_at,  # type: ignore
             touched=desc.touched_at,  # type: ignore
-            defacs=msg2dict(desc.defacs)  # type: ignore
+            defacs=msg2dict(desc.defacs) or None  # type: ignore
         )
 
 
 class BaseSubscription(BaseModel):
     acs: Access
     private: Optional[Dict[str, Any]] = None
+    read: Optional[int] = None
+    recv: Optional[int] = None
+    clear: Optional[int] = None
 
     @classmethod
     def from_meta(cls, meta: Union[pb.TopicDesc, pb.TopicSub]) -> Self:
         return cls(
-            acs=msg2dict(meta.acs),  # type: ignore
-            private=meta.private,  # type: ignore
+            acs=msg2dict(meta.acs) or None,  # type: ignore
+            private=meta.private or None,  # type: ignore
+            read=meta.read_id,
+            recv=meta.recv_id,
+            clear=meta.del_id,
         )
 
 
 class Subscription(BaseSubscription):
     updated: datetime
     deleted: Optional[datetime] = None
-    read: Optional[int] = None
-    recv: Optional[int] = None
-    clear: Optional[int] = None
+    touched: Optional[datetime] = None
 
     @classmethod
     def from_meta(cls, meta: pb.TopicSub) -> Self:
         return cls(
-            acs=msg2dict(meta.acs),  # type: ignore
-            private=meta.private,  # type: ignore
+            acs=msg2dict(meta.acs) or None,  # type: ignore
+            private=meta.private or None,  # type: ignore
             updated=meta.updated_at,  # type: ignore
             deleted=meta.deleted_at,  # type: ignore
-            read=meta.read,  # type: ignore
-            recv=meta.recv,  # type: ignore
-            clear=meta.clear,  # type: ignore
+            touched=meta.touched_at,  # type: ignore
+            read=meta.read_id,
+            recv=meta.recv_id,
+            clear=meta.del_id,
         )
 
 

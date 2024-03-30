@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+from ..event import on
+from ..event.bot import BotFinishEvent, SubscribeEvent, LeaveEvent
 from ..bot import Bot
 
 
@@ -25,3 +27,26 @@ async def ensure_sub(bot: Bot, topic: str) -> bool:
         await bot.subscribe(topic=topic, get="desc sub")
         return True
     return False
+
+
+def reset_sub(bot: Bot) -> None:
+    _subscriptions[bot.uid].clear()
+
+
+@on(SubscribeEvent)
+def handle_sub(event: SubscribeEvent) -> None:
+    if event.extra is not None and event.extra.on_behalf_of:
+        return
+    _sub_topic(event.bot, event.topic)
+
+
+@on(LeaveEvent)
+def handle_leave(event: LeaveEvent) -> None:
+    if event.extra is not None and event.extra.on_behalf_of:
+        return
+    _leave_topic(event.bot, event.topic)
+
+
+@on(BotFinishEvent)
+def handle_bot_stop(event: BotFinishEvent) -> None:
+    reset_sub(event.bot)

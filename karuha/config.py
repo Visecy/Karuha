@@ -8,6 +8,8 @@ from .logger import logger, Level
 
 class Server(BaseModel):
     host: Annotated[str, AnyUrl] = "localhost:16060"
+    web_host: Annotated[str, AnyUrl] = "localhost:6060"
+    api_key: str = "AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K"
     ssl: bool = False
     ssl_host: Optional[str] = None
     enable_plugin: bool = False
@@ -20,7 +22,6 @@ class Bot(BaseModel):
     name: str = "chatbot"
     schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
     secret: str
-    user: Optional[str] = None
     auto_subscribe_new_user: bool = False
 
 

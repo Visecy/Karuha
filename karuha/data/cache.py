@@ -1,16 +1,18 @@
-from typing import (Any, Dict, FrozenSet, ItemsView, Iterator, KeysView, List,
-                    Mapping, Optional, Set, Tuple, TypeVar, Union, ValuesView,
+from typing import (FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union,
                     overload)
 
 from pydantic import BaseModel
-from typing_extensions import Self
+from tinode_grpc import pb
 
 from ..bot import Bot
-from .meta import (BaseDesc, BaseSubscription, Cred, GroupTopicDesc,
-                   P2PTopicDesc, Subscription, TopicInfo, UserCred, UserDesc,
-                   UserTags)
+from ..event import on
+from ..event.bot import MetaEvent
+from ..store import (DataModel, MemoryStore, PrimaryKey, TopicBoundDataModel,
+                     UserBoundDataModel)
+from .meta import (BaseDesc, BaseSubscription, CommonDesc, Cred,
+                   GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
+                   UserCred, UserDesc, UserTags)
 from .sub import ensure_sub
-
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -30,125 +32,75 @@ def _update_model(raw: Optional[T], model: Optional[T]) -> Optional[T]:  # noqa:
     return model.model_copy()
 
 
-class BaseCache(BaseModel):
-    def update(self, item: Self) -> None:
-        pass
-
-
-class UserCache(BaseCache):
-    user: str
+class UserCache(UserBoundDataModel):
     desc: Optional[BaseDesc] = None
     tags: Optional[UserTags] = None
     cred: Optional[UserCred] = None
 
-    def update(self, item: Self) -> None:
-        self.desc = _update_model(self.desc, item.desc)
-        self.tags = item.tags or self.tags
-        self.cred = item.cred or self.cred
 
-
-class GroupTopicCache(BaseCache):
-    topic: str
+class GroupTopicCache(TopicBoundDataModel):
     desc: Optional[Union[BaseDesc, TopicInfo]] = None
     tags: Optional[UserTags] = None
 
-    def update(self, item: Self) -> None:
-        self.desc = _update_model(self.desc, item.desc)
-        self.tags = item.tags or self.tags
 
-
-class P2PTopicCache(BaseCache):
-    user_pair: FrozenSet[str]
+class P2PTopicCache(DataModel):
+    user_pair: PrimaryKey[FrozenSet[str]]
     desc: P2PTopicDesc
 
-    def update(self, item: Self) -> None:
-        self.desc = _update_model(self.desc, item.desc)
 
-
-class SubscriptionCache(BaseCache):
-    user: str
-    topic: str
+class SubscriptionCache(TopicBoundDataModel, UserBoundDataModel):
     sub: BaseSubscription
 
-    def update(self, item: Self) -> None:
-        self.sub = _update_model(self.sub, item.sub)
+
+user_cache = MemoryStore[UserCache]("user_meta_cache")
+group_cache = MemoryStore[GroupTopicCache]("group_meta_cache")
+p2p_cache = MemoryStore[P2PTopicCache]("p2p_meta_cache")
+subscription_cache = MemoryStore[SubscriptionCache]("sub_meta_cache")
 
 
-T_Cache = TypeVar("T_Cache", bound=BaseCache)
+def update_user_cache(
+    user_id: str,
+    desc: Optional[BaseDesc] = None,
+    tags: Optional[UserTags] = None,
+    cred: Optional[UserCred] = None,
+) -> None:
+    if user_id not in user_cache:
+        user_cache.add(UserCache(user_id=user_id, desc=desc, tags=tags, cred=cred))
+        return
+    cache = user_cache[user_id]
+    cache.desc = _update_model(cache.desc, desc)
+    cache.tags = tags or cache.tags
+    cache.cred = cred or cache.cred
 
 
-class CachePool(Mapping[Tuple[Any, ...], T_Cache]):
-    __slots__ = ["primary_keys", "_pool"]
-
-    def __init__(self, primary_keys: Set[str]) -> None:
-        self._pool: Dict[Tuple[Any, ...], T_Cache] = {}
-        self.primary_keys = primary_keys
-    
-    def add(self, item: T_Cache) -> None:
-        key = self._get_key(item)
-        if c := self.get(key):
-            c.update(item)
-        else:
-            self._pool[key] = item
-    
-    def clear(self) -> None:
-        self._pool.clear()
-
-    def keys(self) -> KeysView[Tuple[Any, ...]]:
-        return self._pool.keys()
-    
-    def values(self) -> ValuesView[T_Cache]:
-        return self._pool.values()
-    
-    def items(self) -> ItemsView[Tuple[Any, ...], T_Cache]:
-        return self._pool.items()
-    
-    def get(self, key: Any, default: Optional[T_Cache] = None) -> Optional[T_Cache]:
-        if not isinstance(key, tuple):
-            key = (key,)
-        return self._pool.get(key, default)
-    
-    def discard(self, key: Any) -> None:
-        if not isinstance(key, tuple):
-            if isinstance(key, BaseCache):
-                key = self._get_key(key)  # type: ignore
-            else:
-                key = (key,)
-        self._pool.pop(key, None)
-    
-    def __getitem__(self, key: Any) -> T_Cache:
-        if not isinstance(key, tuple):
-            if isinstance(key, BaseCache):
-                key = self._get_key(key)  # type: ignore
-            else:
-                key = (key,)
-        return self._pool[key]
-    
-    def __delitem__(self, key: Any) -> None:
-        if not isinstance(key, tuple):
-            if isinstance(key, BaseCache):
-                key = self._get_key(key)  # type: ignore
-            else:
-                key = (key,)
-        del self._pool[key]
-    
-    def __iter__(self) -> Iterator[Tuple[Any, ...]]:
-        yield from self._pool
-    
-    def __contains__(self, __key: object) -> bool:
-        return __key in self._pool
-    
-    def __len__(self) -> int:
-        return len(self._pool)
-
-    def _get_key(self, item: T_Cache) -> Tuple[Any, ...]:
-        return tuple(item.model_dump(include=self.primary_keys).values())
+def update_group_cache(
+    topic: str,
+    desc: Optional[Union[BaseDesc, TopicInfo]] = None,
+    tags: Optional[List[str]] = None,
+) -> None:
+    if topic not in group_cache:
+        group_cache.add(GroupTopicCache(topic=topic, desc=desc, tags=tags))
+        return
+    cache = group_cache[topic]
+    cache.desc = _update_model(cache.desc, desc)
+    cache.tags = tags or cache.tags
 
 
-user_cache = CachePool[UserCache]({"user"})
-group_cache = CachePool[GroupTopicCache]({"topic"})
-p2p_cache = CachePool[P2PTopicCache]({"user_pair"})
-subscription_cache = CachePool[SubscriptionCache]({"user", "topic"})
+def update_p2p_cache(user1_id: str, user2_id: str, desc: P2PTopicDesc) -> None:
+    user_pair = frozenset((user1_id, user2_id))
+    if user_pair not in p2p_cache:
+        p2p_cache.add(P2PTopicCache(user_pair=user_pair, desc=desc))
+        return
+    cache = p2p_cache[user_pair]
+    cache.desc = _update_model(cache.desc, desc)
+
+
+def update_sub_cache(topic: str, user_id: str, sub: BaseSubscription) -> None:
+    if (topic, user_id) not in subscription_cache:
+        subscription_cache.add(SubscriptionCache(topic=topic, user_id=user_id, sub=sub))
+        return
+    cache = subscription_cache[topic, user_id]
+    cache.sub = _update_model(cache.sub, sub)
 
 
 async def get_user_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False) -> BaseDesc:
@@ -184,15 +136,12 @@ async def get_group_desc(
     return GroupTopicDesc.from_meta(topic.desc)
 
 
-async def _get_p2p_topic(
-    bot: Bot, /, topic_id: str, *, ensure_meta: bool = False
-) -> TopicInfo:
+async def _get_p2p_topic(bot: Bot, /, topic_id: str) -> TopicInfo:
     topic = group_cache.get(topic_id)
     if (
         topic is not None
         and topic.desc is not None
         and isinstance(topic.desc, TopicInfo)
-        and (not ensure_meta or isinstance(topic.desc, P2PTopicDesc))
     ):
         return topic.desc
     await ensure_sub(bot, topic_id)
@@ -201,14 +150,14 @@ async def _get_p2p_topic(
     return P2PTopicDesc.from_meta(topic.desc)
 
 
-async def get_p2p_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False) -> TopicInfo:
+async def get_p2p_desc(bot: Bot, /, user_id: str) -> TopicInfo:
     if user_id.startswith("p2p"):
-        desc = await _get_p2p_topic(bot, user_id, ensure_meta=ensure_meta)
+        desc = await _get_p2p_topic(bot, user_id)
         return desc
     assert user_id.startswith("usr"), "user_id must be a user"
     user_pair = frozenset((bot.uid, user_id))
     topic = p2p_cache.get(user_pair)
-    if topic is not None and (not ensure_meta or isinstance(topic.desc, P2PTopicDesc)):
+    if topic is not None:
         return topic.desc
     await ensure_sub(bot, user_id)
     _, topic = await bot.get(user_id, "desc")
@@ -218,7 +167,7 @@ async def get_p2p_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False) 
 
 async def get_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> BaseSubscription:
     assert topic_id != "me", "topic_id must not be 'me'"
-    sub = subscription_cache.get((bot.uid, topic_id))
+    sub = subscription_cache.get((topic_id, bot.uid))
     if sub is not None and (not ensure_meta or isinstance(sub.sub, Subscription)):
         return sub.sub
     await ensure_sub(bot, topic_id)
@@ -234,7 +183,7 @@ async def get_topic_sub(
     bot: Bot, /, topic_id: str, *, ensure_meta: bool = False, ensure_all: bool = True
 ) -> List[Tuple[str, BaseSubscription]]:
     assert topic_id != "me", "topic_id must not be 'me'"
-    sub = [(c.user, c.sub) for c in subscription_cache.values() if c.topic == topic_id]
+    sub = [(c.user_id, c.sub) for c in subscription_cache.values() if c.topic == topic_id]
     if (
         sub
         and not ensure_all
@@ -250,7 +199,7 @@ async def get_topic_sub(
 async def get_my_sub(
     bot: Bot, /, *, ensure_meta: bool = False, ensure_all: bool = True
 ) -> List[Tuple[str, BaseSubscription]]:
-    sub = [(c.topic, c.sub) for c in subscription_cache.values() if c.user == bot.uid]
+    sub = [(c.topic, c.sub) for c in subscription_cache.values() if c.user_id == bot.uid]
     if (
         sub
         and not ensure_all
@@ -281,3 +230,94 @@ async def get_user_cred(bot: Bot) -> List[Cred]:
     _, cred_meta = await bot.get("me", "cred")
     assert cred_meta is not None
     return [Cred(method=c.method, value=c.value, done=c.done) for c in cred_meta.cred]
+
+
+def clear_meta_cache() -> None:
+    user_cache.clear()
+    p2p_cache.clear()
+    group_cache.clear()
+    subscription_cache.clear()
+
+
+def cache_user(user_id: str, desc: pb.TopicDesc) -> None:
+    user = UserDesc.from_meta(desc)
+    update_user_cache(user_id, desc=user)
+
+
+def cache_p2p_topic(user_id: str, topic_id: str, desc: pb.TopicDesc) -> None:
+    topic = P2PTopicDesc.from_meta(desc)
+    user = CommonDesc.from_meta(desc)
+    sub = BaseSubscription.from_meta(desc)
+    update_p2p_cache(user_id, topic_id, desc=topic)
+    update_user_cache(user_id, desc=user)
+    update_sub_cache(topic_id, user_id, sub)
+
+
+def cache_group_topic(user_id: str, topic_id: str, desc: pb.TopicDesc) -> None:
+    if topic_id.startswith("p2p"):
+        topic = TopicInfo.from_meta(desc)
+    else:
+        topic = GroupTopicDesc.from_meta(desc)
+    sub = BaseSubscription.from_meta(desc)
+    update_group_cache(topic_id, topic)
+    update_sub_cache(topic_id, user_id, sub)
+
+
+def cache_me_subscription(user_id: str, sub_meta: pb.TopicSub) -> None:
+    topic = sub_meta.topic
+    assert topic
+    sub = Subscription.from_meta(sub_meta)
+    desc = BaseDesc.from_meta(sub_meta)
+    update_sub_cache(topic, user_id, sub)
+    if topic.startswith("usr"):
+        update_user_cache(topic, desc=desc)
+    else:
+        update_group_cache(topic, desc=desc)
+
+
+def cache_topic_subscription(topic: str, sub_meta: pb.TopicSub) -> None:
+    user_id = sub_meta.user_id
+    assert user_id
+    sub = Subscription.from_meta(sub_meta)
+    desc = BaseDesc.from_meta(sub_meta)
+    update_sub_cache(topic, user_id, sub)
+    update_user_cache(user_id, desc=desc)
+
+
+def cache_tags(topic: str, tags: Iterable[str]) -> None:
+    if topic.startswith("usr"):
+        update_user_cache(topic, tags=list(tags))
+    else:
+        update_group_cache(topic, tags=list(tags))
+
+
+@on(MetaEvent)
+def handle_meta(event: MetaEvent) -> None:
+    meta = event.server_message
+    user = event.bot.uid
+    topic = meta.topic
+    if meta.desc:
+        if topic == "me":
+            cache_user(user, meta.desc)
+        elif topic.startswith("usr"):
+            cache_p2p_topic(user, topic, meta.desc)
+        else:
+            cache_group_topic(user, topic, meta.desc)
+    if meta.sub:
+        if topic == "me":
+            for sub_meta in meta.sub:
+                cache_me_subscription(user, sub_meta)
+        else:
+            for sub_meta in meta.sub:
+                cache_topic_subscription(topic, sub_meta)
+    if meta.tags:
+        cache_tags(user if topic == "me" else topic, meta.tags)
+    if meta.cred:
+        assert topic == "me" or topic.startswith("usr")
+        update_user_cache(
+            topic,
+            cred=[
+                {"method": c.method, "value": c.value, "done": c.done}
+                for c in meta.cred
+            ],  # type: ignore
+        )

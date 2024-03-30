@@ -1,35 +1,13 @@
 import asyncio
-import json
-import aiofiles
-import greenback
-from pydantic import ValidationError
+from pydantic_core import to_json
 from tinode_grpc import pb
 
-from karuha.data.cache import UserCache, user_cache
-from karuha.data.meta import AccessPermission, BaseDesc, UserDesc
-from karuha.data.store import (DataModel, JsonFileStore, MemoryStore,
-                               PrimaryKey, get_store, is_pk_annotation)
+from karuha.data.cache import UserCache, clear_meta_cache, get_user_cred, get_user_tags, update_user_cache, user_cache
+from karuha.data.meta import AccessPermission, BaseDesc, Cred, UserDesc
+from karuha.data.topic import TopicSub, get_topic, get_topic_list
+from karuha.data.user import User, get_user
 
-from .utils import TEST_TIME_OUT, AsyncBotTestCase
-
-
-class DataNoPk(DataModel, pk=()):
-    content: str
-
-
-class DataPk1(DataModel, pk="pk1"):
-    pk1: str
-    content: str
-
-
-class DataPk2(DataModel):
-    pk1: PrimaryKey[str]
-    pk2: PrimaryKey[str]
-    content: str
-
-
-class JsonFileSyncStore(JsonFileStore[DataPk1]):
-    enable_async_backend = False
+from .utils import AsyncBotTestCase
 
 
 class TestData(AsyncBotTestCase):
@@ -65,7 +43,7 @@ class TestData(AsyncBotTestCase):
         )
         with self.assertRaises(ValueError):
             AccessPermission.model_validate("NJRW")
-    
+
     def test_cache(self) -> None:
         base_desc = BaseDesc(
             public=b"{\"fn\": \"test\"}",  # type: ignore
@@ -73,29 +51,29 @@ class TestData(AsyncBotTestCase):
         )
         cache = user_cache.get("user")
         self.assertIsNone(cache)
-        user_cache.add(UserCache(user="user", desc=base_desc))
+        user_cache.add(UserCache(user_id="user", desc=base_desc))
         cache = user_cache.get("user")
         assert cache and isinstance(cache.desc, BaseDesc)
         self.assertEqual(cache.desc, base_desc)
-        
+
         desc = UserDesc(
             created=1709214504076,  # type: ignore
             updated=1709466962755,  # type: ignore
             public=b"{\"fn\": \"user\"}",  # type: ignore
             trusted=b"{\"staff\": true}"  # type: ignore
         )
-        user_cache.add(UserCache(user="user", desc=desc))
+        update_user_cache(user_id="user", desc=desc)
         cache = user_cache.get("user")
         assert cache and isinstance(cache.desc, UserDesc)
         self.assertEqual(cache.desc, desc)
 
-        user_cache.add(UserCache(user="user", desc=base_desc))
+        update_user_cache(user_id="user", desc=base_desc)
         cache = user_cache.get("user")
         assert cache and isinstance(cache.desc, UserDesc)
         self.assertEqual(cache.desc.public, base_desc.public)
         self.assertEqual(cache.desc.created, desc.created)
 
-    async def test_meta(self) -> None:
+    async def test_me_meta(self) -> None:
         meta = pb.ServerMeta(
             id="102",
             topic="me",
@@ -106,133 +84,152 @@ class TestData(AsyncBotTestCase):
                 defacs=pb.DefaultAcsMode(
                     auth="JRWPAS",
                     anon="N"
-                )
+                ),
+                acs=pb.AccessMode(
+                    want="JPS",
+                    given="JPS"
+                ),
+                public=to_json({"note": "test note"}),
+                trusted=to_json({"staff": True}),
+                state="ok"
             )
         )
         self.bot.receive_message(pb.ServerMsg(meta=meta))
+        user: User = await self.wait_for(get_user(self.bot, ensure_user=True))
+        self.assertIsInstance(user, User)
+        self.assertIsNone(user.fn)
+        self.assertEqual(user.note, "test note")
+        self.assertTrue(user.staff)
+        self.assertFalse(user.verified)
 
-    def test_data_model(self) -> None:
-        self.assertTrue(is_pk_annotation(PrimaryKey))
-        self.assertTrue(is_pk_annotation(PrimaryKey[int]))
-
-        self.assertEqual(DataNoPk.__primary_key__, None)
-        data = DataNoPk(content="test")
-        self.assertEqual(data.content, "test")
-        with self.assertRaises(AssertionError):
-            data.get_primary_key()
-        
-        self.assertEqual(DataPk1.__primary_key__, ("pk1",))
-        data = DataPk1(pk1="test", content="test")
-        self.assertEqual(data.get_primary_key(), "test")
-        with self.assertRaises(ValidationError):
-            data.pk1 = "test1"
-        self.assertEqual(data.pk1, "test")
-
-        self.assertEqual(DataPk2.__primary_key__, ("pk1", "pk2"))
-        data = DataPk2(pk1="test1", pk2="test2", content="test")
-        self.assertEqual(set(data.get_primary_key()), set(("test1", "test2")))
+    async def test_me_sub_meta(self) -> None:
+        clear_meta_cache()
+        task = asyncio.create_task(get_topic_list(self.bot, ensure_topic_sub=True))
+        get_msg = await self.bot.consum_message()
+        assert get_msg.get
+        get_msg = get_msg.get
+        meta = pb.ServerMeta(
+            id=get_msg.id,
+            topic="me",
+            sub=[
+                pb.TopicSub(
+                    updated_at=1707738410676,
+                    acs=pb.AccessMode(
+                        want="JRWPA",
+                        given="JRWPA"
+                    ),
+                    read_id=2,
+                    recv_id=2,
+                    topic="usr_test_1",
+                    touched_at=1707738410960,
+                    seq_id=2
+                ),
+                pb.TopicSub(
+                    updated_at=1708326544978,
+                    acs=pb.AccessMode(
+                        want="JRWPS",
+                        given="JRWPASD"
+                    ),
+                    read_id=70,
+                    recv_id=70,
+                    public=to_json({"fn": "Test Group"}),
+                    topic="grp_test_1",
+                    touched_at=1708326545004,
+                    seq_id=70,
+                    del_id=3
+                )
+            ]
+        )
+        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        subs = await self.wait_for(task)
+        self.assertEqual(len(subs), 2)
+        for sub in subs:
+            self.assertIsInstance(sub, TopicSub)
+            if sub.topic == "grp_test_1":
+                self.assertEqual(sub.public, {"fn": "Test Group"})
+                self.assertIsNotNone(sub.touched)
+                self.assertEqual(sub.read, 70)
+                self.assertEqual(sub.recv, 70)
+                assert sub.acs
+                self.assertEqual(
+                    sub.acs.want,
+                    AccessPermission(
+                        join=True, read=True, write=True, presence=True, sharing=True
+                    ),
+                )
+            elif sub.topic == "usr_test_1":
+                self.assertIsNone(sub.public)
+                self.assertEqual(sub.read, 2)
+                self.assertEqual(sub.recv, 2)
+            else:
+                assert False, f"unexpected topic: {sub.topic}"
     
-    def test_memory_store(self) -> None:
-        store = MemoryStore[DataModel]('test')
-        self.assertIsInstance(store, MemoryStore)
-        self.assertIs(store.data_type, DataModel)
+    async def test_tag_and_cred(self) -> None:
+        task = asyncio.create_task(get_user_tags(self.bot))
+        get_msg = await self.bot.consum_message()
+        assert get_msg.get
+        get_msg = get_msg.get
+        meta = pb.ServerMeta(
+            id=get_msg.id,
+            topic="me",
+            tags=["basic:test"]
+        )
+        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        tags = await self.wait_for(task)
+        self.assertEqual(tags, ["basic:test"])
 
-        self.assertEqual(store.get_all(), [])
-        self.assertEqual(tuple(store.keys()), ())
-        self.assertEqual(tuple(store.values()), ())
-        self.assertEqual(tuple(store.items()), ())
-
-        self.assertIsNone(store.get("test"))
-        data = DataPk1(pk1="test", content="test_content")
-        self.assertIsNone(data.data_store)
-        data.update()
-        store.add(data, copy=True)
-        self.assertIsNone(data.data_store)
-        self.assertEqual(store["test"].model_dump(), data.model_dump())
-        self.assertIsNot(store["test"], data)
-
-        data = store["test"]
-        self.assertIs(data.data_store, store)
-        data.set_data_store(store)
-        data.content = "test_content2"
-        self.assertEqual(data.content, "test_content2")  # type: ignore
-
-        data1 = DataNoPk(content="test_content")
-        store.add(data1, copy=False)
-        self.assertEqual(list(store.get_all()), [data1, data])
-        self.assertEqual(list(store), [data1, data])
-        self.assertEqual(list(store.values()), [data])
-        self.assertEqual(list(store.keys()), ["test"])
-        self.assertEqual(list(store.items()), [("test", data)])
-        self.assertEqual(len(store), 2)
-        self.assertIn("test", store)
-        self.assertIn(data, store)
-        self.assertIn(data1, store)
-
-        store.remove(data)
-        self.assertEqual(list(store.get_all()), [data1])
-        self.assertNotIn(data, store)
-        store.remove(data1)
-        self.assertEqual(list(store.get_all()), [])
-        self.assertNotIn(data1, store)
-
-        self.assertFalse(store.discard(data))
-        self.assertFalse(store.discard(data1))
-        self.assertFalse(store)
-
-    async def test_json_store(self) -> None:
-        await greenback.ensure_portal()
-        store = get_store("json", data_type=DataPk1)
-        self.assertIsInstance(store, JsonFileStore)
-        self.assertIs(store, get_store("json", data_type=DataPk1))
-        self.assertTrue(store.async_backend_available())
-        store.clear()
-        self.assertTrue(not store._load_tasks or all(t.done() for t in store._load_tasks))
-        self.assertTrue(store._save_tasks)
-        await store.wait_tasks()
-        self.assertFalse(store._should_wait())
-        
-        async with aiofiles.open(store.path, "rb") as f:
-            content = await f.read()
-        self.assertEqual(content, store.encode_data())
-        self.assertEqual(json.loads(content), [])
-
-        data = DataPk1(pk1="test", content="test")
-        store.add(data)
-        self.assertTrue(store._save_tasks)
-        self.assertIs(data, store["test"])
-        await store.wait_tasks()
-
-        async with aiofiles.open(store.path, "rb") as f:
-            content = await f.read()
-        self.assertEqual(json.loads(content), [data.model_dump()])
-
-        data.content = "test2"
-        self.assertTrue(store._save_tasks)
-        await store.wait_tasks()
-        async with aiofiles.open(store.path, "rb") as f:
-            content = await f.read()
-        self.assertEqual(json.loads(content), [data.model_dump()])
-
-        store.load_backend()
-        store.save_backend()
-        store.load_backend()
-        store.save_backend()
-        store.save_backend()
-        await asyncio.wait_for(store.wait_tasks(), timeout=TEST_TIME_OUT)
-        self.assertFalse(store._should_wait())
+        task = asyncio.create_task(get_user_cred(self.bot))
+        get_msg = await self.bot.consum_message()
+        assert get_msg.get
+        get_msg = get_msg.get
+        meta = pb.ServerMeta(
+            id=get_msg.id,
+            topic="me",
+            cred=[pb.ServerCred(
+                method="email",
+                value="test@example.com"
+            )]
+        )
+        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        cred = await self.wait_for(task)
+        self.assertEqual(cred, [Cred(method="email", value="test@example.com")])
     
-    def test_sync_json_store(self) -> None:
-        store = JsonFileSyncStore.get_store(indent=4)
-        self.assertFalse(store.enable_async_backend)
-        store.clear()
-        
-        data = DataPk1(pk1="test", content="test")
-        store.add(data)
-        self.assertFalse(store._save_tasks)
-        self.assertEqual(store.get_all(), [data])
-        self.assertEqual(store.get("test"), data)
+    async def test_p2p_meta(self) -> None:
+        clear_meta_cache()
+        task = asyncio.create_task(get_topic(self.bot, "usr_test_1", ensure_topic=True))
+        sub_msg = await self.bot.consum_message()
+        assert sub_msg.HasField("sub") and sub_msg.sub.topic == "usr_test_1"
+        self.bot.confirm_message()
 
-        with open(store.path, "rb") as f:
-            content = f.read()
-        self.assertEqual(json.loads(content), [data.model_dump()])
+        get_msg = await self.bot.consum_message()
+        assert get_msg.HasField("get")
+        get_msg = get_msg.get
+        meta = pb.ServerMeta(
+            id=get_msg.id,
+            topic="usr_test_1",
+            desc=pb.TopicDesc(
+                created_at=1684421151062,
+                updated_at=1684421151062,
+                touched_at=1709023886332,
+                acs=pb.AccessMode(want="JRWPA", given="JRWPAS"),
+                seq_id=285,
+                read_id=285,
+                recv_id=285,
+                del_id=22,
+                public=to_json({"fn": "Test User"}),
+                last_seen_time=1709705329000,
+                last_seen_user_agent="Tindroid/0.22.12 (Android 11; zh_CN); tindroid/0.22.12"
+            )
+        )
+        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        topic = await self.wait_for(task)
+        self.assertEqual(topic.topic, "usr_test_1")
+        self.assertEqual(topic.fn, "Test User")
+        self.assertIsNone(topic.note)
+        self.assertEqual(topic.seq, 285)
+        self.assertIsNone(topic.defacs)
+        assert topic.acs
+        self.assertEqual(
+            topic.acs.want,
+            AccessPermission(join=True, read=True, write=True, presence=True, approve=True)
+        )
