@@ -463,8 +463,8 @@ class AbstractAsyncCachedStore(AbstractCachedDataStore[T_Data]):
         while queue:
             current = queue.popleft()
             if neighbour := self._wait_list.get(current):
+                queue.extend(neighbour - mask)
                 mask.update(neighbour)
-                queue.extend(neighbour)
 
         tasks = []
         for t in wait_tasks:

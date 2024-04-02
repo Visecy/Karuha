@@ -19,9 +19,6 @@ class BaseUser(BaseInfo, frozen=True):
         if self.trusted is None:
             return False
         return self.trusted.get("staff", False)
-    
-    async def to_user(self, bot: Bot, /) -> "User":
-        return await get_user(bot, self.user_id, ensure_user=True)
 
 
 class User(BaseUser, frozen=True):

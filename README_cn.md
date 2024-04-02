@@ -28,7 +28,7 @@
 
 或从源码安装：
 
-    git clone https://github.com/Ovizro/Karuha.git
+    git clone https://github.com/Visecy/Karuha.git
     cd Karuha
     make install
 

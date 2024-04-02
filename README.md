@@ -28,7 +28,7 @@ From pip:
 
 From source code:
 
-    git clone https://github.com/Ovizro/Karuha.git
+    git clone https://github.com/Visecy/Karuha.git
     cd Karuha
     make install
 

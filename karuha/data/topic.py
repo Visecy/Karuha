@@ -88,7 +88,7 @@ class BaseTopic(BaseInfo, frozen=True):
     def topic_id(self) -> str:
         return self.topic
     
-    async def to_topic(self, bot: Bot, /) -> "Topic":
+    async def ensure_topic(self, bot: Bot, /) -> "Topic":
         return await get_topic(bot, self.topic, ensure_topic=True)
 
 
@@ -103,6 +103,9 @@ class Topic(BaseTopic, frozen=True):
     recv: Optional[int] = None
     clear: Optional[int] = None
     is_chan: bool = False
+
+    async def ensure_topic(self, bot: Bot) -> "Topic":
+        return self
 
 
 class TopicSub(BaseTopic, frozen=True):
@@ -184,8 +187,8 @@ async def get_group_topic(bot: Bot, /, topic_id: str, *, ensure_topic: bool = Fa
 
 async def get_group_topic(bot: Bot, /, topic_id: str, *, ensure_topic: bool = False) -> BaseTopic:
     desc = await get_group_desc(bot, topic_id, ensure_meta=ensure_topic)
-    sub = await get_sub(bot, topic_id, ensure_meta=ensure_topic)
-    if not isinstance(desc, GroupTopicDesc) or not isinstance(sub, Subscription):
+    sub = await get_sub(bot, topic_id, ensure_meta=False)
+    if not isinstance(desc, GroupTopicDesc):
         return BaseTopic(
             topic=topic_id,
             public=desc.public,

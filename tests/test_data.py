@@ -4,8 +4,8 @@ from tinode_grpc import pb
 
 from karuha.data.cache import UserCache, clear_meta_cache, get_user_cred, get_user_tags, update_user_cache, user_cache
 from karuha.data.meta import AccessPermission, BaseDesc, Cred, UserDesc
-from karuha.data.topic import TopicSub, get_topic, get_topic_list
-from karuha.data.user import User, get_user
+from karuha.data.topic import BaseTopic, Topic, TopicSub, get_topic, get_topic_list
+from karuha.data.user import BaseUser, User, get_user
 
 from .utils import AsyncBotTestCase
 
@@ -163,6 +163,31 @@ class TestData(AsyncBotTestCase):
                 self.assertEqual(sub.recv, 2)
             else:
                 assert False, f"unexpected topic: {sub.topic}"
+        
+        user = await get_user(self.bot, "usr_test_1")
+        self.assertIsInstance(user, BaseUser)
+        self.assertEqual(user.user_id, "usr_test_1")
+        self.assertIsNone(user.fn)
+        self.assertIsNone(user.note)
+        self.assertIsNone(user.comment)
+        self.assertFalse(user.verified)
+        self.assertFalse(user.staff)
+
+        topic = await get_topic(self.bot, "grp_test_1")
+        self.assertIsInstance(topic, BaseTopic)
+        self.assertEqual(topic.topic, "grp_test_1")
+        self.assertEqual(topic.fn, "Test Group")
+        self.assertIsNone(topic.note)
+        self.assertIsNone(topic.comment)
+        self.assertFalse(topic.verified)
+
+        topic = await get_topic(self.bot, "usr_test_1")
+        self.assertIsInstance(topic, BaseTopic)
+        self.assertEqual(topic.topic, "usr_test_1")
+        self.assertIsNone(topic.fn)
+        self.assertIsNone(topic.note)
+        self.assertIsNone(topic.comment)
+        self.assertFalse(topic.verified)
     
     async def test_tag_and_cred(self) -> None:
         task = asyncio.create_task(get_user_tags(self.bot))
@@ -233,3 +258,51 @@ class TestData(AsyncBotTestCase):
             topic.acs.want,
             AccessPermission(join=True, read=True, write=True, presence=True, approve=True)
         )
+    
+    async def test_topic_meta(self) -> None:
+        clear_meta_cache()
+        task = asyncio.create_task(get_topic(self.bot, "grp_test_1", ensure_topic=True))
+        sub_msg = await self.bot.consum_message()
+        assert sub_msg.HasField("sub") and sub_msg.sub.topic == "grp_test_1"
+        self.bot.confirm_message()
+
+        get_msg = await self.bot.consum_message()
+        assert get_msg.HasField("get")
+        get_msg = get_msg.get
+        meta = pb.ServerMeta(
+            id=get_msg.id,
+            topic="grp_test_1",
+            desc=pb.TopicDesc(
+                created_at=1683631963729,
+                updated_at=1685376852448,
+                touched_at=1710167311762,
+                defacs={"auth": "JRWPS", "anon": "N"},
+                acs={"want": "JRWPS", "given": "JRWPS"},
+                seq_id=122,
+                read_id=121,
+                recv_id=121,
+                del_id=2,
+                public=to_json({"fn": "Test Group", "note": "Test Group Note"}),
+                is_chan=True
+            )
+        )
+        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        
+        topic = await self.wait_for(task)
+        self.assertIsInstance(topic, Topic)
+        self.assertEqual(topic.topic, "grp_test_1")
+        self.assertEqual(topic.fn, "Test Group")
+        self.assertEqual(topic.note, "Test Group Note")
+        self.assertIsNone(topic.comment)
+        self.assertEqual(topic.seq, 122)
+        assert topic.defacs
+        self.assertEqual(
+            topic.defacs.auth,
+            AccessPermission(join=True, read=True, write=True, presence=True, sharing=True)
+        )
+        assert topic.acs
+        self.assertEqual(
+            topic.acs.want,
+            AccessPermission(join=True, read=True, write=True, presence=True, sharing=True)
+        )
+        self.assertTrue(topic.is_chan)
