@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 
 from . import bot
@@ -9,7 +10,7 @@ class KaruhaException(Exception):
 
 
 class KaruhaRuntimeError(KaruhaException):
-    """unspecified chatbot run-time error"""
+    """unspecified run-time error"""
     __slots__ = []
 
 
@@ -21,6 +22,11 @@ class KaruhaBotError(KaruhaException):
         super().__init__(*args)
         self.bot = bot
         self.code = code
+
+
+class KaruhaTimeoutError(KaruhaRuntimeError, asyncio.TimeoutError):
+    """run-time error: timeout"""
+    __slots__ = []
 
 
 class KaruhaCommandError(KaruhaException):
@@ -47,7 +53,7 @@ class KaruhaCommandError(KaruhaException):
             return self.collection.commands.get(self.name)
 
 
-class KaruhaCommandCanceledError(KaruhaCommandError):
+class KaruhaCommandCanceledError(asyncio.CancelledError):
     """command cancelled"""
     __slots__ = []
 

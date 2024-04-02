@@ -3,6 +3,7 @@
 [![License](https://img.shields.io/github/license/Ovizro/Karuha.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/KaruhaBot.svg)](https://pypi.python.org/pypi/KaruhaBot)
 [![Build Status](https://github.com/Ovizro/Karuha/actions/workflows/build_test.yml/badge.svg)](https://github.com/Ovizro/Karuha/actions)
+![PyPI - Downloads](https://img.shields.io/pypi/dw/KaruhaBot)
 ![Python Version](https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg)
 
 A simple Tinode chatbot framework.
@@ -27,7 +28,7 @@ From pip:
 
 From source code:
 
-    git clone https://github.com/Ovizro/Karuha.git
+    git clone https://github.com/Visecy/Karuha.git
     cd Karuha
     make install
 
@@ -42,7 +43,7 @@ Create a new file config.json and write the configuration in it:
 ```json
 {
     "server": {
-        "host": "localhost:16060",
+        "host": "localhost:16060"
     },
     "bots": [
         {
@@ -92,7 +93,7 @@ Then comes the function body, which is very short with only one line. `session` 
 After writing the command, we can run the chatbot to test it. Use the following command:
 
 ```sh
-python -m Karuha ./config.json -m hi
+python -m karuha ./config.json -m hi
 ```
 
 Then in the conversation with the bot, enter the following:

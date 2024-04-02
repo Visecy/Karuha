@@ -16,9 +16,9 @@ from .config import get_config, load_config, init_config, save_config, Config
 from .config import Server as ServerConfig, Bot as BotConfig
 from .bot import Bot
 from .event import on, on_event, Event
+from .event.sys import SystemStartEvent, SystemStopEvent
 from .exception import KaruhaException
-from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, get_collection, on_command
-from .event.message import reset_message_lock
+from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, CommandSession, get_collection, on_command
 from .text import Drafty, BaseText, PlainText, Message, TextChain
 from .logger import logger
 
@@ -82,18 +82,19 @@ async def async_run() -> None:
     
     if config.log_level == "DEBUG":
         _loop.set_debug(True)
-        
-    if not tasks:  # pragma: no cover
-        logger.warning("no bot found")
-        return
     
     try:
+        await SystemStartEvent.new_and_wait(config, _bot_cache.values())
+        if not tasks:  # pragma: no cover
+            logger.warning("no bot found, exit")
+            return
         await asyncio.gather(*tasks)
         logger.info("all bots have been cancelled, exit")
     finally:
         if server is not None:  # pragma: no cover
             logger.info("stop plugin server")
             server.stop(None)
+        await SystemStopEvent(config).trigger(return_exceptions=True)
         _loop = None
     
 
@@ -138,6 +139,7 @@ __all__ = [
     "get_collection",
     "BaseSession",
     "MessageSession",
+    "CommandSession",
     # decorator
     "on",
     "on_event",

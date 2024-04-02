@@ -2,7 +2,7 @@ import asyncio
 import json
 from time import time
 from types import coroutine
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Awaitable, Dict, Generator, Optional
 from unittest import IsolatedAsyncioTestCase
 
 from grpc import ChannelConnectivity
@@ -17,11 +17,12 @@ from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
 from karuha.config import init_config
 from karuha.event import T_Event
+from karuha.store import T
 from karuha.text.message import Message
 from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
-TEST_TIME_OUT = 5
+TEST_TIMEOUT = 3
 
 
 @coroutine
@@ -86,6 +87,7 @@ class BotMock(Bot):
     __slots__ = []
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
+        self.logger.debug(f"in: {message}")
         for desc, msg in message.ListFields():
             for e in self.server_event_callbacks[desc.name]:
                 e(self, msg)
@@ -112,7 +114,7 @@ class BotMock(Bot):
         )
     
     async def consum_message(self) -> pb.ClientMsg:
-        return await asyncio.wait_for(self.queue.get(), TEST_TIME_OUT)
+        return await asyncio.wait_for(self.queue.get(), TEST_TIMEOUT)
     
     def clear_message(self) -> None:
         while not self.queue.empty():
@@ -123,8 +125,13 @@ class BotMock(Bot):
     
     async def assert_message(self, message: pb.ClientMsg, /) -> None:
         assert await self.consum_message() == message
+    
+    async def assert_note_read(self, topic: str, seq_id: int, /) -> None:
+        assert await self.consum_message() == pb.ClientMsg(
+            note_read=pb.ClientNote(topic=topic, seq_id=seq_id, what=pb.READ)
+        )
 
-    async def wait_state(self, state: State, /, timeout: float = TEST_TIME_OUT) -> None:
+    async def wait_state(self, state: State, /, timeout: float = TEST_TIMEOUT) -> None:
         start = time()
         while self.state != state:
             await asyncio.sleep(0)
@@ -143,10 +150,14 @@ class BotMock(Bot):
         assert sub_msg.sub and sub_msg.sub.topic == "me"
         self.confirm_message(sub_msg.sub.id)
     
+    def get_latest_tid(self) -> str:
+        print(self._wait_list)
+        assert len(self._wait_list) == 1
+        return tuple(self._wait_list.keys())[0]
+    
     def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
         if tid is None:
-            assert len(self._wait_list) == 1
-            tid = list(self._wait_list.keys())[0]
+            tid = self.get_latest_tid()
         if code < 200 or code >= 400:
             text = "test error"
         else:
@@ -183,7 +194,7 @@ bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
 class EventCatcher(_EventCatcher[T_Event]):
     __slots__ = []
 
-    async def catch_event(self, timeout: float = TEST_TIME_OUT) -> T_Event:
+    async def catch_event(self, timeout: float = TEST_TIMEOUT) -> T_Event:
         return await super().catch_event(timeout)
 
 
@@ -208,6 +219,9 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     
     def assertBotMessageNowait(self, message: pb.ClientMsg, /) -> None:
         self.bot.assert_message_nowait(message)
+    
+    async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
+        return await asyncio.wait_for(future, timeout)
 
 
 def new_test_message(content: bytes = b"\"test\"") -> Message:

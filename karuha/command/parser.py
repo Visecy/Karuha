@@ -5,6 +5,8 @@ from inspect import Signature, Parameter, isclass
 from typing import Any, Callable, Iterable, List, NamedTuple, Optional, Tuple, Type, Union, get_args
 from typing_extensions import Self
 
+from ..text.textchain import Quote
+
 from ..utils.dispatcher import AbstractDispatcher
 from ..text import Drafty, BaseText, Message
 from ..exception import KaruhaParserError
@@ -35,6 +37,8 @@ class SimpleCommandParser(AbstractCommandParser):
     def parse(self, message: Message) -> Optional[Tuple[str, Union[List[str], List[BaseText]]]]:
         text = message.text
         text = text.split()
+        if text and isinstance(text[0], Quote):
+            text = text[1:]
         if not text:
             return
         

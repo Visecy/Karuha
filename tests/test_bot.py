@@ -3,13 +3,13 @@ import asyncio
 from tinode_grpc import pb
 
 from karuha.bot import State
-from karuha.config import Bot as BotConfig
+from karuha.config import Bot as BotConfig, Server
 from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
                               LoginEvent, MetaEvent, PresEvent, PublishEvent,
                               SubscribeEvent)
 from karuha.exception import KaruhaBotError
 
-from .utils import TEST_TIME_OUT, AsyncBotTestCase, BotMock
+from .utils import TEST_TIMEOUT, AsyncBotTestCase, BotMock
 
 
 class TestBot(AsyncBotTestCase):
@@ -18,11 +18,11 @@ class TestBot(AsyncBotTestCase):
     def test_bot_init(self) -> None:
         self.assertEqual(
             self.bot.config,
-            BotConfig(name="test_bot", schema="basic", secret="123456", user="usr")
+            BotConfig(name="test_bot", schema="basic", secret="123456")
         )
         self.assertEqual(
             self.bot.server,
-            None
+            Server()
         )
         self.assertTrue(self.bot.queue.empty())
         self.assertEqual(self.bot.state, State.running)
@@ -85,7 +85,7 @@ class TestBot(AsyncBotTestCase):
         self.assertIsInstance(hi_msg.hi, pb.ClientHi)
         tid = bot.confirm_message(build="tinode-mysql", ver="0.22")
         self.assertEqual(tid, hi_msg.hi.id)
-        await asyncio.wait_for(hi_task, TEST_TIME_OUT)
+        await asyncio.wait_for(hi_task, TEST_TIMEOUT)
 
         login_task = asyncio.create_task(bot.login())
         login_msg = await bot.consum_message()
@@ -93,10 +93,10 @@ class TestBot(AsyncBotTestCase):
         self.assertIsInstance(login_msg_inner, pb.ClientLogin)
         self.assertEqual(login_msg_inner.scheme, "basic")
         self.assertEqual(login_msg_inner.secret, b"123456")
-        tid = bot.confirm_message(user="user_test", token="token_test")
+        tid = bot.confirm_message(user="user_test", token="token_test", expires=1708360886000)
         self.assertEqual(tid, login_msg_inner.id)
         with self.catchEvent(LoginEvent) as catcher:
-            await asyncio.wait_for(login_task, TEST_TIME_OUT)
+            await asyncio.wait_for(login_task, TEST_TIMEOUT)
             e = await catcher.catch_event()
             self.assertEqual(e.client_message, login_msg_inner)
             self.assertIsNotNone(e.response_message)
@@ -120,7 +120,7 @@ class TestBot(AsyncBotTestCase):
         tid = bot.confirm_message(code=400)
         self.assertEqual(tid, sub_msg_inner.id)
         with self.assertRaises(KaruhaBotError):
-            await asyncio.wait_for(sub_task, TEST_TIME_OUT)
+            await asyncio.wait_for(sub_task, TEST_TIMEOUT)
         
         pub_task = asyncio.create_task(bot.publish("topic_test", "Hello world!"))
         pub_msg = await bot.consum_message()
@@ -131,7 +131,7 @@ class TestBot(AsyncBotTestCase):
         tid = bot.confirm_message()
         self.assertEqual(tid, pub_msg_inner.id)
         with self.catchEvent(PublishEvent) as catcher:
-            await asyncio.wait_for(pub_task, TEST_TIME_OUT)
+            await asyncio.wait_for(pub_task, TEST_TIMEOUT)
             e = await catcher.catch_event()
             self.assertIsNotNone(e.response_message)
         
@@ -143,7 +143,7 @@ class TestBot(AsyncBotTestCase):
         tid = bot.confirm_message()
         self.assertEqual(tid, leave_msg_inner.id)
         with self.catchEvent(LeaveEvent) as catcher:
-            await asyncio.wait_for(leave_task, TEST_TIME_OUT)
+            await asyncio.wait_for(leave_task, TEST_TIMEOUT)
             e = await catcher.catch_event()
             self.assertIsNotNone(e.response_message)
         

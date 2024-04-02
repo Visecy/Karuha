@@ -1,4 +1,6 @@
 import asyncio
+from logging import Logger
+import sys
 from typing import Any, Awaitable, Callable, ClassVar, Coroutine, List
 from typing_extensions import Self, ParamSpec
 
@@ -6,6 +8,13 @@ from ..logger import logger
 
 
 P = ParamSpec("P")
+
+
+async def handler_runner(event: "Event", logger: Logger, func: Callable) -> Any:
+    try:
+        await func(event)
+    except Exception:
+        logger.exception(f"a handler of the event {event} failed", exc_info=sys.exc_info())
 
 
 class Event(object):
@@ -36,7 +45,7 @@ class Event(object):
         return event
     
     def call_handler(self, handler: Callable[[Self], Coroutine]) -> Awaitable:
-        return asyncio.create_task(handler(self))
+        return asyncio.create_task(handler_runner(self, logger, handler))
     
     def trigger(self, *, return_exceptions: bool = False) -> "asyncio.Future[list]":
         logger.debug(f"trigger event {self.__class__.__name__}")

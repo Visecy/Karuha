@@ -32,7 +32,7 @@ def has_return() -> int:
 @on(CommandPrepareEvent)
 def command_prepare(event: CommandPrepareEvent) -> None:
     if event.command is should_cancel:
-        raise KaruhaCommandCanceledError(name=event.command.name, command=event.command)
+        raise KaruhaCommandCanceledError
 
 
 class TestCommandRun(AsyncBotTestCase):

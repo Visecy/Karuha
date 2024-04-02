@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import platform
 import sys
 from asyncio.queues import Queue
@@ -14,6 +15,8 @@ import grpc
 from aiofiles import open as aio_open
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
+from pydantic import GetCoreSchemaHandler, TypeAdapter
+from pydantic_core import CoreSchema, core_schema, from_json, to_json
 from tinode_grpc import pb
 from typing_extensions import Self, deprecated
 
@@ -23,7 +26,7 @@ from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
 from .version import APP_VERSION, LIB_VERSION
-from .utils.decode import decode_mapping, encode_mapping, json
+from .utils.decode import decode_mapping, encode_mapping
 
 
 class State(IntEnum):
@@ -40,14 +43,21 @@ class Bot(object):
     Provides many low-level API interfaces.
     """
     __slots__ = [
-        "queue", "state", "client", "logger", "config", "server",
+        "queue", "state", "client", "logger", "config", "server", "user_id", "token", "token_expires", "authlvl",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
     ]
 
     initialize_event_callback: Callable[[Self], Any]
     finalize_event_callback: Callable[[Self], Coroutine]
-    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
-    client_event_callbacks: Dict[str, List[Callable[[Self, Message, Optional[Message]], Any]]] = defaultdict(list)
+    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = (
+        defaultdict(list)
+    )
+    client_event_callbacks: Dict[
+        str,
+        List[
+            Callable[[Self, Message, Optional[Message], Optional[pb.ClientExtra]], Any]
+        ],
+    ] = defaultdict(list)
 
     @overload
     def __init__(
@@ -111,6 +121,7 @@ class Bot(object):
         if server is not None and not isinstance(server, ServerConfig):
             server = ServerConfig.model_validate(server)
         self.server = server
+        self.token = None
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
@@ -161,7 +172,9 @@ class Bot(object):
         tid = self._get_tid()
         schema, secret = self.config.schema_, self.config.secret
         try:
-            if schema == "cookie":
+            if self.token is not None and self.token_expires > datetime.now(timezone.utc):
+                schema, secret = "token", self.token.encode("ascii")
+            elif schema == "cookie":
                 schema, secret = await read_auth_cookie(self.config.secret)
             else:
                 secret = secret.encode("ascii")
@@ -188,23 +201,23 @@ class Bot(object):
             self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
 
-        self.logger.info("login successful")
+        self.logger.info(f"login successful (schema {schema})")
 
-        params = ctrl.params
-        if not params:
-            return tid, {}
+        params = decode_mapping(ctrl.params)
         if "user" in params:
-            self.config.user = json.loads(params["user"].decode())
-        # if "token" in params:
-        #     self.config.schema_ = "token"
-        #     self.config.secret = json.loads(params["token"].decode())
-        return tid, decode_mapping(params)
+            self.user_id = params["user"]
+        if "token" in params:
+            self.token = params["token"]
+            # datetime.fromisoformat before 3.11 does not support any iso 8601 format, use pydantic instead
+            self.token_expires = TypeAdapter(datetime).validate_python(params["expires"])
+        return tid, params
 
     async def subscribe(
         self, /, topic: str,
         *,
         mode: Optional[str] = None,
         get: Optional[Union[pb.GetQuery, str]] = None,
+        set: Optional[pb.SetQuery] = None,
         get_since: Optional[int] = None,
         limit: int = 24,
         extra: Optional[pb.ClientExtra] = None
@@ -227,8 +240,7 @@ class Bot(object):
         """
         tid = self._get_tid()
         if get_since is not None:
-            if get is not None:
-                raise ValueError("get_since and get cannot be used at the same time")
+            assert get is None, "get_since and get cannot be used at the same time"
             get = pb.GetQuery(
                 data=pb.GetOpts(
                     since_id=get_since,
@@ -240,15 +252,18 @@ class Bot(object):
             get = pb.GetQuery(
                 what=get
             )
+        if mode is not None:
+            assert set is None, "mode and set cannot be used at the same time"
+            set = pb.SetQuery(
+                sub=pb.SetSub(mode=mode)
+            )
         ctrl = await self.send_message(
             tid,
             sub=pb.ClientSub(
                 id=tid,
                 topic=topic,
                 get_query=get,
-                set_query=pb.SetQuery(
-                    sub=pb.SetSub(mode=mode)
-                )
+                set_query=set
             ),
             extra=extra
         )
@@ -337,7 +352,7 @@ class Bot(object):
                 topic=topic,
                 no_echo=True,
                 head=head,
-                content=json.dumps(text).encode()
+                content=to_json(text)
             ),
             extra=extra
         )
@@ -350,55 +365,55 @@ class Bot(object):
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["desc"]] = None,
-            *,
-            desc: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["desc"]] = None,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["sub"]] = None,
-            *,
-            sub: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["sub"]] = None,
+        *,
+        sub: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["data"]] = None,
-            *,
-            data: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["data"]] = None,
+        *,
+        data: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Literal["tags"],
-            *,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Literal["tags"],
+        *,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Literal["cred"],
-            *,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Literal["cred"],
+        *,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
 
     async def get(
@@ -512,7 +527,7 @@ class Bot(object):
             extra=extra
         )
         return tid, None
-    
+
     async def set(
             self,
             /,
@@ -569,12 +584,32 @@ class Bot(object):
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
     @overload
-    async def send_message(self, wait_tid: str, /, **kwds: Optional[Message]) -> Message: ...
+    async def send_message(
+        self,
+        wait_tid: str,
+        /,
+        *,
+        extra: Optional[pb.ClientExtra] = None,
+        **kwds: Optional[Message],
+    ) -> Message: ...
 
     @overload
-    async def send_message(self, wait_tid: None = None, /, **kwds: Optional[Message]) -> None: ...
+    async def send_message(
+        self,
+        wait_tid: None = None,
+        /,
+        *,
+        extra: Optional[pb.ClientExtra] = None,
+        **kwds: Optional[Message],
+    ) -> None: ...
 
-    async def send_message(self, wait_tid: Optional[str] = None, /, **kwds: Optional[Message]) -> Optional[Message]:
+    async def send_message(
+            self,
+            wait_tid: Optional[str] = None,
+            /, *,
+            extra: Optional[pb.ClientExtra] = None,
+            **kwds: Optional[Message]
+    ) -> Optional[Message]:
         """set messages to Tinode server
 
         :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
@@ -590,14 +625,15 @@ class Bot(object):
         if wait_tid is None:
             await self.queue.put(client_msg)
         else:
+            timeout = self.server.timeout if self.server is not None else 10
             with self._wait_reply(wait_tid) as future:
                 await self.queue.put(client_msg)
-                ret = await future
+                ret = await asyncio.wait_for(future, timeout=timeout)
         for k, v in kwds.items():
             if v is None:
                 continue
             for cb in self.client_event_callbacks[k]:
-                cb(self, v, ret)
+                cb(self, v, ret, extra)
         return ret
 
     async def async_run(self, server_config: Optional[ServerConfig] = None) -> None:  # pragma: no cover
@@ -692,10 +728,7 @@ class Bot(object):
 
     @property
     def uid(self) -> str:
-        uid = self.config.user
-        if uid is None:
-            raise ValueError(f"cannot fetch the uid of bot {self.name}")
-        return uid
+        return self.user_id
 
     def _get_tid(self) -> str:
         tid = str(self._tid_counter)
@@ -709,8 +742,16 @@ class Bot(object):
         self._wait_list[tid] = future
         try:
             yield future
+        except asyncio.TimeoutError:
+            raise KaruhaTimeoutError(f"timeout while waiting for reply from bot {self.name}") from None
         finally:
             assert self._wait_list.pop(tid, None) is future
+
+    def _set_reply_message(self, tid: str, message: Any) -> None:
+        if tid in self._wait_list:
+            f = self._wait_list[tid]
+            if not f.done():
+                f.set_result(message)
 
     def _create_task(self, coro: Coroutine, /) -> asyncio.Task:
         task = asyncio.create_task(coro)
@@ -740,8 +781,10 @@ class Bot(object):
     @asynccontextmanager
     async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
         channel = self._get_channel(server_config)
-        self.initialize_event_callback(self)
+        old_server_config = self.server
+        self.server = server_config
         try:
+            self.initialize_event_callback(self)
             yield channel
         except grpc.RpcError:
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
@@ -764,7 +807,8 @@ class Bot(object):
                 self.logger.exception("error while finalizing event callback", exc_info=True)
             except asyncio.CancelledError:
                 pass
-            
+            self.server = old_server_config
+
             # clean up for restarting
             while not self.queue.empty():
                 self.queue.get_nowait()
@@ -788,9 +832,17 @@ class Bot(object):
                 for e in self.server_event_callbacks[desc.name]:
                     e(self, msg)
 
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.no_info_plain_validator_function(
+            lambda x: x if isinstance(x, source_type) else Bot(x)
+        )
+
     def __repr__(self) -> str:
         state = self.state.name
-        uid = self.config.user or ''
+        uid = getattr(self, "user_id", 'unknown uid')
         host = self.server.host if self.server else 'unknown'
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
@@ -806,7 +858,7 @@ def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallab
 async def read_auth_cookie(cookie_file_name) -> Union[Tuple[str, bytes], Tuple[None, None]]:
     """Read authentication token from a file"""
     async with aio_open(cookie_file_name, 'r') as cookie:
-        params = json.loads(await cookie.read())
+        params = from_json(await cookie.read())
     schema = params.get("schema")
     secret = params.get('secret')
     if schema is None or secret is None:
@@ -818,4 +870,4 @@ async def read_auth_cookie(cookie_file_name) -> Union[Tuple[str, bytes], Tuple[N
     return schema, secret
 
 
-from .exception import KaruhaBotError
+from .exception import KaruhaBotError, KaruhaTimeoutError
