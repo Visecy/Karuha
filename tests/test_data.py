@@ -74,8 +74,12 @@ class TestData(AsyncBotTestCase):
         self.assertEqual(cache.desc.created, desc.created)
 
     async def test_me_meta(self) -> None:
+        task = asyncio.create_task(get_user(self.bot, ensure_user=True))
+        get_msg = await self.bot.consum_message()
+        assert get_msg.get
+        get_msg = get_msg.get
         meta = pb.ServerMeta(
-            id="102",
+            id=get_msg.id,
             topic="me",
             desc=pb.TopicDesc(
                 created_at=1709214504076,
@@ -95,7 +99,7 @@ class TestData(AsyncBotTestCase):
             )
         )
         self.bot.receive_message(pb.ServerMsg(meta=meta))
-        user: User = await self.wait_for(get_user(self.bot, ensure_user=True))
+        user = await self.wait_for(task)
         self.assertIsInstance(user, User)
         self.assertIsNone(user.fn)
         self.assertEqual(user.note, "test note")
