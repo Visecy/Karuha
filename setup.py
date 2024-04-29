@@ -47,7 +47,7 @@ setup(
     maintainer_email="Ovizro@visecy.org",
     license="Apache 2.0",
 
-    url="https://github.com/Ovizro/Karuha",
+    url="https://github.com/Visecy/Karuha",
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
@@ -59,7 +59,8 @@ setup(
     ],
     extras_require={
         "image": ["pillow"],
-        "all": ["pillow"],
+        "data": ["greenback"],
+        "all": ["pillow", "greenback"],
     },
 
     classifiers=[

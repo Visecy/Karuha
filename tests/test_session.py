@@ -4,7 +4,7 @@ from karuha.command import MessageSession
 from karuha.event.message import get_message_lock
 from karuha.text import Drafty, PlainText, Button, File, Image, drafty2text
 
-from .utils import AsyncBotTestCase, new_test_message, TEST_TIME_OUT
+from .utils import AsyncBotTestCase, new_test_message, TEST_TIMEOUT
 
 
 class TestSession(AsyncBotTestCase):
@@ -20,12 +20,12 @@ class TestSession(AsyncBotTestCase):
         self.assertTrue(msg.pub)
         pubmsg = msg.pub
         self.bot.confirm_message(pubmsg.id, seq=0)
-        await asyncio.wait_for(send_task, timeout=TEST_TIME_OUT)
+        await asyncio.wait_for(send_task, timeout=TEST_TIMEOUT)
 
         wait_task = asyncio.create_task(ss.wait_reply())
         self.bot.receive_content(b'{"txt": "test1"}', topic="test1")
         self.bot.receive_content(b'{"txt": "test"}', from_user_id="user1")
-        msg = await asyncio.wait_for(wait_task, timeout=TEST_TIME_OUT)
+        msg = await asyncio.wait_for(wait_task, timeout=TEST_TIMEOUT)
         self.assertEqual(msg.content, b'{"txt": "test"}')
 
     async def test_form(self) -> None:
@@ -44,9 +44,13 @@ class TestSession(AsyncBotTestCase):
             b'{"ent":[{"data":{"mime":"application/json","val":{"resp":{"yes":1},"seq":114}},'
             b'"tp":"EX"}],"fmt":[{"at":-1}],"txt":"Yes"}',
         )
+<<<<<<< HEAD
         bid = await asyncio.wait_for(form_task, timeout=TEST_TIME_OUT)
         async with get_message_lock():
             pass
+=======
+        bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
+>>>>>>> 8bc44b3e281f767ad80d1aff465f6ce3d69c4d31
         self.assertEqual(bid, 0)
 
     async def test_form1(self) -> None:
@@ -65,7 +69,7 @@ class TestSession(AsyncBotTestCase):
             b'{"ent":[{"data":{"mime":"application/json","val":{"seq":114}},"tp":"EX"}],'
             b'"fmt":[{"at":-1}],"txt":"No"}',
         )
-        bid = await asyncio.wait_for(form_task, timeout=TEST_TIME_OUT)
+        bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
         self.assertEqual(bid, 1)
 
     async def test_form2(self) -> None:
@@ -87,7 +91,7 @@ class TestSession(AsyncBotTestCase):
             b'{"ent":[{"data":{"mime":"application/json","val":{"resp":{"cancel":"cancel"},'
             b'"seq":114}},"tp":"EX"}],"fmt":[{"at":-1}],"txt":"Cancel"}',
         )
-        bid = await asyncio.wait_for(form_task, timeout=TEST_TIME_OUT)
+        bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
         self.assertEqual(bid, 2)
     
     async def test_file(self) -> None:
@@ -103,7 +107,7 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(ft.name, 'version.py')
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
-        await asyncio.wait_for(file_task, timeout=TEST_TIME_OUT)
+        await asyncio.wait_for(file_task, timeout=TEST_TIMEOUT)
     
     async def test_image(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
@@ -118,4 +122,4 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(ft.name, 'tw_icon-karuha2.png')
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
-        await asyncio.wait_for(image_task, timeout=TEST_TIME_OUT)
+        await asyncio.wait_for(image_task, timeout=TEST_TIMEOUT)

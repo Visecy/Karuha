@@ -169,3 +169,6 @@ disabled.*
 # Karuha data file
 .bot/
 config.json
+
+# tinode
+.tn-cli-cookie

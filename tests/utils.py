@@ -1,23 +1,28 @@
 import asyncio
 import json
-from contextlib import asynccontextmanager
 from time import time
 from types import coroutine
-from typing import Any, AsyncGenerator, Awaitable, Dict, Generator, Optional
+from typing import Any, Awaitable, Dict, Generator, Optional
 from unittest import IsolatedAsyncioTestCase
 
+from grpc import ChannelConnectivity
+from grpc import aio as grpc_aio
 from tinode_grpc import pb
+from typing_extensions import Self
 
 from karuha import async_run, try_add_bot
 from karuha.bot import Bot, State
+from karuha.command.collection import new_collection
+from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
 from karuha.config import init_config
 from karuha.event import T_Event
+from karuha.store import T
 from karuha.text.message import Message
 from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
-TEST_TIME_OUT = 5
+TEST_TIMEOUT = 3
 
 
 @coroutine
@@ -26,10 +31,63 @@ def run_forever() -> Generator[None, None, None]:
         yield
 
 
+class NoopChannel(grpc_aio.Channel):
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        pass
+
+    async def close(self, grace: Optional[float] = None) -> None:
+        return
+    
+    async def get_state(self, try_to_connect: bool = False) -> ChannelConnectivity:
+        raise NotImplementedError
+    
+    async def wait_for_state_change(self, last_observed_state: ChannelConnectivity) -> None:
+        raise NotImplementedError
+    
+    async def channel_ready(self) -> None:
+        return
+    
+    def unary_unary(
+        self,
+        method: str,
+        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
+        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
+    ) -> grpc_aio.UnaryUnaryMultiCallable:
+        raise NotImplementedError
+    
+    def unary_stream(
+        self,
+        method: str,
+        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
+        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
+    ) -> grpc_aio.UnaryStreamMultiCallable:
+        raise NotImplementedError
+    
+    def stream_unary(
+        self,
+        method: str,
+        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
+        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
+    ) -> grpc_aio.StreamUnaryMultiCallable:
+        raise NotImplementedError
+    
+    def stream_stream(
+        self,
+        method: str,
+        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
+        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
+    ) -> grpc_aio.StreamStreamMultiCallable:
+        raise NotImplementedError
+
+
 class BotMock(Bot):
     __slots__ = []
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
+        self.logger.debug(f"in: {message}")
         for desc, msg in message.ListFields():
             for e in self.server_event_callbacks[desc.name]:
                 e(self, msg)
@@ -56,7 +114,7 @@ class BotMock(Bot):
         )
     
     async def consum_message(self) -> pb.ClientMsg:
-        return await asyncio.wait_for(self.queue.get(), TEST_TIME_OUT)
+        return await asyncio.wait_for(self.queue.get(), TEST_TIMEOUT)
     
     def clear_message(self) -> None:
         while not self.queue.empty():
@@ -67,8 +125,13 @@ class BotMock(Bot):
     
     async def assert_message(self, message: pb.ClientMsg, /) -> None:
         assert await self.consum_message() == message
+    
+    async def assert_note_read(self, topic: str, seq_id: int, /) -> None:
+        assert await self.consum_message() == pb.ClientMsg(
+            note_read=pb.ClientNote(topic=topic, seq_id=seq_id, what=pb.READ)
+        )
 
-    async def wait_state(self, state: State, /, timeout: float = TEST_TIME_OUT) -> None:
+    async def wait_state(self, state: State, /, timeout: float = TEST_TIMEOUT) -> None:
         start = time()
         while self.state != state:
             await asyncio.sleep(0)
@@ -77,11 +140,24 @@ class BotMock(Bot):
 
     async def wait_init(self) -> None:
         await self.wait_state(State.running)
+        hi_msg = await self.consum_message()
+        assert hi_msg.hi
+        self.confirm_message(hi_msg.hi.id, ver="0.22", build="mysql:v0.22.11")
+        login_msg = await self.consum_message()
+        assert login_msg.login
+        self.confirm_message(login_msg.login.id, user="usr")
+        sub_msg = await self.consum_message()
+        assert sub_msg.sub and sub_msg.sub.topic == "me"
+        self.confirm_message(sub_msg.sub.id)
+    
+    def get_latest_tid(self) -> str:
+        print(self._wait_list)
+        assert len(self._wait_list) == 1
+        return tuple(self._wait_list.keys())[0]
     
     def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
         if tid is None:
-            assert len(self._wait_list) == 1
-            tid = list(self._wait_list.keys())[0]
+            tid = self.get_latest_tid()
         if code < 200 or code >= 400:
             text = "test error"
         else:
@@ -105,32 +181,11 @@ class BotMock(Bot):
         self._prepare_loop_task()
         while self.state == State.running:
             self.logger.info(f"starting the bot {self.name}")
-            try:
-                async with self._run_context() as channel:
-                    await channel
-            except KeyboardInterrupt:
-                break
-            except asyncio.CancelledError:
-                if self.state == State.restarting:
-                    self.state = State.running
-                else:
-                    raise
+            async with self._run_context(server):
+                await run_forever()
     
-    @asynccontextmanager
-    async def _run_context(self) -> AsyncGenerator[Awaitable, None]:
-        try:
-            yield run_forever()
-        except:  # noqa: E722
-            if self.state != State.restarting:
-                self.cancel(cancel_loop=False)
-            raise
-        finally:
-            # clean up for restarting
-            while not self.queue.empty():
-                self.queue.get_nowait()
-
-            for t in self._tasks:
-                t.cancel()
+    def _get_channel(self, server_config: ServerConfig) -> grpc_aio.Channel:
+        return NoopChannel()
 
 
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
@@ -139,7 +194,7 @@ bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
 class EventCatcher(_EventCatcher[T_Event]):
     __slots__ = []
 
-    async def catch_event(self, timeout: float = TEST_TIME_OUT) -> T_Event:
+    async def catch_event(self, timeout: float = TEST_TIMEOUT) -> T_Event:
         return await super().catch_event(timeout)
 
 
@@ -164,9 +219,22 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     
     def assertBotMessageNowait(self, message: pb.ClientMsg, /) -> None:
         self.bot.assert_message_nowait(message)
+    
+    async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
+        return await asyncio.wait_for(future, timeout)
 
 
 def new_test_message(content: bytes = b"\"test\"") -> Message:
     return Message.new(
         bot_mock, "test", "user", 1, {}, content
+    )
+
+
+def new_test_command_message(content: bytes = b"\"test\"") -> CommandMessage:
+    return CommandMessage.from_message(
+        new_test_message(content),
+        FunctionCommand("test", lambda: None),
+        new_collection(),
+        "test",
+        []
     )

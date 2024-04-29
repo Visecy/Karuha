@@ -8,8 +8,8 @@ from ..logger import logger
 from ..text.message import Message
 from ..event.message import MessageDispatcher
 from ..exception import KaruhaCommandError, KaruhaException
-from .parser import AbstractCommandNameParser, ParamParserFlag, SimpleCommandNameParser
-from .command import AbstractCommand, ParamFunctionCommand, FunctionCommand
+from .parser import AbstractCommandParser, ParamParserFlag, SimpleCommandParser
+from .command import AbstractCommand, ParamFunctionCommand, FunctionCommand, CommandMessage
 
 
 P = ParamSpec("P")
@@ -22,7 +22,7 @@ class CommandCollection(_ContextHelper):
     commands: Dict[str, AbstractCommand]
     sub_collections: List["CommandCollection"]
 
-    def __init__(self, /, name_parser: AbstractCommandNameParser) -> None:
+    def __init__(self, /, name_parser: AbstractCommandParser) -> None:
         self.commands = {}
         self.name_parser = name_parser
         self.sub_collections = []
@@ -87,10 +87,11 @@ class CommandCollection(_ContextHelper):
         return inner(func_or_name)
     
     async def run(self, message: Message) -> None:
-        name = self.name_parser.parse(message)
-        if name is None:
+        result = self.name_parser.parse(message)
+        if result is None:
             return
         
+        name, argv = result
         command = self.get_command(name)
         if command is None:
             CommandNotFoundEvent.new(self, name)
@@ -98,7 +99,7 @@ class CommandCollection(_ContextHelper):
             return
         
         try:
-            await command.call_command(self, message)
+            await command.call_command(CommandMessage.from_message(message, command, self, name, argv))
         except KaruhaException:
             pass
         except Exception:  # pragma: no cover
@@ -195,7 +196,7 @@ def reset_collection() -> None:
 
 def new_collection() -> CommandCollection:
     return CommandCollection(
-        SimpleCommandNameParser(_default_prefix)
+        SimpleCommandParser(_default_prefix)
     )
 
 

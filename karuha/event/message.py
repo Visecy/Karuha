@@ -3,7 +3,7 @@ from typing import Dict, Union
 
 from typing_extensions import Self
 
-from ..bot import Bot
+from ..bot import Bot, decode_mapping
 from ..text import BaseText, Drafty, Message
 from ..utils.dispatcher import AbstractDispatcher
 from ..utils.locks import Lock
@@ -31,9 +31,13 @@ class MessageEvent(BotEvent):
             message.topic,
             message.from_user_id,
             message.seq_id,
-            {k: json.loads(v) for k, v in message.head.items()},
+            decode_mapping(message.head),
             message.content
         )
+    
+    async def __default_handler__(self) -> None:
+        async with get_message_lock():
+            MessageDispatcher.dispatch(self.dump())
 
     def dump(self) -> Message:
         return self.message
@@ -44,6 +48,13 @@ class MessageEvent(BotEvent):
     content: ProxyProperty[bytes] = MessageProperty()
     raw_text: ProxyProperty[Union[str, Drafty]] = MessageProperty()
     text: ProxyProperty[Union[str, BaseText]] = MessageProperty()
+
+
+@DataEvent.add_handler
+async def _(event: DataEvent) -> None:
+    event.bot.logger.info(f"({event.topic})=> {ensure_text_len(event.text)}")
+    MessageEvent.from_data_event(event).trigger()
+    await event.bot.note_read(event.topic, event.seq_id)
 
 
 class MessageDispatcher(AbstractDispatcher[Message]):

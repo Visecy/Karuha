@@ -1,5 +1,6 @@
 import mimetypes
 import os
+import operator as op
 from abc import abstractmethod
 from base64 import b64decode, b64encode
 from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal,
@@ -19,6 +20,15 @@ class BaseText(BaseModel):
     @abstractmethod
     def to_drafty(self) -> Drafty:
         raise NotImplementedError
+    
+    def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List["BaseText"]:
+        return [self]
+    
+    def startswith(self, /, prefix: str) -> bool:
+        return str(self).startswith(prefix)
+    
+    def endswith(self, /, suffix: str) -> bool:
+        return str(self).endswith(suffix)
     
     def __len__(self) -> int:
         return len(str(self))
@@ -76,6 +86,14 @@ class PlainText(_Text):
     def __init__(self, text: str) -> None:
         super().__init__(text=text)
     
+    def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
+        result = []
+        for p in self.text.split(sep, maxsplit):
+            t = self.model_copy()
+            t.text = p
+            result.append(t)
+        return result
+
     def __iadd__(self, other: Union[str, BaseText]) -> BaseText:
         if not isinstance(other, (str, PlainText)):
             return NotImplemented
@@ -110,6 +128,19 @@ class TextChain(BaseText, Mapping):
         for i in it:
             base += i.to_drafty()
         return base
+    
+    def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
+        maxsplit = op.index(maxsplit)
+        if maxsplit == 0:
+            return [self]
+        result = []
+        for i in self.contents:
+            result.extend(i.split(sep, maxsplit))
+        if maxsplit > 0 and len(result) > maxsplit + 1:
+            remain = TextChain(*result[maxsplit + 1:])
+            result = result[:maxsplit + 1]
+            result.append(remain)
+        return result
     
     def take(self) -> BaseText:
         if len(self.contents) == 1:
@@ -199,6 +230,12 @@ class _Container(BaseText):
         df.fmt.insert(0, DraftyFormat(at=0, len=len(df.txt), tp=self.type))
         return df
     
+    @classmethod
+    def new(cls, text: Union[str, BaseText]) -> Self:
+        if isinstance(text, str):
+            text = PlainText(text)
+        return cls(content=text)  # type: ignore
+    
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.content!r}>"
     
@@ -234,6 +271,27 @@ class Hidden(_Container):
 
 class Row(_Container):
     type: Final[InlineType] = "RW"
+
+
+class Quote(_Container):
+    type: Final[InlineType] = "QQ"
+
+    @property
+    def mention(self) -> Optional["Mention"]:
+        if not isinstance(self.content, TextChain) or not self.content:
+            return
+        mn = self.content[0]
+        assert isinstance(mn, Mention)
+        return mn
+
+    @property
+    def quote_content(self) -> Optional[BaseText]:
+        if not isinstance(self.content, TextChain):
+            return
+        elif len(self.content) == 2 and isinstance(self.content[1], PlainText):
+            return PlainText(str(self.content[1])[1:])
+        elif len(self.content) == 3:
+            return self.content[2]
 
 
 class Form(_Container):
@@ -347,7 +405,7 @@ class _Attachment(_ExtensionText):
 
     mime: str
     name: Optional[str] = None
-    val: Optional[str] = None
+    val: Optional[Any] = None
     ref: Optional[str] = None
     size: Optional[int] = None
 
@@ -412,7 +470,7 @@ class _Attachment(_ExtensionText):
             return
         self.val = b64encode(value).decode("ascii")
 
-    @model_validator(mode="before")
+    @model_validator(mode="before")  # type: ignore
     def convert_raw(cls, data: Any) -> Any:
         if isinstance(data, MutableMapping):
             for k, v in tuple(data.items()):
@@ -420,12 +478,6 @@ class _Attachment(_ExtensionText):
                     data.pop(k)
                     data[k[4:]] = b64encode(v).decode("ascii")
         return data
-
-    @model_validator(mode="after")
-    def check_data(self) -> Self:
-        if self.ref is None and self.val is None:
-            raise ValueError("no data provided")
-        return self
 
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(exclude={"text", "type"}, exclude_none=True)
