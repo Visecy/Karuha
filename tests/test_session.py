@@ -44,13 +44,9 @@ class TestSession(AsyncBotTestCase):
             b'{"ent":[{"data":{"mime":"application/json","val":{"resp":{"yes":1},"seq":114}},'
             b'"tp":"EX"}],"fmt":[{"at":-1}],"txt":"Yes"}',
         )
-<<<<<<< HEAD
-        bid = await asyncio.wait_for(form_task, timeout=TEST_TIME_OUT)
+        bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
         async with get_message_lock():
             pass
-=======
-        bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
->>>>>>> 8bc44b3e281f767ad80d1aff465f6ce3d69c4d31
         self.assertEqual(bid, 0)
 
     async def test_form1(self) -> None:

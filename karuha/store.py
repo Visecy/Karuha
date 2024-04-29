@@ -4,13 +4,8 @@ import warnings
 from abc import abstractmethod
 from collections import deque
 from inspect import isabstract
-<<<<<<< HEAD
 from typing import (Any, ClassVar, Deque, Dict, Generic, Iterable, Iterator, List,
                     Literal, Optional, Set, Tuple, Type, TypeVar, Union, cast,
-=======
-from typing import (Any, ClassVar, Dict, Generic, Iterable, Iterator, List,
-                    Literal, Optional, Tuple, Type, TypeVar, Union, cast,
->>>>>>> 8bc44b3e281f767ad80d1aff465f6ce3d69c4d31
                     overload)
 from weakref import WeakKeyDictionary, WeakSet
 
@@ -178,7 +173,6 @@ class AbstractDataStore(Generic[T_Data]):
         raise NotImplementedError
 
     @abstractmethod
-<<<<<<< HEAD
     def keys(self) -> Iterable[Any]:
         raise NotImplementedError
 
@@ -187,16 +181,6 @@ class AbstractDataStore(Generic[T_Data]):
             yield self[key]
 
     def items(self) -> Iterable[Tuple[Any, T_Data]]:
-=======
-    def keys(self) -> Iterator[Any]:
-        raise NotImplementedError
-
-    def values(self) -> Iterator[T_Data]:
-        for key in self.keys():
-            yield self[key]
-
-    def items(self) -> Iterator[Tuple[Any, T_Data]]:
->>>>>>> 8bc44b3e281f767ad80d1aff465f6ce3d69c4d31
         for key in self.keys():
             yield key, self[key]
 
@@ -410,7 +394,6 @@ class MemoryStore(AbstractCachedDataStore[T_Data], store_type="memory"):
         pass
 
 
-<<<<<<< HEAD
 class LruStore(AbstractDataStore[T_Data], store_type="lru"):
     __slots__ = ["_cache", "_index"]
 
@@ -506,8 +489,6 @@ class LruStore(AbstractDataStore[T_Data], store_type="lru"):
         return len(self._cache)
 
 
-=======
->>>>>>> 8bc44b3e281f767ad80d1aff465f6ce3d69c4d31
 class AbstractAsyncCachedStore(AbstractCachedDataStore[T_Data]):
     __slots__ = ["_load_tasks", "_save_tasks", "_wait_list", "_loaded"]
 
@@ -725,7 +706,6 @@ def get_store(
 
 @overload
 def get_store(
-<<<<<<< HEAD
     store_type: Literal["lru"],
     /,
     name: str = ...,
@@ -738,8 +718,6 @@ def get_store(
 
 @overload
 def get_store(
-=======
->>>>>>> 8bc44b3e281f767ad80d1aff465f6ce3d69c4d31
     store_type: str,
     /,
     name: str = ...,
