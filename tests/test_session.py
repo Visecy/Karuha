@@ -45,6 +45,8 @@ class TestSession(AsyncBotTestCase):
             b'"tp":"EX"}],"fmt":[{"at":-1}],"txt":"Yes"}',
         )
         bid = await asyncio.wait_for(form_task, timeout=TEST_TIME_OUT)
+        async with get_message_lock():
+            pass
         self.assertEqual(bid, 0)
 
     async def test_form1(self) -> None:

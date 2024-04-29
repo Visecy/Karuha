@@ -3,6 +3,7 @@ from typing import Any, Awaitable, Callable, ClassVar, Coroutine, List
 from typing_extensions import Self, ParamSpec
 
 from ..logger import logger
+from ..utils.locks import Lock
 
 
 P = ParamSpec("P")
@@ -14,6 +15,7 @@ class Event(object):
     __slots__ = []
 
     __handlers__: ClassVar[List[Callable[[Self], Coroutine]]] = []
+    __event_lock__: ClassVar[Lock] = Lock()
     
     @classmethod
     def add_handler(cls, handler: Callable[[Self], Coroutine]) -> None:
@@ -37,6 +39,15 @@ class Event(object):
         return asyncio.gather(
             *(self.call_handler(i) for i in self.__handlers__)
         )
+    
+    @classmethod
+    def get_lock(cls) -> Lock:
+        loop = asyncio.get_running_loop()
+        lock = cls.__dict__.get("__event_lock__")
+        if lock is None or (lock._loop is not None and lock._loop is not loop):
+            lock = Lock()
+            cls.__event_lock__ = lock
+        return lock
     
     def __init_subclass__(cls, **kwds: Any) -> None:
         if "__handlers__" not in cls.__dict__:
