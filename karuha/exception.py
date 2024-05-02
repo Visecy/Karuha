@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 from . import bot
 
@@ -37,8 +37,8 @@ class KaruhaCommandError(KaruhaException):
             self,
             *args: object,
             name: str,
-            collection: Optional["CommandCollection"] = None,
-            command: Optional["AbstractCommand"] = None
+            collection: Any = None,
+            command: Any = None
     ) -> None:
         super().__init__(*args)
         self.name = name
@@ -46,7 +46,7 @@ class KaruhaCommandError(KaruhaException):
         self._command = command
     
     @property
-    def command(self) -> Optional["AbstractCommand"]:
+    def command(self):
         if self._command is not None:
             return self._command
         elif self.collection is not None:
@@ -58,10 +58,6 @@ class KaruhaCommandCanceledError(asyncio.CancelledError):
     __slots__ = []
 
 
-class KaruhaParserError(KaruhaException):
+class KaruhaHandlerInvokerError(KaruhaException):
     """param parser error"""
     __slots__ = []
-
-
-from .command.command import AbstractCommand
-from .command.collection import CommandCollection

@@ -16,7 +16,14 @@ async def get_data(bot: Bot, topic_id: str, *, seq_id: Optional[int] = None) -> 
 async def get_data(bot: Bot, topic_id: str, *, low: Optional[int] = None, hi: Optional[int] = None) -> List[Message]: ...
 
 
-async def get_data(bot: Bot, topic_id: str, *, seq_id: Optional[int] = None, low: Optional[int] = None, hi: Optional[int] = None) -> Union[List[Message], Message]:
+async def get_data(
+    bot: Bot,
+    topic_id: str,
+    *,
+    seq_id: Optional[int] = None,
+    low: Optional[int] = None,
+    hi: Optional[int] = None,
+) -> Union[List[Message], Message]:
     if low is None or hi is None:
         assert seq_id is not None, "seq_id or low and hi must be specified"
         low = hi = seq_id

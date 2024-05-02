@@ -5,11 +5,9 @@ from inspect import Signature, Parameter, isclass
 from typing import Any, Callable, Iterable, List, NamedTuple, Optional, Tuple, Type, Union, get_args
 from typing_extensions import Self
 
-from ..text.textchain import Quote
-
 from ..utils.dispatcher import AbstractDispatcher
-from ..text import Drafty, BaseText, Message
-from ..exception import KaruhaParserError
+from ..text import Drafty, BaseText, Message, Quote
+from ..exception import KaruhaHandlerInvokerError
 from ..bot import Bot
 from .session import CommandSession
 
@@ -175,11 +173,11 @@ class TextParamDispatcher(ParamDispatcher):
         elif isclass(param.annotation) and issubclass(param.annotation, BaseText):
             def getter(message: Message) -> BaseText:
                 if not isinstance(message.text, param.annotation):  # pragma: no cover
-                    raise KaruhaParserError(f"{message.text} is not a valid {param.annotation.__name__}")
+                    raise KaruhaHandlerInvokerError(f"{message.text} is not a valid {param.annotation.__name__}")
                 return message.text  # type: ignore
             return getter
         else:  # pragma: no cover
-            raise KaruhaParserError(f"cannot parse {param}")
+            raise KaruhaHandlerInvokerError(f"cannot parse {param}")
 
 
 class RawTextParamDispatcher(ParamDispatcher):
@@ -205,11 +203,11 @@ class RawTextParamDispatcher(ParamDispatcher):
         elif param.annotation == Drafty:
             def getter(message: Message) -> Drafty:
                 if not isinstance(message.raw_text, Drafty):
-                    raise KaruhaParserError(f"{message.raw_text} is not a valid Drafty")
+                    raise KaruhaHandlerInvokerError(f"{message.raw_text} is not a valid Drafty")
                 return message.raw_text
             return getter
         else:  # pragma: no cover
-            raise KaruhaParserError(f"cannot parse {param}")
+            raise KaruhaHandlerInvokerError(f"cannot parse {param}")
 
 
 class ArgvParamDispatcher(ParamDispatcher):
@@ -251,7 +249,7 @@ class ArgvParamDispatcher(ParamDispatcher):
             def list_getter(message: CommandMessage) -> List[BaseText]:
                 argv = message.argv
                 if not all(isinstance(arg, BaseText) for arg in argv):  # pragma: no cover
-                    raise KaruhaParserError(f"cannot parse {argv}")
+                    raise KaruhaHandlerInvokerError(f"cannot parse {argv}")
                 return list(argv)  # type: ignore
             return list_getter
         elif param.annotation in [list, List, List[Union[str, BaseText]]]:
@@ -262,7 +260,7 @@ class ArgvParamDispatcher(ParamDispatcher):
             def tuple_getter(message: CommandMessage) -> Tuple[BaseText, ...]:
                 argv = message.argv
                 if not all(isinstance(arg, BaseText) for arg in argv):  # pragma: no cover
-                    raise KaruhaParserError(f"cannot parse {argv}")
+                    raise KaruhaHandlerInvokerError(f"cannot parse {argv}")
                 return argv  # type: ignore
             return tuple_getter
         return lambda message: message.argv
@@ -280,11 +278,11 @@ class ParamParser(NamedTuple):
         for name, param in signature.parameters.items():
             dispatcher = ParamDispatcher.dispatch(param, flag=flags)
             if dispatcher is None:
-                raise KaruhaParserError(f"cannot find a dispatcher for {param} in {signature}")
+                raise KaruhaHandlerInvokerError(f"cannot find a dispatcher for {param} in {signature}")
             elif param.kind == Parameter.POSITIONAL_ONLY:
                 args.append(dispatcher)
             elif param.kind in [Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD]:
-                raise KaruhaParserError(f"unexpected parameter kind {param.kind} in {signature}")
+                raise KaruhaHandlerInvokerError(f"unexpected parameter kind {param.kind} in {signature}")
             else:
                 kwargs[name] = dispatcher
         return cls(tuple(args), tuple(kwargs.items()), flags)

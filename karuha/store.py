@@ -4,8 +4,8 @@ import warnings
 from abc import abstractmethod
 from collections import deque
 from inspect import isabstract
-from typing import (Any, ClassVar, Deque, Dict, Generic, Iterable, Iterator, List,
-                    Literal, Optional, Set, Tuple, Type, TypeVar, Union, cast,
+from typing import (Any, ClassVar, Deque, Dict, Generic, Iterable, Iterator,
+                    List, Literal, Optional, Tuple, Type, TypeVar, Union, cast,
                     overload)
 from weakref import WeakKeyDictionary, WeakSet
 

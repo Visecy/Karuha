@@ -12,7 +12,7 @@ from karuha.command.parser import (BOT_PARAM, SESSION_PARAM,
                                    MetaParamDispatcher, ParamDispatcher, ParamParser,
                                    ParamParserFlag, SimpleCommandParser)
 from karuha.command.session import MessageSession
-from karuha.exception import KaruhaCommandError, KaruhaParserError
+from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
 
 from .utils import bot_mock, new_test_message, new_test_command_message
 
@@ -125,9 +125,9 @@ class TestCommand(TestCase):
         self.assertEqual(args, (bot_mock, msg))
         self.assertEqual(kwargs, {"user_id": "user", "content": b"\"test\"", "argv": []})
 
-        with self.assertRaises(KaruhaParserError):
+        with self.assertRaises(KaruhaHandlerInvokerError):
             ParamParser.from_signature(sig, flags=ParamParserFlag.MESSAGE_DATA)
-        with self.assertRaises(KaruhaParserError):
+        with self.assertRaises(KaruhaHandlerInvokerError):
             ParamParser.from_signature(signature(lambda *message: ...))
         
         def cmd_text(text: PlainText, raw_text: Drafty) -> None:
@@ -135,7 +135,7 @@ class TestCommand(TestCase):
 
         sig = signature(cmd_text)
         parser = ParamParser.from_signature(sig, flags=ParamParserFlag.MESSAGE_DATA)
-        with self.assertRaises(KaruhaParserError):
+        with self.assertRaises(KaruhaHandlerInvokerError):
             parser.parse(new_test_command_message())
         args, kwargs = parser.parse(new_test_command_message(b"{\"txt\": \"test\"}"))
         self.assertEqual(args, ())

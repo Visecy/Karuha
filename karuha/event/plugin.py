@@ -7,13 +7,13 @@ from typing_extensions import Self
 
 from ..command.session import BaseSession
 
-from .. import get_all_bots, _get_running_loop
 from ..bot import Bot
 from ..logger import logger
 from ..utils.proxy_propery import ProxyProperty
 from . import on
 from .base import Event
 from .bot import BotEvent
+from ..runner import get_all_bots, _get_running_loop
 
 
 class PluginServerEvent(Event):

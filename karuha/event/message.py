@@ -4,12 +4,14 @@ from typing import Dict, Union
 from typing_extensions import Self
 
 from ..bot import Bot, decode_mapping
-from ..text import BaseText, Drafty, Message
+from ..text import BaseText, Drafty
+from ..text.message import Message
 from ..utils.dispatcher import AbstractDispatcher
 from ..utils.locks import Lock
 from ..utils.proxy_propery import ProxyProperty
 from . import on
 from .bot import BotEvent, DataEvent, ensure_text_len
+
 
 MessageProperty = partial(ProxyProperty, "message", mutable=True)
 

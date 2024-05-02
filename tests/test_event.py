@@ -24,7 +24,8 @@ class TestEvent(IsolatedAsyncioTestCase):
         Event.remove_handler(hdl)
     
     async def test_lock(self) -> None:
-        class Event1(Event): pass
+        class Event1(Event):
+            ...
         self.assertIs(Event.get_lock(), Event.get_lock())
         self.assertIsNot(Event.get_lock(), Event1.get_lock())
         async with Event.get_lock():
@@ -33,7 +34,6 @@ class TestEvent(IsolatedAsyncioTestCase):
                 self.assertTrue(Event.get_lock().locked())
                 self.assertTrue(Event1.get_lock().locked())
 
-    
     async def test_catcher(self) -> None:
         hdl_num = len(Event.__handlers__)
         with EventCatcher(Event) as catcher:

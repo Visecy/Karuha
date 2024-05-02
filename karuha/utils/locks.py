@@ -16,9 +16,7 @@ else:
     from abc import ABC
     from asyncio.locks import Lock as _Lock
 
-
     _global_lock = threading.Lock()
-
 
     class Lock(ABC):
         """Primitive lock objects.
@@ -96,8 +94,9 @@ else:
             This method blocks until the lock is unlocked, then sets it to
             locked and returns True.
             """
-            if (not self._locked and (self._waiters is None or
-                    all(w.cancelled() for w in self._waiters))):
+            if not self._locked and (
+                self._waiters is None or all(w.cancelled() for w in self._waiters)
+            ):
                 self._locked = True
                 return True
 
@@ -173,6 +172,5 @@ else:
 
         async def __aexit__(self, exc_type, exc, tb):
             self.release()
-    
 
     Lock.register(_Lock)
