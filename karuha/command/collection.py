@@ -3,13 +3,14 @@ import sys
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TypeVar, Union, overload
 from typing_extensions import ParamSpec
 
-from ..utils.dispatcher import _ContextHelper
+from ..utils.context import _ContextHelper
 from ..logger import logger
 from ..text.message import Message
 from ..event.message import MessageDispatcher
 from ..exception import KaruhaCommandError, KaruhaException
-from .parser import AbstractCommandParser, ParamParserFlag, SimpleCommandParser
-from .command import AbstractCommand, ParamFunctionCommand, FunctionCommand, CommandMessage
+from .parser import AbstractCommandParser, SimpleCommandParser
+from .command import AbstractCommand, FunctionCommand
+from .session import CommandMessage
 
 
 P = ParamSpec("P")
@@ -51,7 +52,6 @@ class CommandCollection(_ContextHelper):
         name: Optional[str] = ...,
         /, *,
         alias: Optional[Iterable[str]] = ...,
-        flags: ParamParserFlag = ...
     ) -> Callable[[Callable[P, R]], FunctionCommand[P, R]]: ...
 
     @overload
@@ -60,14 +60,12 @@ class CommandCollection(_ContextHelper):
         func: Callable[P, R],
         /, *,
         alias: Optional[Iterable[str]] = ...,
-        flags: ParamParserFlag = ...
     ) -> FunctionCommand[P, R]: ...
 
     def on_command(
             self,
             func_or_name: Union[str, Callable[P, R], None] = None,
-            /, *,
-            flags: ParamParserFlag = ParamParserFlag.FULL,
+            /,
             **kwds: Any
     ) -> Union[Callable[[Callable[P, R]], FunctionCommand[P, R]], FunctionCommand[P, R]]:
         def inner(func: Callable[P, R]) -> FunctionCommand[P, R]:
@@ -75,10 +73,7 @@ class CommandCollection(_ContextHelper):
                 name = func_or_name
             else:
                 name = func.__name__
-            if flags == ParamParserFlag.NONE:
-                cmd = FunctionCommand.from_function(func, name=name, **kwds)
-            else:
-                cmd = ParamFunctionCommand.from_function(func, name=name, flags=flags, **kwds)
+            cmd = FunctionCommand.from_function(func, name=name, **kwds)
             self.add_command(cmd)
             return cmd
     

@@ -1,12 +1,14 @@
 import asyncio
-from types import TracebackType
-from typing import Generic, Optional, Type
-from typing_extensions import Self
+from typing import Generic, Optional, Type, TypeVar
 
-from ..event import T_Event
+from ..event import Event
+from .context import _ContextHelper
 
 
-class EventCatcher(Generic[T_Event]):
+T_Event = TypeVar("T_Event", bound=Event)
+
+
+class EventCatcher(Generic[T_Event], _ContextHelper):
     __slots__ = ["event_type", "future", "events"]
 
     def __init__(self, event_type: Type[T_Event]) -> None:
@@ -20,7 +22,7 @@ class EventCatcher(Generic[T_Event]):
     async def catch_event(self, timeout: Optional[float] = None) -> T_Event:
         if self.events:
             return self.catch_event_nowait()
-        assert self.future is None, "catcher is already waiting"
+        assert self.future is None, "catcher is already waited"
         loop = asyncio.get_running_loop()
         self.future = loop.create_future()
         try:
@@ -32,15 +34,14 @@ class EventCatcher(Generic[T_Event]):
     def caught(self) -> bool:
         return bool(self.events)
 
+    def activate(self) -> None:
+        self.event_type.add_handler(self)
+    
+    def deactivate(self) -> None:
+        self.event_type.remove_handler(self)
+
     async def __call__(self, event: T_Event) -> None:
         if self.future:
             self.future.set_result(event)
         else:
             self.events.append(event)
-    
-    def __enter__(self) -> Self:
-        self.event_type.add_handler(self)
-        return self
-    
-    def __exit__(self, exec_type: Type[BaseException], exec_ins: BaseException, traceback: TracebackType) -> None:
-        self.event_type.remove_handler(self)

@@ -2,45 +2,17 @@ import asyncio
 import sys
 from abc import ABC, abstractmethod
 from inspect import signature
-from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar
 from venv import logger
 
 from typing_extensions import ParamSpec, Self
 
-from ..text.textchain import BaseText
 from ..event.message import Message
 from ..exception import KaruhaCommandCanceledError, KaruhaCommandError
 
 
 P = ParamSpec("P")
 R = TypeVar("R")
-
-
-class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
-    name: str
-    argv: Tuple[Union[str, BaseText], ...]
-    command: "AbstractCommand"
-    collection: "CommandCollection"
-
-    @classmethod
-    def from_message(
-            cls,
-            message: Message,
-            /,
-            command: "AbstractCommand",
-            collection: "CommandCollection",
-            name: str,
-            argv: Iterable[Union[str, BaseText]]
-    ) -> Self:
-        data = dict(message)
-        data["command"] = command
-        data["collection"] = collection
-        data["name"] = name
-        data["argv"] = tuple(argv)
-        return cls(**data)
-
-
-from .parser import ParamParser, ParamParserFlag
 
 
 class AbstractCommand(ABC):
@@ -63,14 +35,16 @@ class AbstractCommand(ABC):
 
 
 class FunctionCommand(AbstractCommand, Generic[P, R]):
-    __slots__ = ["__func__"]
+    __slots__ = ["__func__", "__signature__"]
 
     def __init__(self, name: str, func: Callable[P, R], /, alias: Optional[Iterable[str]] = None) -> None:
         super().__init__(name, alias)
         self.__func__ = func
+        self.__signature__ = signature(func)
     
     def parse_message(self, message: Message) -> Tuple[tuple, dict]:  # pragma: no cover
-        return (self, message), {}
+        args, kwargs = message.extract_handler_params(self.__signature__)
+        return tuple(args), kwargs
     
     async def call_command(self, message: "CommandMessage") -> Any:
         logger.debug(f"preparing command {self.name}")
@@ -107,33 +81,9 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         return cls(name, func, alias=alias)
 
 
-class ParamFunctionCommand(FunctionCommand[P, R]):
-    __slots__ = ["parser"]
-
-    def __init__(self, name: str, func: Callable[P, R], parser: ParamParser, /, alias: Optional[Iterable[str]] = None) -> None:
-        super().__init__(name, func, alias)
-        self.parser = parser
-    
-    def parse_message(self, message: "CommandMessage") -> Tuple[tuple, dict]:
-        return self.parser.parse(message)
-    
-    @classmethod
-    def from_function(
-            cls,
-            /,
-            func: Callable[P, R],
-            *,
-            name: Optional[str] = None,
-            alias: Optional[Iterable[str]] = None,
-            flags: ParamParserFlag = ParamParserFlag.FULL
-    ) -> Self:
-        if name is None:  # pragma: no cover
-            name = func.__name__
-        sig = signature(func)
-        parser = ParamParser.from_signature(sig, flags=flags)
-        return cls(name, func, parser, alias=alias)
+ParamFunctionCommand = FunctionCommand
 
 
 from ..event.command import (CommandCompleteEvent, CommandFailEvent,
                              CommandPrepareEvent)
-from .collection import CommandCollection
+from .session import CommandMessage

@@ -1,11 +1,10 @@
+from .session import BaseSession, MessageSession, CommandSession
 from .command import AbstractCommand, FunctionCommand, ParamFunctionCommand
 from .collection import (CommandCollection, add_sub_collection, get_collection,
                          new_collection, remove_sub_collection, reset_collection,
                          set_collection, set_collection_factory, set_prefix)
 from .decoractor import on_command
-from .parser import (AbstractCommandParser, ParamParser, ParamParserFlag,
-                     SimpleCommandParser)
-from .session import BaseSession, MessageSession, CommandSession
+from .parser import AbstractCommandParser, SimpleCommandParser
 
 from ..event.command import (BaseCommandEvent, CommandCompleteEvent, CommandEvent,
                     CommandFailEvent, CommandNotFoundEvent,
@@ -20,11 +19,10 @@ __all__ = [
     # parser
     "AbstractCommandParser",
     "SimpleCommandParser",
-    "ParamParser",
-    "ParamParserFlag",
     # session
     "BaseSession",
     "MessageSession",
+    "CommandSession",
     # collection
     "CommandCollection",
     "get_collection",

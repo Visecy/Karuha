@@ -1,15 +1,14 @@
+import re
 from collections import deque
 from inspect import Parameter
-import re
 from typing import Any, Dict, Optional, Tuple, TypeVar, Union
 
-from pydantic import BeforeValidator
+from pydantic import BeforeValidator, computed_field
 from pydantic_core import core_schema, from_json
 from typing_extensions import Annotated, Self, get_args
 
-from karuha.exception import KaruhaHandlerInvokerError
-
 from ..bot import Bot
+from ..exception import KaruhaHandlerInvokerError
 from ..logger import logger
 from ..utils.invoker import HandlerInvokerModel
 from .convert import drafty2text
@@ -72,6 +71,13 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
             except KaruhaHandlerInvokerError:
                 pass
             return self.validate_dependency(param, self.plain_text)
+        elif param.name == "raw_text":
+            try:
+                return self.validate_dependency(param, self.raw_text)
+            except KaruhaHandlerInvokerError:
+                if not isinstance(self.raw_text, Drafty):
+                    raise
+            return self.validate_dependency(param, self.raw_text.txt)
         return super().get_dependency(param)
     
     def resolve_missing_dependencies(self, missing: Dict[Parameter, KaruhaHandlerInvokerError]) -> Dict[str, Any]:
@@ -86,15 +92,18 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
         if still_missing:
             dependencies.update(super().resolve_missing_dependencies(still_missing))
         return dependencies
-        
+
+    @computed_field(repr=False)
     @property
     def plain_text(self) -> str:
         return str(self.text)
 
+    @computed_field(repr=False, return_type="Message")
     @property
     def message(self) -> Self:
         return self
     
+    @computed_field(repr=False)
     @property
     def session(self) -> "MessageSession":
         return MessageSession(self.bot, self)

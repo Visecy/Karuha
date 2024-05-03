@@ -75,7 +75,7 @@ class SubscriptionEvent(PluginServerEvent):
     topic: ProxyProperty[str] = PluginServerProperty()
 
 
-class MessageEvent(PluginServerEvent, property_export={"data": "msg"}):
+class MessageEvent(PluginServerEvent):
     __slots__ = []
 
     raw_message: pb.MessageEvent

@@ -1,6 +1,6 @@
 import asyncio
 from functools import partial
-from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional, TypeVar
 from typing_extensions import Self
 
 from google.protobuf.message import Message
@@ -8,7 +8,9 @@ from tinode_grpc import pb
 
 from .. import bot
 from .base import Event, handler_runner
+from ..session import BaseSession
 from ..utils.proxy_propery import ProxyProperty
+from ..utils.invoker import Dependency, depend_property
 
 
 def ensure_text_len(text: str, length: int = 128) -> str:
@@ -20,6 +22,8 @@ def ensure_text_len(text: str, length: int = 128) -> str:
 
 class BotEvent(Event):
     __slots__ = ["bot"]
+
+    bot: Dependency["bot.Bot"]
 
     def __init__(self, bot: "bot.Bot", /) -> None:
         self.bot = bot
@@ -58,6 +62,11 @@ bot.Bot.initialize_event_callback = BotInitEvent.new
 bot.Bot.finalize_event_callback = BotFinishEvent.new_and_wait
 
 
+T = TypeVar("T")
+ProxyPropertyType = Dependency[ProxyProperty[T]]
+SessionProperty = depend_property(lambda ev: BaseSession(ev.bot, ev.topic))
+
+
 # Server Event Part
 # =========================
 
@@ -69,6 +78,8 @@ class ServerEvent(BotEvent):
     """base class for all events from server"""
 
     __slots__ = ["server_message"]
+
+    server_message: Dependency[Message]
 
     def __init__(self, bot: "bot.Bot", message: Message) -> None:
         super().__init__(bot)
@@ -115,15 +126,16 @@ class DataEvent(ServerEvent, on_field="data"):
 
     server_message: pb.ServerData
 
-    topic: ProxyProperty[str] = ServerMessageProperty()
-    from_user_id: ProxyProperty[str] = ServerMessageProperty()
-    timestamp: ProxyProperty[int] = ServerMessageProperty()
-    deleted_at: ProxyProperty[int] = ServerMessageProperty()
-    seq_id: ProxyProperty[int] = ServerMessageProperty()
-    head: ProxyProperty[Mapping[str, bytes]] = ServerMessageProperty()
-    content: ProxyProperty[bytes] = ServerMessageProperty()
+    topic: ProxyPropertyType[str] = ServerMessageProperty()
+    from_user_id: ProxyPropertyType[str] = ServerMessageProperty()
+    timestamp: ProxyPropertyType[int] = ServerMessageProperty()
+    deleted_at: ProxyPropertyType[int] = ServerMessageProperty()
+    seq_id: ProxyPropertyType[int] = ServerMessageProperty()
+    head: ProxyPropertyType[Mapping[str, bytes]] = ServerMessageProperty()
+    content: ProxyPropertyType[bytes] = ServerMessageProperty()
+    session = SessionProperty
 
-    @property
+    @depend_property
     def text(self) -> str:
         return self.content.decode(errors="ignore")
 
@@ -151,11 +163,12 @@ class CtrlEvent(ServerEvent, on_field="ctrl"):
 
     server_message: pb.ServerCtrl
 
-    id: ProxyProperty[str] = ServerMessageProperty()
-    topic: ProxyProperty[str] = ServerMessageProperty()
-    code: ProxyProperty[int] = ServerMessageProperty()
-    text: ProxyProperty[str] = ServerMessageProperty()
-    params: ProxyProperty[Mapping[str, bytes]] = ServerMessageProperty()
+    id: ProxyPropertyType[str] = ServerMessageProperty()
+    topic: ProxyPropertyType[str] = ServerMessageProperty()
+    code: ProxyPropertyType[int] = ServerMessageProperty()
+    text: ProxyPropertyType[str] = ServerMessageProperty()
+    params: ProxyPropertyType[Mapping[str, bytes]] = ServerMessageProperty()
+    session = SessionProperty
     
     async def __default_handler__(self) -> None:
         tid = self.server_message.id
@@ -274,8 +287,9 @@ class MetaEvent(ServerEvent, on_field="meta"):
 
     server_message: pb.ServerMeta
 
-    id: ProxyProperty[str] = ServerMessageProperty()
-    topic: ProxyProperty[str] = ServerMessageProperty()
+    id: ProxyPropertyType[str] = ServerMessageProperty()
+    topic: ProxyPropertyType[str] = ServerMessageProperty()
+    session = SessionProperty
     
     async def __default_handler__(self) -> None:
         tid = self.server_message.id
@@ -332,14 +346,15 @@ class PresEvent(ServerEvent, on_field="pres"):
 
     server_message: pb.ServerPres
 
-    topic: ProxyProperty[str] = ServerMessageProperty()
-    src: ProxyProperty[str] = ServerMessageProperty()
-    what: ProxyProperty["pb.ServerPres.What"] = ServerMessageProperty()
-    user_agent: ProxyProperty[str] = ServerMessageProperty()
-    seq_id: ProxyProperty[int] = ServerMessageProperty()
-    del_id: ProxyProperty[int] = ServerMessageProperty()
-    target_user_id: ProxyProperty[str] = ServerMessageProperty()
-    actor_user_id: ProxyProperty[str] = ServerMessageProperty()
+    topic: ProxyPropertyType[str] = ServerMessageProperty()
+    src: ProxyPropertyType[str] = ServerMessageProperty()
+    what: ProxyPropertyType["pb.ServerPres.What"] = ServerMessageProperty()
+    user_agent: ProxyPropertyType[str] = ServerMessageProperty()
+    seq_id: ProxyPropertyType[int] = ServerMessageProperty()
+    del_id: ProxyPropertyType[int] = ServerMessageProperty()
+    target_user_id: ProxyPropertyType[str] = ServerMessageProperty()
+    actor_user_id: ProxyPropertyType[str] = ServerMessageProperty()
+    session = SessionProperty
 
     async def __default_handler__(self) -> None:
         msg = self.server_message
@@ -393,12 +408,13 @@ class InfoEvent(ServerEvent, on_field="info"):
 
     server_message: pb.ServerInfo
 
-    topic: ProxyProperty[str] = ServerMessageProperty()
-    from_user_id: ProxyProperty[str] = ServerMessageProperty()
-    what: ProxyProperty["pb.InfoNote"] = ServerMessageProperty()
-    seq_id: ProxyProperty[int] = ServerMessageProperty()
-    src: ProxyProperty[str] = ServerMessageProperty()
-    payload: ProxyProperty[bytes] = ServerMessageProperty()
+    topic: ProxyPropertyType[str] = ServerMessageProperty()
+    from_user_id: ProxyPropertyType[str] = ServerMessageProperty()
+    what: ProxyPropertyType["pb.InfoNote"] = ServerMessageProperty()
+    seq_id: ProxyPropertyType[int] = ServerMessageProperty()
+    src: ProxyPropertyType[str] = ServerMessageProperty()
+    payload: ProxyPropertyType[bytes] = ServerMessageProperty()
+    session = SessionProperty
 
 
 # Client Event Part
@@ -463,9 +479,9 @@ class LoginEvent(ClientEvent, on_field="login"):
 
     client_message: pb.ClientLogin
 
-    id: ProxyProperty[str] = ClientMessageProperty()
-    scheme: ProxyProperty[str] = ClientMessageProperty()
-    secret: ProxyProperty[bytes] = ClientMessageProperty()
+    id: ProxyPropertyType[str] = ClientMessageProperty()
+    scheme: ProxyPropertyType[str] = ClientMessageProperty()
+    secret: ProxyPropertyType[bytes] = ClientMessageProperty()
 
     async def __default_handler__(self) -> None:
         await self.bot.subscribe(
@@ -539,10 +555,11 @@ class PublishEvent(ClientEvent, on_field="pub"):
     client_message: pb.ClientPub
     response_message: Optional[pb.ServerCtrl]
     
-    id: ProxyProperty[str] = ClientMessageProperty()
-    topic: ProxyProperty[str] = ClientMessageProperty()
-    head: ProxyProperty[Mapping[str, bytes]] = ClientMessageProperty()
-    content: ProxyProperty[bytes] = ClientMessageProperty()
+    id: ProxyPropertyType[str] = ClientMessageProperty()
+    topic: ProxyPropertyType[str] = ClientMessageProperty()
+    head: ProxyPropertyType[Mapping[str, bytes]] = ClientMessageProperty()
+    content: ProxyPropertyType[bytes] = ClientMessageProperty()
+    session = SessionProperty
     
     async def __default_handler__(self) -> None:
         self.bot.logger.info(f"({self.topic})<= {ensure_text_len(self.text)}")
@@ -675,8 +692,9 @@ class SubscribeEvent(ClientEvent, on_field="sub"):
 
     client_message: pb.ClientSub
 
-    id: ProxyProperty[str] = ClientMessageProperty()
-    topic: ProxyProperty[str] = ClientMessageProperty()
+    id: ProxyPropertyType[str] = ClientMessageProperty()
+    topic: ProxyPropertyType[str] = ClientMessageProperty()
+    session = SessionProperty
 
 
 class LeaveEvent(ClientEvent, on_field="leave"):
@@ -703,6 +721,7 @@ class LeaveEvent(ClientEvent, on_field="leave"):
 
     client_message: pb.ClientLeave
 
-    id: ProxyProperty[str] = ClientMessageProperty()
-    topic: ProxyProperty[str] = ClientMessageProperty()
-    unsub: ProxyProperty[bool] = ClientMessageProperty()
+    id: ProxyPropertyType[str] = ClientMessageProperty()
+    topic: ProxyPropertyType[str] = ClientMessageProperty()
+    unsub: ProxyPropertyType[bool] = ClientMessageProperty()
+    session = SessionProperty

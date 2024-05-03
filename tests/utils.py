@@ -16,9 +16,9 @@ from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
 from karuha.config import init_config
-from karuha.event import T_Event
 from karuha.store import T
 from karuha.text.message import Message
+from karuha.utils.event_catcher import T_Event
 from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
