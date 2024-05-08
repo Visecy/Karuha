@@ -13,7 +13,7 @@ from ..logger import logger
 from ..utils.invoker import HandlerInvokerModel
 from .convert import drafty2text
 from .drafty import Drafty
-from .textchain import BaseText, PlainText
+from .textchain import BaseText, PlainText, Quote, TextChain
 
 
 class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  # type: ignore
@@ -107,6 +107,12 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
     @property
     def session(self) -> "MessageSession":
         return MessageSession(self.bot, self)
+
+    @computed_field(repr=False)
+    @property
+    def quote(self) -> Optional[Quote]:
+        if isinstance(self.text, TextChain) and isinstance(self.text[0], Quote):
+            return self.text[0]  # type: ignore
 
 
 from ..session import BaseSession

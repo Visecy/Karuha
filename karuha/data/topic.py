@@ -8,7 +8,7 @@ from tinode_grpc import pb
 
 from ..bot import Bot
 from .meta import Access, CommonDesc, DefaultAccess, GroupTopicDesc, Subscription
-from .cache import get_my_sub, p2p_cache, get_group_desc, get_p2p_desc, get_sub, get_user_desc
+from .cache import get_my_sub, p2p_cache, get_group_desc, get_p2p_desc, get_sub, get_user_desc, try_get_p2p_desc, try_get_group_desc
 
 
 class BaseInfo(BaseModel, frozen=True):
@@ -140,6 +140,16 @@ async def set_info(
     extra = pb.ClientExtra(on_behalf_of=topic_id)
     await bot.subscribe("me", set=pb.SetQuery(desc=set_desc), extra=extra)
     await bot.leave("me", extra=extra)
+
+
+def try_get_p2p_topic(bot: Bot, /, topic_id: str) -> Optional[TopicSub]:
+    desc = try_get_p2p_desc(bot, topic_id)
+    if desc is not None:
+        return BaseTopic(
+            topic=topic_id,
+            public=desc.public,
+            trusted=desc.trusted,
+        )
 
 
 @overload

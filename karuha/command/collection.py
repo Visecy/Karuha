@@ -1,14 +1,14 @@
 import asyncio
 import sys
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TypeVar, Union, overload
+from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Set, TypeVar, Union, overload
 from typing_extensions import ParamSpec
 
 from ..utils.context import _ContextHelper
 from ..logger import logger
 from ..text.message import Message
-from ..event.message import MessageDispatcher
 from ..exception import KaruhaCommandError, KaruhaException
 from .parser import AbstractCommandParser, SimpleCommandParser
+from .rule import BaseRule, MessageRuleDispatcher, NoopRule
 from .command import AbstractCommand, FunctionCommand
 from .session import CommandMessage
 
@@ -18,16 +18,17 @@ R = TypeVar("R")
 
 
 class CommandCollection(_ContextHelper):
-    __slots__ = ["commands", "name_parser", "sub_collections", "_dispatcher"]
+    __slots__ = ["commands", "name_parser", "sub_collections", "_dispatcher", "rule"]
 
     commands: Dict[str, AbstractCommand]
     sub_collections: List["CommandCollection"]
 
-    def __init__(self, /, name_parser: AbstractCommandParser) -> None:
+    def __init__(self, /, name_parser: AbstractCommandParser, *, rule: Optional[BaseRule] = None) -> None:
         self.commands = {}
         self.name_parser = name_parser
         self.sub_collections = []
         self._dispatcher = None
+        self.rule = rule
     
     def add_command(self, command: AbstractCommand, /) -> None:
         self._check_name(command.__name__)
@@ -37,13 +38,8 @@ class CommandCollection(_ContextHelper):
             self.commands[alias] = command
     
     def get_command(self, name: str, default: Optional[AbstractCommand] = None, /) -> Optional[AbstractCommand]:
-        command = self.commands.get(name)
-        if command is not None:
-            return command
-        for i in self.sub_collections:
-            command = i.get_command(name)
-            if command is not None:
-                return command
+        for c in self._get_commands(name):
+            return c
         return default
         
     @overload
@@ -52,6 +48,7 @@ class CommandCollection(_ContextHelper):
         name: Optional[str] = ...,
         /, *,
         alias: Optional[Iterable[str]] = ...,
+        rule: Optional[BaseRule] = ...,
     ) -> Callable[[Callable[P, R]], FunctionCommand[P, R]]: ...
 
     @overload
@@ -60,6 +57,7 @@ class CommandCollection(_ContextHelper):
         func: Callable[P, R],
         /, *,
         alias: Optional[Iterable[str]] = ...,
+        rule: Optional[BaseRule] = ...,
     ) -> FunctionCommand[P, R]: ...
 
     def on_command(
@@ -87,8 +85,10 @@ class CommandCollection(_ContextHelper):
             return
         
         name, argv = result
-        command = self.get_command(name)
-        if command is None:
+        for command in self._get_commands(name):
+            if command.rule is None or command.rule.match(message):
+                break
+        else:
             CommandNotFoundEvent.new(self, name)
             logger.error(f"command {name} not found")
             return
@@ -118,12 +118,17 @@ class CommandCollection(_ContextHelper):
         command = self.get_command(name)
         if command is not None:
             return command
-        # CommandNotFoundEvent.new(self, name)
         raise KaruhaCommandError(f"command {name} is not registered", name=name, collection=self)
     
     @property
     def activated(self) -> bool:
         return self._dispatcher is not None
+    
+    def _get_commands(self, name: str, /) -> Generator[AbstractCommand, None, None]:
+        if name in self.commands:
+            yield self.commands[name]
+        for i in self.sub_collections:
+            yield from i._get_commands(name)
     
     def _check_name(self, name: str) -> None:
         if name in self.commands:
@@ -135,16 +140,16 @@ class CommandCollection(_ContextHelper):
         return f"<{self.__class__.__name__} with {len(self.commands)} commands at 0x{id(self):016x}>"
 
 
-class CommandDispatcher(MessageDispatcher):
+class CommandDispatcher(MessageRuleDispatcher):
     __slots__ = ["collection"]
 
     def __init__(self, collection: CommandCollection, *, once: bool = False) -> None:
-        super().__init__(once=once)
+        super().__init__(collection.rule or NoopRule(), 0.8, once=once)
         self.collection = collection
     
     def match(self, message: Message, /) -> float:
         if self.collection.name_parser.precheck(message):
-            return 0.8
+            return super().match(message)
         return 0
     
     def run(self, message: Message) -> asyncio.Task:
@@ -156,10 +161,10 @@ _default_collection: Optional[CommandCollection] = None
 _sub_collections: Set[CommandCollection] = set()
 
 
-def get_collection() -> CommandCollection:
+def get_collection(*args: Any, **kwds: Any) -> CommandCollection:
     global _default_collection
     if _default_collection is None:
-        _default_collection = new_collection()
+        _default_collection = new_collection(*args, **kwds)
         _default_collection.activate()
         _default_collection.sub_collections.extend(_sub_collections)
     return _default_collection
@@ -189,9 +194,10 @@ def reset_collection() -> None:
     _default_collection = None
 
 
-def new_collection() -> CommandCollection:
+def new_collection(*, rule: Optional[BaseRule] = None) -> CommandCollection:
     return CommandCollection(
-        SimpleCommandParser(_default_prefix)
+        SimpleCommandParser(_default_prefix),
+        rule=rule
     )
 
 
@@ -207,7 +213,7 @@ def set_prefix(*prefix: str) -> None:
     _default_prefix = prefix
 
 
-def set_collection_factory(factory: Optional[Callable[[], CommandCollection]], reset: bool = False) -> None:
+def set_collection_factory(factory: Optional[Callable[..., CommandCollection]], reset: bool = False) -> None:
     global new_collection
     if _default_collection is not None:
         if reset:

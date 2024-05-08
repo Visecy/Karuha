@@ -6,25 +6,27 @@ from tinode_grpc import pb
 from typing_extensions import Self
 
 from ..command.session import BaseSession
-
 from ..bot import Bot
 from ..logger import logger
 from ..utils.proxy_propery import ProxyProperty
+from ..utils.invoker import depend_property, Dependency
+from ..runner import get_all_bots, _get_running_loop
 from . import on
 from .base import Event
-from .bot import BotEvent
-from ..runner import get_all_bots, _get_running_loop
+from .bot import BotEvent, ProxyPropertyType, SessionProperty
 
 
 class PluginServerEvent(Event):
     """base class for all event from plugin server"""
     __slots__ = ["raw_message"]
 
+    raw_message: Dependency[Union[pb.TopicEvent, pb.AccountEvent, pb.SubscriptionEvent, pb.MessageEvent]]
+
     def __init__(self, message: Union[pb.TopicEvent, pb.AccountEvent, pb.SubscriptionEvent, pb.MessageEvent]) -> None:
         super().__init__()
         self.raw_message = message
 
-    @property
+    @depend_property
     def action(self) -> pb.Crud:
         return self.raw_message.action
 
@@ -42,8 +44,8 @@ class TopicEvent(PluginServerEvent):
 
     raw_message: pb.TopicEvent
     
-    name: ProxyProperty[str] = PluginServerProperty()
-    desc: ProxyProperty["pb.TopicDesc"] = PluginServerProperty()
+    name: ProxyPropertyType[str] = PluginServerProperty()
+    desc: ProxyPropertyType["pb.TopicDesc"] = PluginServerProperty()
 
 
 class AccountEvent(PluginServerEvent):
@@ -51,9 +53,9 @@ class AccountEvent(PluginServerEvent):
 
     raw_message: pb.AccountEvent
 
-    user_id: ProxyProperty[str] = PluginServerProperty()
-    action: ProxyProperty["pb.Crud"] = PluginServerProperty()
-    public: ProxyProperty[bytes] = PluginServerProperty()
+    user_id: ProxyPropertyType[str] = PluginServerProperty()
+    action: ProxyPropertyType["pb.Crud"] = PluginServerProperty()
+    public: ProxyPropertyType[bytes] = PluginServerProperty()
 
     async def __default_handler__(self) -> None:
         action = self.action
@@ -71,8 +73,10 @@ class SubscriptionEvent(PluginServerEvent):
 
     raw_message: pb.SubscriptionEvent
 
-    user_id: ProxyProperty[str] = PluginServerProperty()
-    topic: ProxyProperty[str] = PluginServerProperty()
+    user_id: ProxyPropertyType[str] = PluginServerProperty()
+    topic: ProxyPropertyType[str] = PluginServerProperty()
+
+    session = SessionProperty
 
 
 class MessageEvent(PluginServerEvent):
@@ -80,11 +84,13 @@ class MessageEvent(PluginServerEvent):
 
     raw_message: pb.MessageEvent
 
-    data: ProxyProperty["pb.ServerData"] = PluginServerProperty(name="msg")
-    topic = ProxyProperty[str]("data")
-    from_user_id = ProxyProperty[str]("data")
-    user_id = ProxyProperty[str]("data", name="from_user_id")
-    content = ProxyProperty[bytes]("data")
+    data: ProxyPropertyType["pb.ServerData"] = PluginServerProperty(name="msg")
+    topic = ProxyPropertyType[str]("data")
+    from_user_id = ProxyPropertyType[str]("data")
+    user_id = ProxyPropertyType[str]("data", name="from_user_id")
+    content = ProxyPropertyType[bytes]("data")
+
+    session = SessionProperty
 
 
 class AccountCreateEvent(BotEvent):
@@ -92,15 +98,16 @@ class AccountCreateEvent(BotEvent):
 
     raw_message: pb.AccountEvent
 
-    user_id: ProxyProperty[str] = PluginServerProperty()
-    action: ProxyProperty["pb.Crud"] = PluginServerProperty()
-    public: ProxyProperty[bytes] = PluginServerProperty()
+    user_id: ProxyPropertyType[str] = PluginServerProperty()
+    action: ProxyPropertyType["pb.Crud"] = PluginServerProperty()
+    public: ProxyPropertyType[bytes] = PluginServerProperty()
 
     def __init__(self, bot: Bot, message: pb.AccountEvent) -> None:
         super().__init__(bot)
         self.raw_message = message
     
-    def get_session(self) -> BaseSession:
+    @depend_property
+    def session(self) -> BaseSession:
         return BaseSession(self.bot, self.user_id)
 
 

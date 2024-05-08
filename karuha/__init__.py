@@ -15,7 +15,7 @@ from .bot import Bot
 from .exception import KaruhaException
 from .event import on, on_event, Event
 from .text import Drafty, BaseText, PlainText, Message, TextChain
-from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, CommandSession, get_collection, on_command
+from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, CommandSession, get_collection, on_command, rule, on_rule
 from .runner import get_bot, add_bot, try_add_bot, get_all_bots, async_run, run
 
 
@@ -52,10 +52,12 @@ __all__ = [
     "BaseSession",
     "MessageSession",
     "CommandSession",
+    "rule",
     # decorator
     "on",
     "on_event",
     "on_command",
+    "on_rule",
     # exception
     "KaruhaException"
 ]

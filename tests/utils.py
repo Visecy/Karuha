@@ -189,6 +189,7 @@ class BotMock(Bot):
 
 
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
+bot_mock.user_id = "usr"
 
 
 class EventCatcher(_EventCatcher[T_Event]):

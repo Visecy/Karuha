@@ -2,14 +2,18 @@ from inspect import signature
 from typing import List, Optional
 from unittest import TestCase
 
+from pydantic_core import to_json
+
 from karuha.bot import Bot
 from karuha.text import PlainText, Drafty, Message, Head
+from karuha.command.rule import QuoteRule, rule
 from karuha.command.collection import (add_sub_collection, get_collection, new_collection, remove_sub_collection,
                                        reset_collection, set_collection,
                                        set_collection_factory, set_prefix)
 from karuha.command.command import FunctionCommand, ParamFunctionCommand
 from karuha.command.parser import SimpleCommandParser
 from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
+from karuha.text.textchain import Mention, NewLine, Quote, TextChain
 
 from .utils import bot_mock, new_test_message, new_test_command_message
 
@@ -156,3 +160,40 @@ class TestCommand(TestCase):
         cd1 = get_collection()
         self.assertIsNot(cd, cd1)
         self.assertEqual(cd1.sub_collections, [c])
+    
+    def test_rule(self) -> None:
+        msg = new_test_command_message(to_json("Hello World!"))
+        rk = rule(keyword="Hello")
+        self.assertEqual(rk.match(msg), 1.0)
+        rt = rule(topic="test")
+        self.assertEqual(rt.match(msg), 1.0)
+        rs = rule(topic="test", seq_id=1)
+        self.assertEqual(rs.match(msg), 1.0)
+        ru = rule(user_id="user")
+        self.assertEqual(ru.match(msg), 1.0)
+        rr = rule(regex=r"w.+d")
+        self.assertEqual(rr.match(msg), 1.0)
+        ra = rk & rt
+        self.assertEqual(ra.match(msg), 1.0)
+        rn = ~rt
+        self.assertEqual(rn.match(msg), 0.0)
+        ro = rk | rn
+        self.assertEqual(ro.match(msg), 1.0)
+
+        msg = Message.new(
+            bot_mock,
+            "test",
+            "usr",
+            1,
+            {"reply": "1"},
+            to_json(TextChain(
+                Quote(content=TextChain(Mention(text="@user", val=bot_mock.uid), NewLine, "Quote content ...")),
+                "Hello world!"
+            ).to_drafty())
+        )
+        rq = rule(quote=1)
+        self.assertEqual(rq.match(msg), 1.0)
+        rm = rule(mention=bot_mock.uid)
+        self.assertEqual(rm.match(msg), 1.0)
+        r2m = rule(to_me=True)
+        self.assertEqual(r2m.match(msg), 1.0)

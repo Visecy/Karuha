@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Literal, Optional, overload
 
 from ..bot import Bot
-from .cache import get_sub, get_topic_sub, get_user_desc
+from .cache import get_sub, get_topic_sub, get_user_desc, try_get_user_desc
 from .meta import Access, DefaultAccess, Subscription, UserDesc
 from .topic import BaseInfo
 
@@ -39,6 +39,16 @@ class UserSub(BaseUser, frozen=True):
     recv: Optional[int] = None
     clear: Optional[int] = None
     acs: Optional[Access] = None
+
+
+def try_get_user(bot: Bot, /, user_id: str = "me") -> Optional[BaseUser]:
+    desc = try_get_user_desc(bot, user_id)
+    if desc is not None:
+        return BaseUser(
+            user_id=bot.uid,
+            public=desc.public,
+            trusted=desc.trusted,
+        )
 
 
 @overload

@@ -9,6 +9,7 @@ from typing_extensions import ParamSpec, Self
 
 from ..event.message import Message
 from ..exception import KaruhaCommandCanceledError, KaruhaCommandError
+from .rule import BaseRule
 
 
 P = ParamSpec("P")
@@ -16,10 +17,11 @@ R = TypeVar("R")
 
 
 class AbstractCommand(ABC):
-    __slots__ = ["__name__", "alias"]
+    __slots__ = ["__name__", "alias", "rule"]
 
-    def __init__(self, name: str, /, alias: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, name: str, /, alias: Optional[Iterable[str]] = None, *, rule: Optional[BaseRule] = None) -> None:
         self.__name__ = name
+        self.rule = rule
         if alias is None:
             self.alias = ()
         else:
@@ -37,15 +39,15 @@ class AbstractCommand(ABC):
 class FunctionCommand(AbstractCommand, Generic[P, R]):
     __slots__ = ["__func__", "__signature__"]
 
-    def __init__(self, name: str, func: Callable[P, R], /, alias: Optional[Iterable[str]] = None) -> None:
-        super().__init__(name, alias)
+    def __init__(self, name: str, func: Callable[P, R], /, alias: Optional[Iterable[str]] = None, *, rule: Optional[BaseRule] = None) -> None:
+        super().__init__(name, alias, rule=rule)
         self.__func__ = func
         self.__signature__ = signature(func)
-    
+
     def parse_message(self, message: Message) -> Tuple[tuple, dict]:  # pragma: no cover
         args, kwargs = message.extract_handler_params(self.__signature__)
         return tuple(args), kwargs
-    
+
     async def call_command(self, message: "CommandMessage") -> Any:
         logger.debug(f"preparing command {self.name}")
         prepare_event = CommandPrepareEvent(message.collection, self, message)
@@ -70,15 +72,23 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             logger.info(f"command {self.name} complete")
             CommandCompleteEvent.new(message.collection, self, result)
         return result
-    
+
     def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:
         return self.__func__(*args, **kwds)
-    
+
     @classmethod
-    def from_function(cls, /, func: Callable, *, name: Optional[str] = None, alias: Optional[Iterable[str]] = None) -> Self:
+    def from_function(
+        cls,
+        /,
+        func: Callable,
+        *,
+        name: Optional[str] = None,
+        alias: Optional[Iterable[str]] = None,
+        rule: Optional[BaseRule] = None,
+    ) -> Self:
         if name is None:  # pragma: no cover
             name = func.__name__
-        return cls(name, func, alias=alias)
+        return cls(name, func, alias=alias, rule=rule)
 
 
 ParamFunctionCommand = FunctionCommand

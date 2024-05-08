@@ -216,3 +216,20 @@ class TestText(TestCase):
         self.assertEqual(qq.content[0], Mention(text="user", val="user_id"))
         self.assertEqual(qq.content[1], PlainText("\nquote text"))
         self.assertEqual(t[1], PlainText("user text"))
+    
+    def test_split(self) -> None:
+        txt = PlainText("Hello world! Hello world!")
+        self.assertEqual([str(i) for i in txt.split(maxsplit=1)], "Hello world! Hello world!".split(maxsplit=1))
+        tc = TextChain(*txt.split(maxsplit=2))
+        self.assertEqual(len(tc), 3)
+        self.assertEqual(tc[2], "Hello world!")
+        self.assertEqual(tc.split(), txt.split())
+        self.assertEqual(tc.split(maxsplit=2), txt.split(maxsplit=2))
+        sp = tc.split(maxsplit=1)
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0], "Hello")
+        self.assertEqual(sp[1], TextChain("world!", "Hello world!"))
+
+        tc = TextChain("Hello world!", "Hello world!")
+        self.assertEqual(tc.split(), ["Hello", "world!", "Hello", "world!"])
+        self.assertEqual(tc.split(maxsplit=2), ["Hello", "world!", "Hello world!"])
