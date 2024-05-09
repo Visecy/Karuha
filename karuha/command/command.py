@@ -39,7 +39,15 @@ class AbstractCommand(ABC):
 class FunctionCommand(AbstractCommand, Generic[P, R]):
     __slots__ = ["__func__", "__signature__"]
 
-    def __init__(self, name: str, func: Callable[P, R], /, alias: Optional[Iterable[str]] = None, *, rule: Optional[BaseRule] = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        func: Callable[P, R],
+        /,
+        alias: Optional[Iterable[str]] = None,
+        *,
+        rule: Optional[BaseRule] = None,
+    ) -> None:
         super().__init__(name, alias, rule=rule)
         self.__func__ = func
         self.__signature__ = signature(func)
@@ -54,8 +62,9 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         try:
             await prepare_event.trigger()
         except KaruhaCommandCanceledError:
-            logger.info(f"command {self.name} canceled")
+            logger.info(f"command {self.name} canceled before run")
             raise
+        
         try:
             args, kwargs = self.parse_message(message)
             result = self.__func__(*args, **kwargs)  # type: ignore

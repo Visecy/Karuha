@@ -4,6 +4,8 @@ from typing import (FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union,
 from pydantic import BaseModel
 from tinode_grpc import pb
 
+from ..event.sys import SystemStartEvent
+
 from ..event.message import MessageEvent
 
 from ..bot import Bot
@@ -209,6 +211,11 @@ async def get_p2p_desc(bot: Bot, /, user_id: str) -> TopicInfo:
     return P2PTopicDesc.from_meta(topic.desc)
 
 
+def try_get_sub(bot: Bot, /, topic_id: str) -> Optional[BaseSubscription]:
+    sub = subscription_cache.get((topic_id, bot.uid))
+    return sub and sub.sub
+
+
 async def get_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> BaseSubscription:
     assert topic_id != "me", "topic_id must not be 'me'"
     sub = subscription_cache.get((topic_id, bot.uid))
@@ -274,14 +281,6 @@ async def get_user_cred(bot: Bot) -> List[Cred]:
     _, cred_meta = await bot.get("me", "cred")
     assert cred_meta is not None
     return [Cred(method=c.method, value=c.value, done=c.done) for c in cred_meta.cred]
-
-
-def clear_meta_cache() -> None:
-    user_cache.clear()
-    p2p_cache.clear()
-    group_cache.clear()
-    subscription_cache.clear()
-    message_cache.clear()
 
 
 def cache_user(user_id: str, desc: pb.TopicDesc) -> None:
@@ -371,3 +370,12 @@ def handle_meta(event: MetaEvent) -> None:
 @on(MessageEvent)
 def handle_message(event: MessageEvent) -> None:
     update_message_cache(event.message)
+
+
+@on(SystemStartEvent)
+def clear_cache() -> None:
+    user_cache.clear()
+    p2p_cache.clear()
+    group_cache.clear()
+    subscription_cache.clear()
+    message_cache.clear()
