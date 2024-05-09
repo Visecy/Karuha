@@ -4,8 +4,8 @@ import operator as op
 from abc import abstractmethod
 from base64 import b64decode, b64encode
 from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal,
-                    Mapping, MutableMapping, Optional, SupportsIndex, Type,
-                    Union)
+                    MutableMapping, Optional, Sequence, SupportsIndex, Type,
+                    Union, overload)
 
 from aiofiles import open as aio_open
 from pydantic import AnyHttpUrl, BaseModel, model_validator
@@ -20,18 +20,26 @@ class BaseText(BaseModel):
     @abstractmethod
     def to_drafty(self) -> Drafty:
         raise NotImplementedError
-    
+
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List["BaseText"]:
         return [self]
-    
+
     def startswith(self, /, prefix: str) -> bool:
         return str(self).startswith(prefix)
-    
+
     def endswith(self, /, suffix: str) -> bool:
         return str(self).endswith(suffix)
-    
+
     def __len__(self) -> int:
         return len(str(self))
+
+    def __contains__(self, other: Union[str, "BaseText"]) -> bool:
+        if isinstance(other, str):
+            return other in str(self)
+        return any(
+            other in i if i is not self else other == i
+            for i in self.split()
+        )
 
     def __add__(self, other: Union[str, "BaseText"]) -> "BaseText":
         if not other:
@@ -43,17 +51,17 @@ class BaseText(BaseModel):
         if not isinstance(other, TextChain) and isinstance(other, BaseText):
             return TextChain(self, other)
         return NotImplemented
-    
+
     def __radd__(self, other: str) -> "BaseText":
         if not other:
             return self
         if isinstance(other, str):
             return TextChain(PlainText(other), self)
         return NotImplemented
-    
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {str(self)!r}>"
-    
+
     @abstractmethod
     def __str__(self) -> str:
         return "unknown"
@@ -114,11 +122,15 @@ class InlineCode(_Text):
         return df
 
 
-class TextChain(BaseText, Mapping):
+class TextChain(BaseText, Sequence):
     contents: List[BaseText]
 
-    def __init__(self, *args: BaseText) -> None:
-        super().__init__(contents=args)  # type: ignore
+    def __init__(self, *args: Union[BaseText, str]) -> None:
+        contents = [
+            PlainText(t) if isinstance(t, str) else t
+            for t in args if t
+        ]
+        super().__init__(contents=contents)  # type: ignore
     
     def to_drafty(self) -> Drafty:
         if not self.contents:
@@ -130,16 +142,23 @@ class TextChain(BaseText, Mapping):
         return base
     
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
+        if not self:
+            return []
         maxsplit = op.index(maxsplit)
-        if maxsplit == 0:
-            return [self]
+        remain_count = maxsplit - len(self.contents) + 1
+        if maxsplit >= 0 and remain_count < 0:
+            content = self.contents[:maxsplit]
+            content.append(self[maxsplit:])
+            return content
+    
         result = []
         for i in self.contents:
-            result.extend(i.split(sep, maxsplit))
-        if maxsplit > 0 and len(result) > maxsplit + 1:
-            remain = TextChain(*result[maxsplit + 1:])
-            result = result[:maxsplit + 1]
-            result.append(remain)
+            if maxsplit >= 0 and remain_count < 0:
+                result.append(i)
+            else:
+                sp = i.split(sep, remain_count)
+                result.extend(sp)
+                remain_count -= len(sp) - 1
         return result
     
     def take(self) -> BaseText:
@@ -147,8 +166,16 @@ class TextChain(BaseText, Mapping):
             return self.contents[0]
         return self
     
-    def __getitem__(self, key: SupportsIndex, /) -> BaseText:
-        return self.contents[key]
+    @overload
+    def __getitem__(self, key: SupportsIndex, /) -> BaseText: ...
+    @overload
+    def __getitem__(self, key: slice, /) -> "TextChain": ...
+
+    def __getitem__(self, key: Union[SupportsIndex, slice], /) -> BaseText:
+        item = self.contents[key]
+        if isinstance(item, list):
+            return TextChain(*item)
+        return item
 
     def __iter__(self) -> Generator[BaseText, None, None]:
         yield from self.contents

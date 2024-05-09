@@ -1,21 +1,22 @@
 import asyncio
-from unittest import IsolatedAsyncioTestCase
 
 from karuha.event import Event, on
+from karuha.event.bot import DataEvent
+from karuha.session import BaseSession
 from karuha.utils.dispatcher import AbstractDispatcher, FutureDispatcher
 
-from .utils import EventCatcher
+from .utils import EventCatcher, AsyncBotTestCase
 
 
-class TestEvent(IsolatedAsyncioTestCase):
+class TestEvent(AsyncBotTestCase):
     async def test_init(self) -> None:
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         event = Event()
 
         @on(Event)
-        async def hdl(ev: Event) -> None:
-            future.set_result(ev)
+        async def hdl(event: Event) -> None:
+            future.set_result(event)
         
         self.assertEqual(len(await event.trigger()), 1)
         self.assertTrue(future.done())
@@ -23,6 +24,17 @@ class TestEvent(IsolatedAsyncioTestCase):
 
         Event.remove_handler(hdl)
     
+    async def test_lock(self) -> None:
+        class Event1(Event):
+            ...
+        self.assertIs(Event.get_lock(), Event.get_lock())
+        self.assertIsNot(Event.get_lock(), Event1.get_lock())
+        async with Event.get_lock():
+            self.assertTrue(Event.get_lock().locked())
+            async with Event1.get_lock():
+                self.assertTrue(Event.get_lock().locked())
+                self.assertTrue(Event1.get_lock().locked())
+
     async def test_catcher(self) -> None:
         hdl_num = len(Event.__handlers__)
         with EventCatcher(Event) as catcher:
@@ -120,3 +132,21 @@ class TestEvent(IsolatedAsyncioTestCase):
             self.assertFalse(d2.received)
             self.assertTrue(d1.received)
             self.assertIs(d1.future.result(), e)
+    
+    async def test_handler(self) -> None:
+        future = asyncio.get_running_loop().create_future()
+        
+        @on(DataEvent)
+        def assert_hello(text: str, session: BaseSession, topic: str) -> None:
+            self.assertEqual(text, "\"hello\"")
+            self.assertEqual(topic, "usr_test")
+            self.assertEqual(session.topic, "usr_test")
+            future.set_result(True)
+
+        self.addCleanup(lambda: DataEvent.remove_handler(assert_hello))
+        
+        self.bot.receive_content(
+            b"\"hello\"",
+            topic="usr_test",
+        )
+        await self.wait_for(future)

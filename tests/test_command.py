@@ -1,18 +1,19 @@
-from inspect import Parameter, signature
-from typing import List, Optional, Tuple
+from inspect import signature
+from typing import List, Optional
 from unittest import TestCase
 
+from pydantic_core import to_json
+
 from karuha.bot import Bot
-from karuha.text import BaseText, PlainText, Drafty, Message
+from karuha.text import PlainText, Drafty, Message, Head
+from karuha.command.rule import rule
 from karuha.command.collection import (add_sub_collection, get_collection, new_collection, remove_sub_collection,
                                        reset_collection, set_collection,
                                        set_collection_factory, set_prefix)
-from karuha.command.command import CommandMessage, FunctionCommand, ParamFunctionCommand
-from karuha.command.parser import (BOT_PARAM, SESSION_PARAM,
-                                   MetaParamDispatcher, ParamDispatcher, ParamParser,
-                                   ParamParserFlag, SimpleCommandParser)
-from karuha.command.session import MessageSession
-from karuha.exception import KaruhaCommandError, KaruhaParserError
+from karuha.command.command import FunctionCommand, ParamFunctionCommand
+from karuha.command.parser import SimpleCommandParser
+from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
+from karuha.text.textchain import Mention, NewLine, Quote, TextChain
 
 from .utils import bot_mock, new_test_message, new_test_command_message
 
@@ -35,130 +36,64 @@ class TestCommand(TestCase):
         self.assertEqual(simple_parser.parse(message4), ('', []))
         message5 = new_test_message(b"\"\"")
         self.assertIsNone(simple_parser.parse(message5))
-    
-    def test_meta_param_dispatcher(self) -> None:
-        with MetaParamDispatcher("test", str, lambda d, x: d.name, ParamParserFlag.MESSAGE_DATA) as d:
-            self.assertAlmostEqual(
-                d.match(Parameter("test", Parameter.POSITIONAL_ONLY, annotation=str)),
-                1.4
-            )
-            self.assertAlmostEqual(
-                d.match(Parameter("test", Parameter.KEYWORD_ONLY, annotation=str, default="test")),
-                1.6
-            )
-            self.assertAlmostEqual(
-                d.match(Parameter("test", Parameter.KEYWORD_ONLY)),
-                1.2
-            )
-            self.assertAlmostEqual(
-                d.match(Parameter("test1", Parameter.KEYWORD_ONLY, annotation=str)),
-                0.4
-            )
-        self.assertAlmostEqual(
-            BOT_PARAM.match(
-                Parameter("bot", Parameter.POSITIONAL_OR_KEYWORD, annotation=Optional[Bot])
-            ), 1.5
-        )
-        self.assertAlmostEqual(
-            SESSION_PARAM.match(
-                Parameter("sess", Parameter.POSITIONAL_OR_KEYWORD, annotation=MessageSession)
-            ), 0.8
-        )
 
-        message = new_test_command_message()
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("name", Parameter.POSITIONAL_ONLY))(message),
-            "test"
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("name", Parameter.POSITIONAL_ONLY, annotation=str))(message),
-            "test"
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argc", Parameter.POSITIONAL_ONLY))(message),
-            0
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argv", Parameter.POSITIONAL_ONLY))(message),
-            ()
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argv", Parameter.POSITIONAL_ONLY, annotation=list))(message),
-            []
-        )
-        message = CommandMessage.from_message(
-            message,
-            FunctionCommand("test", lambda: None),
-            new_collection(),
-            "test",
-            [PlainText("test")]
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argc", Parameter.POSITIONAL_ONLY, annotation=int))(message),
-            1
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argv", Parameter.POSITIONAL_ONLY, annotation=List[str]))(message),
-            ["test"]
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argv", Parameter.POSITIONAL_ONLY, annotation=List[BaseText]))(message),
-            [PlainText("test")]
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argv", Parameter.POSITIONAL_ONLY, annotation=Tuple[str, ...]))(message),
-            ("test",)
-        )
-        self.assertEqual(
-            ParamDispatcher.dispatch(Parameter("argv", Parameter.POSITIONAL_ONLY, annotation=Tuple[BaseText, ...]))(message),
-            (PlainText("test"),)
-        )
-    
-    def test_param_parser(self) -> None:
-        def cmd_meta(bot: Bot, message: Message, /, user_id: Optional[str], content: bytes, argv: list) -> None:
-            pass
+    def test_invoker(self) -> None:
+
+        def cmd_meta(
+            bot: Bot,
+            message: Message,
+            /,
+            user_id: Optional[str],
+            content: bytes,
+            argc: int,
+            argv: List[str],
+            test: Head,
+            undefined: None = None
+        ) -> int:
+            return 114
 
         sig = signature(cmd_meta)
-        parser = ParamParser.from_signature(sig)
         msg = new_test_command_message()
-        args, kwargs = parser.parse(msg)
-        self.assertEqual(args, (bot_mock, msg))
-        self.assertEqual(kwargs, {"user_id": "user", "content": b"\"test\"", "argv": []})
+        args, kwargs = msg.extract_handler_params(sig)
+        self.assertEqual(args, [bot_mock, msg])
+        self.assertEqual(
+            kwargs,
+            {
+                "user_id": "user", "content": b"\"test\"",
+                "argc": 0, "argv": [], "test": None, "undefined": None
+            }
+        )
+        self.assertEqual(msg.call_handler(cmd_meta), 114)
 
-        with self.assertRaises(KaruhaParserError):
-            ParamParser.from_signature(sig, flags=ParamParserFlag.MESSAGE_DATA)
-        with self.assertRaises(KaruhaParserError):
-            ParamParser.from_signature(signature(lambda *message: ...))
-        
+        with self.assertRaises(KaruhaHandlerInvokerError):
+            msg.call_handler(lambda *message: ...)
+
         def cmd_text(text: PlainText, raw_text: Drafty) -> None:
             pass
 
+        with self.assertRaises(KaruhaHandlerInvokerError):
+            msg.call_handler(cmd_text)
         sig = signature(cmd_text)
-        parser = ParamParser.from_signature(sig, flags=ParamParserFlag.MESSAGE_DATA)
-        with self.assertRaises(KaruhaParserError):
-            parser.parse(new_test_command_message())
-        args, kwargs = parser.parse(new_test_command_message(b"{\"txt\": \"test\"}"))
-        self.assertEqual(args, ())
+        args, kwargs = new_test_command_message(b"{\"txt\": \"test\"}").extract_handler_params(sig)
+        self.assertEqual(args, [])
         self.assertEqual(kwargs, {"text": PlainText("test"), "raw_text": Drafty(txt="test")})
 
         def cmd_plain_text(text: str, raw_text: str) -> None:
             pass
 
         sig = signature(cmd_plain_text)
-        parser = ParamParser.from_signature(sig, flags=ParamParserFlag.MESSAGE_DATA)
-        args, kwargs = parser.parse(new_test_command_message(b"{\"txt\": \"test\"}"))
-        self.assertEqual(args, ())
+        args, kwargs = new_test_command_message(b"{\"txt\": \"test\"}").extract_handler_params(sig)
+        self.assertEqual(args, [])
         self.assertEqual(kwargs, {"text": "test", "raw_text": "test"})
 
-        def cmd_no_annotation(text, /, raw_text, content) -> None:
+        def cmd_no_annotation(text, /, raw_text, content, undefined=None) -> None:
             pass
 
         sig = signature(cmd_no_annotation)
-        parser = ParamParser.from_signature(sig, flags=ParamParserFlag.META)
-        args, kwargs = parser.parse(new_test_command_message(b"{\"txt\": \"test\"}"))
-        self.assertEqual(args, (PlainText("test"),))
-        self.assertEqual(kwargs, {"raw_text": Drafty(txt="test"), "content": b"{\"txt\": \"test\"}"})
-    
+        args, kwargs = new_test_command_message(b"{\"txt\": \"test\"}").extract_handler_params(sig)
+        self.assertEqual(args, [PlainText("test")])
+        self.assertEqual(kwargs, {"raw_text": Drafty(txt="test"), "content": b"{\"txt\": \"test\"}", "undefined": None})
+
     def test_function_command(self) -> None:
         with new_collection() as clt:
             called = False
@@ -166,7 +101,7 @@ class TestCommand(TestCase):
             with self.assertRaises(KaruhaCommandError):
                 clt["test"]
 
-            @clt.on_command("test", flags=ParamParserFlag.NONE)
+            @clt.on_command("test")
             def test(bot: Bot, /, message: Message, *, text: PlainText) -> None:
                 nonlocal called
                 called = True
@@ -178,7 +113,7 @@ class TestCommand(TestCase):
 
             with self.assertRaises(ValueError):
                 clt.add_command(test)
-            
+
     def test_collection(self) -> None:
         reset_collection()
         set_prefix('/', '#')
@@ -191,7 +126,7 @@ class TestCommand(TestCase):
         self.assertNotEqual(c, cd)
         with self.assertRaises(RuntimeError):
             set_prefix('!')
-        
+
         reset_collection()
         set_prefix('/')
         set_collection_factory(lambda: c)
@@ -225,3 +160,40 @@ class TestCommand(TestCase):
         cd1 = get_collection()
         self.assertIsNot(cd, cd1)
         self.assertEqual(cd1.sub_collections, [c])
+    
+    def test_rule(self) -> None:
+        msg = new_test_command_message(to_json("Hello World!"))
+        rk = rule(keyword="Hello")
+        self.assertEqual(rk.match(msg), 1.0)
+        rt = rule(topic="test")
+        self.assertEqual(rt.match(msg), 1.0)
+        rs = rule(topic="test", seq_id=1)
+        self.assertEqual(rs.match(msg), 1.0)
+        ru = rule(user_id="user")
+        self.assertEqual(ru.match(msg), 1.0)
+        rr = rule(regex=r"W.+d")
+        self.assertEqual(rr.match(msg), 1.0)
+        ra = rk & rt
+        self.assertEqual(ra.match(msg), 1.0)
+        rn = ~rt
+        self.assertEqual(rn.match(msg), 0.0)
+        ro = rk | rn
+        self.assertEqual(ro.match(msg), 1.0)
+
+        msg = Message.new(
+            bot_mock,
+            "test",
+            "usr",
+            1,
+            {"reply": "1"},
+            to_json(TextChain(
+                Quote(content=TextChain(Mention(text="@user", val=bot_mock.uid), NewLine, "Quote content ...")),
+                "Hello world!"
+            ).to_drafty())
+        )
+        rq = rule(quote=1)
+        self.assertEqual(rq.match(msg), 1.0)
+        rm = rule(mention=bot_mock.uid)
+        self.assertEqual(rm.match(msg), 1.0)
+        r2m = rule(to_me=True)
+        self.assertEqual(r2m.match(msg), 1.0)

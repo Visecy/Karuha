@@ -16,9 +16,9 @@ from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
 from karuha.config import init_config
-from karuha.event import T_Event
 from karuha.store import T
 from karuha.text.message import Message
+from karuha.utils.event_catcher import T_Event
 from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
@@ -189,6 +189,7 @@ class BotMock(Bot):
 
 
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
+bot_mock.user_id = "usr"
 
 
 class EventCatcher(_EventCatcher[T_Event]):

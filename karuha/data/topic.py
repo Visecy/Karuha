@@ -7,8 +7,11 @@ from pydantic_core import to_json
 from tinode_grpc import pb
 
 from ..bot import Bot
-from .meta import Access, CommonDesc, DefaultAccess, GroupTopicDesc, Subscription
-from .cache import get_my_sub, p2p_cache, get_group_desc, get_p2p_desc, get_sub, get_user_desc
+from .cache import (get_group_desc, get_my_sub, get_p2p_desc, get_sub,
+                    get_user_desc, try_get_group_desc, try_get_p2p_desc, try_get_sub,
+                    try_get_user_desc)
+from .meta import (Access, CommonDesc, DefaultAccess, GroupTopicDesc,
+                   Subscription)
 
 
 class BaseInfo(BaseModel, frozen=True):
@@ -142,6 +145,34 @@ async def set_info(
     await bot.leave("me", extra=extra)
 
 
+def try_get_p2p_topic(bot: Bot, /, topic_id: str) -> Optional[BaseTopic]:
+    desc = try_get_user_desc(bot, topic_id)
+    info = try_get_p2p_desc(bot, topic_id)
+    sub = try_get_sub(bot, topic_id)
+    if desc is not None:
+        if isinstance(desc, CommonDesc) and info is not None and sub is not None:
+            return Topic(
+                topic=topic_id,
+                public=desc.public,
+                trusted=desc.trusted,
+                private=sub.private,
+                created=info.created,
+                updated=info.updated,
+                touched=info.touched,
+                defacs=desc.defacs,
+                acs=sub.acs,
+                seq=info.seq,
+                read=sub.read,
+                recv=sub.recv,
+                clear=sub.clear,
+            )
+        return BaseTopic(
+            topic=topic_id,
+            public=desc.public,
+            trusted=desc.trusted,
+        )
+
+
 @overload
 async def get_p2p_topic(bot: Bot, /, topic_id: str, *, ensure_topic: Literal[True]) -> Topic: ...
 @overload
@@ -149,34 +180,62 @@ async def get_p2p_topic(bot: Bot, /, topic_id: str, *, ensure_topic: bool = Fals
 
 
 async def get_p2p_topic(bot: Bot, /, topic_id: str, *, ensure_topic: bool = False) -> BaseTopic:
-    user_desc = await get_user_desc(bot, user_id=topic_id, ensure_meta=False)
+    desc = await get_user_desc(bot, user_id=topic_id, ensure_meta=False)
     sub = await get_sub(bot, topic_id=topic_id, ensure_meta=False)
-    if (
-        not isinstance(user_desc, CommonDesc)
-        or (not ensure_topic and frozenset((topic_id, bot.uid)) not in p2p_cache)
-    ):
+    info = try_get_p2p_desc(bot, topic_id)
+    if isinstance(desc, CommonDesc) and ensure_topic and info is None:
+        info = await get_p2p_desc(bot, topic_id)
+    elif not isinstance(desc, CommonDesc) or info is None:
         return BaseTopic(
             topic=topic_id,
-            public=user_desc.public,
-            trusted=user_desc.trusted,
+            public=desc.public,
+            trusted=desc.trusted,
             private=sub.private,
         )
-    p2p_desc = await get_p2p_desc(bot, user_id=topic_id)
     return Topic(
         topic=topic_id,
-        public=user_desc.public,
-        trusted=user_desc.trusted,
+        public=desc.public,
+        trusted=desc.trusted,
         private=sub.private,
-        created=p2p_desc.created,
-        updated=p2p_desc.updated,
-        touched=p2p_desc.touched,
-        seq=p2p_desc.seq,
-        defacs=user_desc.defacs,
+        created=info.created,
+        updated=info.updated,
+        touched=info.touched,
+        seq=info.seq,
+        defacs=desc.defacs,
         acs=sub.acs,
         read=sub.read,
         recv=sub.recv,
         clear=sub.clear
     )
+
+
+def try_get_group_topic(bot: Bot, /, topic_id: str) -> Optional[BaseTopic]:
+    desc = try_get_group_desc(bot, topic_id)
+    sub = try_get_sub(bot, topic_id)
+    if isinstance(desc, GroupTopicDesc) and sub is not None:
+        return Topic(
+            topic=topic_id,
+            public=desc.public,
+            trusted=desc.trusted,
+            private=sub.private,
+            is_chan=desc.is_chan,
+            defacs=desc.defacs,
+            acs=sub.acs,
+            seq=desc.seq,
+            created=desc.created,
+            updated=desc.updated,
+            touched=desc.touched,
+            read=sub.read,
+            recv=sub.recv,
+            clear=sub.clear
+        )
+    elif desc is not None:
+        return BaseTopic(
+            topic=topic_id,
+            public=desc.public,
+            trusted=desc.trusted,
+            private=sub and sub.private,
+        )
 
 
 @overload

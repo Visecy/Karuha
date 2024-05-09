@@ -2,7 +2,7 @@ import asyncio
 from pydantic_core import to_json
 from tinode_grpc import pb
 
-from karuha.data.cache import UserCache, clear_meta_cache, get_user_cred, get_user_tags, update_user_cache, user_cache
+from karuha.data.cache import UserCache, clear_cache, get_user_cred, get_user_tags, update_user_cache, user_cache
 from karuha.data.meta import AccessPermission, BaseDesc, Cred, UserDesc
 from karuha.data.topic import BaseTopic, Topic, TopicSub, get_topic, get_topic_list
 from karuha.data.user import BaseUser, User, get_user
@@ -107,7 +107,7 @@ class TestData(AsyncBotTestCase):
         self.assertFalse(user.verified)
 
     async def test_me_sub_meta(self) -> None:
-        clear_meta_cache()
+        clear_cache()
         task = asyncio.create_task(get_topic_list(self.bot, ensure_topic_sub=True))
         get_msg = await self.bot.consum_message()
         assert get_msg.get
@@ -224,7 +224,7 @@ class TestData(AsyncBotTestCase):
         self.assertEqual(cred, [Cred(method="email", value="test@example.com")])
     
     async def test_p2p_meta(self) -> None:
-        clear_meta_cache()
+        clear_cache()
         task = asyncio.create_task(get_topic(self.bot, "usr_test_1", ensure_topic=True))
         sub_msg = await self.bot.consum_message()
         assert sub_msg.HasField("sub") and sub_msg.sub.topic == "usr_test_1"
@@ -264,7 +264,7 @@ class TestData(AsyncBotTestCase):
         )
     
     async def test_topic_meta(self) -> None:
-        clear_meta_cache()
+        clear_cache()
         task = asyncio.create_task(get_topic(self.bot, "grp_test_1", ensure_topic=True))
         sub_msg = await self.bot.consum_message()
         assert sub_msg.HasField("sub") and sub_msg.sub.topic == "grp_test_1"

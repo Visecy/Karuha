@@ -1,15 +1,16 @@
-import asyncio
 from functools import partial
 from typing import Dict, Union
 
 from typing_extensions import Self
 
 from ..bot import Bot, decode_mapping
-from ..text import BaseText, Drafty, Message
+from ..text import BaseText, Drafty
+from ..text.message import Message
 from ..utils.dispatcher import AbstractDispatcher
+from ..utils.locks import Lock
 from ..utils.proxy_propery import ProxyProperty
 from . import on
-from .bot import BotEvent, DataEvent, BotInitEvent, ensure_text_len
+from .bot import BotEvent, DataEvent, ensure_text_len
 
 
 MessageProperty = partial(ProxyProperty, "message", mutable=True)
@@ -64,24 +65,12 @@ class MessageDispatcher(AbstractDispatcher[Message]):
     dispatchers = set()
 
 
-_message_lock = None
-
-
-def get_message_lock() -> asyncio.Lock:
-    global _message_lock
-    if _message_lock is None:
-        _message_lock = asyncio.Lock()
-    return _message_lock
+def get_message_lock() -> Lock:
+    return MessageEvent.get_lock()
 
 
 def reset_message_lock() -> None:
-    global _message_lock
-    _message_lock = None
+    del MessageEvent.__event_lock__
 
 
 on_message = on(MessageEvent)
-
-
-@on(BotInitEvent)
-def _(event: BotInitEvent) -> None:
-    reset_message_lock()

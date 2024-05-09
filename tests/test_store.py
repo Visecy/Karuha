@@ -101,6 +101,28 @@ class TestStore(IsolatedAsyncioTestCase):
         self.assertFalse(store.discard(data1))
         self.assertFalse(store)
 
+    def test_lru_store(self) -> None:
+        store = get_store("lru", maxlen=3, data_type=DataPk1)
+        store.add(DataPk1(pk1="test1", content="test1"))
+        store.add(DataPk1(pk1="test2", content="test2"))
+        store.add(DataPk1(pk1="test3", content="test3"))
+        self.assertEqual([d.content for d in store.get_all()], ["test1", "test2", "test3"])
+        store.add(DataPk1(pk1="test4", content="test4"))
+        self.assertEqual([d.content for d in store.get_all()], ["test2", "test3", "test4"])
+        t2 = store["test2"]
+        self.assertEqual([d.content for d in store.get_all()], ["test3", "test4", "test2"])
+        with self.assertRaises(KeyError):
+            store["test1"]
+        store.remove(store["test3"])
+        self.assertEqual([d.content for d in store.get_all()], ["test4", "test2"])
+        store.add(DataPk1(pk1="test5", content="test5"))
+        self.assertEqual([d.content for d in store.get_all()], ["test4", "test2", "test5"])
+        t2.content = "test2_new"
+        self.assertEqual([d.content for d in store.get_all()], ["test4", "test5", "test2_new"])
+        self.assertTrue(store.discard(t2))
+        self.assertEqual([d.content for d in store.get_all()], ["test4", "test5"])
+        self.assertFalse(store.discard(t2))
+
     async def test_json_store(self) -> None:
         await greenback.ensure_portal()
         store = get_store("json", data_type=DataPk1)

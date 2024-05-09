@@ -146,7 +146,8 @@ Of course, Karuha provides more APIs than just these. If you are interested in l
 ### Development Goals
 Features that may be added in the future include:
 
-- [ ] APIs related to user information getting and setting
+- [x] APIs related to user information getting and setting
+- [ ] Match rule for command
 - [ ] Automatic argument parsing in argparse format for commands
 
 ### Module Development

@@ -4,8 +4,8 @@ import warnings
 from abc import abstractmethod
 from collections import deque
 from inspect import isabstract
-from typing import (Any, ClassVar, Dict, Generic, Iterable, Iterator, List,
-                    Literal, Optional, Tuple, Type, TypeVar, Union, cast,
+from typing import (Any, ClassVar, Deque, Dict, Generic, Iterable, Iterator,
+                    List, Literal, Optional, Tuple, Type, TypeVar, Union, cast,
                     overload)
 from weakref import WeakKeyDictionary, WeakSet
 
@@ -173,14 +173,14 @@ class AbstractDataStore(Generic[T_Data]):
         raise NotImplementedError
 
     @abstractmethod
-    def keys(self) -> Iterator[Any]:
+    def keys(self) -> Iterable[Any]:
         raise NotImplementedError
 
-    def values(self) -> Iterator[T_Data]:
+    def values(self) -> Iterable[T_Data]:
         for key in self.keys():
             yield self[key]
 
-    def items(self) -> Iterator[Tuple[Any, T_Data]]:
+    def items(self) -> Iterable[Tuple[Any, T_Data]]:
         for key in self.keys():
             yield key, self[key]
 
@@ -392,6 +392,101 @@ class MemoryStore(AbstractCachedDataStore[T_Data], store_type="memory"):
 
     def update_data(self) -> None:
         pass
+
+
+class LruStore(AbstractDataStore[T_Data], store_type="lru"):
+    __slots__ = ["_cache", "_index"]
+
+    def __init__(
+        self, name: StrictStr, maxlen: int = 128, *, data_type: Optional[Type[T_Data]] = None
+    ) -> None:
+        super().__init__(name, data_type=data_type)
+        self._cache: Deque[T_Data] = deque(maxlen=maxlen)
+        self._index: Dict[Any, T_Data] = {}
+    
+    def get(
+        self, key: Any, /, default: Optional[T_Data] = None
+    ) -> Optional[T_Data]:
+        item = self._index.get(key, default)
+        if item is not None:
+            self.move_to_end(item)
+        return item
+
+    def add(self, data: T_Data, /, *, copy: bool = False) -> None:
+        if copy:
+            data = data.model_copy()
+        if len(self._cache) == self._cache.maxlen:
+            old = self._cache[0]
+            if old.__primary_key__ is not None:
+                del self._index[old.get_primary_key()]
+        self._cache.append(data)
+        data.set_data_store(self)
+        if data.__primary_key__ is not None:
+            self._index[data.get_primary_key()] = data
+    
+    def update(self, data: T_Data) -> None:
+        self.move_to_end(data)
+    
+    def get_all(self) -> List[T_Data]:
+        return list(self._cache)
+    
+    def discard(self, data: T_Data, /) -> bool:
+        try:
+            self._cache.remove(data)
+        except ValueError:
+            return False
+        if data.__primary_key__ is not None:
+            self._index.pop(data.get_primary_key())
+        return True
+    
+    def remove(self, data: T_Data) -> None:
+        self._cache.remove(data)
+        if data.__primary_key__ is not None:
+            del self._index[data.get_primary_key()]
+    
+    def clear(self) -> None:
+        self._cache.clear()
+        self._index.clear()
+    
+    def move_to_end(self, data: T_Data, /) -> None:
+        if data not in self._cache:
+            raise ValueError("data not in store")
+        self._cache.remove(data)
+        self._cache.append(data)
+    
+    def keys(self) -> Iterable[Any]:
+        return self._index.keys()
+    
+    def values(self) -> Iterable[T_Data]:
+        return self._index.values()
+    
+    def items(self) -> Iterable[Tuple[Any, T_Data]]:
+        return self._index.items()
+
+    @property
+    def maxlen(self) -> StrictInt:
+        maxlen = self._cache.maxlen
+        assert maxlen is not None
+        return maxlen
+    
+    def __getitem__(self, __key: Any) -> T_Data:
+        item = self._index[__key]
+        self.move_to_end(item)
+        return item
+    
+    def __contains__(self, __key: Any) -> bool:
+        if isinstance(__key, DataModel):
+            if __key.__primary_key__ is not None:
+                return __key.get_primary_key() in self._index
+            else:
+                return __key in self._cache
+        return __key in self._index
+
+    def __iter__(self) -> Iterator[T_Data]:
+        return iter(self._cache)
+    
+    def __len__(self) -> StrictInt:
+        return len(self._cache)
 
 
 class AbstractAsyncCachedStore(AbstractCachedDataStore[T_Data]):
@@ -607,6 +702,18 @@ def get_store(
     data_type: Optional[Type[T_Data]] = None,
     **kwds: Any,
 ) -> JsonFileStore[T_Data]: ...
+
+
+@overload
+def get_store(
+    store_type: Literal["lru"],
+    /,
+    name: str = ...,
+    maxlen: int = ...,
+    *args: Any,
+    data_type: Optional[Type[T_Data]] = None,
+    **kwds: Any,
+) -> LruStore[T_Data]: ...
 
 
 @overload

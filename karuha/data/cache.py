@@ -4,11 +4,16 @@ from typing import (FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union,
 from pydantic import BaseModel
 from tinode_grpc import pb
 
+from ..event.sys import SystemStartEvent
+
+from ..event.message import MessageEvent
+
 from ..bot import Bot
 from ..event import on
 from ..event.bot import MetaEvent
-from ..store import (DataModel, MemoryStore, PrimaryKey, TopicBoundDataModel,
+from ..store import (DataModel, LruStore, MemoryStore, MessageBoundDataModel, PrimaryKey, TopicBoundDataModel,
                      UserBoundDataModel)
+from ..text import Message
 from .meta import (BaseDesc, BaseSubscription, CommonDesc, Cred,
                    GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
                    UserCred, UserDesc, UserTags)
@@ -52,10 +57,15 @@ class SubscriptionCache(TopicBoundDataModel, UserBoundDataModel):
     sub: BaseSubscription
 
 
+class MessageCache(MessageBoundDataModel):
+    message: Message
+
+
 user_cache = MemoryStore[UserCache]("user_meta_cache")
 group_cache = MemoryStore[GroupTopicCache]("group_meta_cache")
 p2p_cache = MemoryStore[P2PTopicCache]("p2p_meta_cache")
 subscription_cache = MemoryStore[SubscriptionCache]("sub_meta_cache")
+message_cache = LruStore[MessageCache]("message_cache")
 
 
 def update_user_cache(
@@ -103,6 +113,22 @@ def update_sub_cache(topic: str, user_id: str, sub: BaseSubscription) -> None:
     cache.sub = _update_model(cache.sub, sub)
 
 
+def update_message_cache(message: Message) -> None:
+    if (message.topic, message.seq_id) not in message_cache:
+        message_cache.add(MessageCache(topic=message.topic, seq_id=message.seq_id, message=message))
+        return
+    cache = message_cache[message.topic, message.seq_id]
+    cache.message = message
+
+
+def try_get_user_desc(bot: Bot, /, user_id: str) -> Optional[BaseDesc]:
+    if user_id == "me":
+        cache = user_cache.get(bot.uid)
+    else:
+        cache = user_cache.get(user_id)
+    return cache and cache.desc
+
+
 async def get_user_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False) -> BaseDesc:
     assert user_id.startswith("usr") or user_id == "me", "user_id must be a user"
     if user_id == "me":
@@ -116,6 +142,14 @@ async def get_user_desc(bot: Bot, /, user_id: str, *, ensure_meta: bool = False)
     _, user = await bot.get(user_id, "desc")
     assert user is not None
     return UserDesc.from_meta(user.desc)
+
+
+def try_get_group_desc(bot: Bot, /, topic_id: str) -> Optional[BaseDesc]:
+    assert topic_id.startswith("grp"), "topic_id must be a group topic"
+    topic = group_cache.get(topic_id)
+    desc = topic and topic.desc
+    assert desc is None or isinstance(desc, BaseDesc)
+    return desc
 
 
 async def get_group_desc(
@@ -134,6 +168,18 @@ async def get_group_desc(
     _, topic = await bot.get(topic_id, "desc")
     assert topic is not None
     return GroupTopicDesc.from_meta(topic.desc)
+
+
+def try_get_p2p_desc(bot: Bot, /, topic_id: str) -> Optional[TopicInfo]:
+    if topic_id.startswith("p2p"):
+        topic = group_cache.get(topic_id)
+        desc = topic and topic.desc
+        assert isinstance(desc, TopicInfo)
+        return desc
+    assert topic_id.startswith("usr")
+    user_pair = frozenset((bot.uid, topic_id))
+    topic = p2p_cache.get(user_pair)
+    return topic and topic.desc
 
 
 async def _get_p2p_topic(bot: Bot, /, topic_id: str) -> TopicInfo:
@@ -163,6 +209,11 @@ async def get_p2p_desc(bot: Bot, /, user_id: str) -> TopicInfo:
     _, topic = await bot.get(user_id, "desc")
     assert topic is not None
     return P2PTopicDesc.from_meta(topic.desc)
+
+
+def try_get_sub(bot: Bot, /, topic_id: str) -> Optional[BaseSubscription]:
+    sub = subscription_cache.get((topic_id, bot.uid))
+    return sub and sub.sub
 
 
 async def get_sub(bot: Bot, /, topic_id: str, *, ensure_meta: bool = False) -> BaseSubscription:
@@ -232,13 +283,6 @@ async def get_user_cred(bot: Bot) -> List[Cred]:
     return [Cred(method=c.method, value=c.value, done=c.done) for c in cred_meta.cred]
 
 
-def clear_meta_cache() -> None:
-    user_cache.clear()
-    p2p_cache.clear()
-    group_cache.clear()
-    subscription_cache.clear()
-
-
 def cache_user(user_id: str, desc: pb.TopicDesc) -> None:
     user = UserDesc.from_meta(desc)
     update_user_cache(user_id, desc=user)
@@ -296,7 +340,7 @@ def handle_meta(event: MetaEvent) -> None:
     meta = event.server_message
     user = event.bot.uid
     topic = meta.topic
-    if meta.desc:
+    if meta.HasField("desc"):
         if topic == "me":
             cache_user(user, meta.desc)
         elif topic.startswith("usr"):
@@ -321,3 +365,17 @@ def handle_meta(event: MetaEvent) -> None:
                 for c in meta.cred
             ],  # type: ignore
         )
+
+
+@on(MessageEvent)
+def handle_message(event: MessageEvent) -> None:
+    update_message_cache(event.message)
+
+
+@on(SystemStartEvent)
+def clear_cache() -> None:
+    user_cache.clear()
+    p2p_cache.clear()
+    group_cache.clear()
+    subscription_cache.clear()
+    message_cache.clear()

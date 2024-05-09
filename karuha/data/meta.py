@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from typing_extensions import Self
 
-from pydantic import BaseModel, Json, model_validator
+from pydantic import BaseModel, Json, model_serializer, model_validator
 from tinode_grpc import pb
 
 from ..utils.decode import msg2dict
@@ -68,6 +68,27 @@ class AccessPermission(BaseModel):
                 result["owner"] = True
             else:
                 raise ValueError(f"unknown permission: {i}")
+        return result
+
+    @model_serializer(mode="plain")
+    def serialize(self) -> str:
+        result = ""
+        if self.join:
+            result += "J"
+        if self.read:
+            result += "R"
+        if self.write:
+            result += "W"
+        if self.presence:
+            result += "P"
+        if self.approve:
+            result += "A"
+        if self.sharing:
+            result += "S"
+        if self.delete:
+            result += "D"
+        if self.owner:
+            result += "O"
         return result
 
 
