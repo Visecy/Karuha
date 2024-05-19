@@ -7,7 +7,8 @@ from pydantic import ValidationError
 from pydantic_core import from_json
 
 from karuha.store import (DataModel, JsonFileStore, MemoryStore, PrimaryKey,
-                          get_store, is_pk_annotation)
+                          get_store, is_pk_annotation, T_Data)
+from karuha.utils.invoker import HandlerInvoker
 
 from .utils import TEST_TIMEOUT
 
@@ -41,7 +42,7 @@ class TestStore(IsolatedAsyncioTestCase):
         self.assertEqual(data.content, "test")
         with self.assertRaises(AssertionError):
             data.get_primary_key()
-        
+
         self.assertEqual(DataPk1.__primary_key__, ("pk1",))
         data = DataPk1(pk1="test", content="test")
         self.assertEqual(data.get_primary_key(), "test")
@@ -51,9 +52,10 @@ class TestStore(IsolatedAsyncioTestCase):
 
         self.assertEqual(DataPk2.__primary_key__, ("pk1", "pk2"))
         data = DataPk2(pk1="test1", pk2="test2", content="test")
-        self.assertEqual(set(data.get_primary_key()), set(("test1", "test2")))
+        self.assertEqual(set(data.get_primary_key()), {"test1", "test2"})
     
     def test_memory_store(self) -> None:
+        self.assertIs(MemoryStore.__store_type_var__, T_Data)
         store = MemoryStore[DataModel]('test')
         self.assertIsInstance(store, MemoryStore)
         self.assertIs(store.data_type, DataModel)
@@ -100,6 +102,16 @@ class TestStore(IsolatedAsyncioTestCase):
         self.assertFalse(store.discard(data))
         self.assertFalse(store.discard(data1))
         self.assertFalse(store)
+    
+    def test_store_dependency(self) -> None:
+        def store_getter(store: MemoryStore[DataNoPk]) -> MemoryStore:
+            return store
+        s1 = HandlerInvoker().call_handler(store_getter)
+        self.assertIsInstance(s1, MemoryStore)
+        self.assertEqual(s1.name, "dependency-store_getter-store")
+        self.assertEqual(s1.data_type, DataNoPk)
+        s2 = HandlerInvoker().call_handler(store_getter)
+        self.assertIs(s1, s2)
 
     def test_lru_store(self) -> None:
         store = get_store("lru", maxlen=3, data_type=DataPk1)
@@ -125,6 +137,7 @@ class TestStore(IsolatedAsyncioTestCase):
 
     async def test_json_store(self) -> None:
         await greenback.ensure_portal()
+        self.assertIs(JsonFileStore.__store_type_var__, T_Data)
         store = get_store("json", data_type=DataPk1)
         self.assertIsInstance(store, JsonFileStore)
         self.assertIs(store, get_store("json", data_type=DataPk1))

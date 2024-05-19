@@ -58,9 +58,13 @@ class TestCommandRun(AsyncBotTestCase):
         self.bot.receive_content(b'{"txt": "/hello world"}')
         with self.catchEvent(CommandCompleteEvent) as catcher:
             msg = await self.bot.consum_message()
-            if msg.note:
+            if msg.HasField("note"):
                 # note read message, ignore it
                 msg = await self.bot.consum_message()
+            if msg.HasField("sub"):
+                self.bot.confirm_message(msg.sub.id)
+                msg = await self.bot.consum_message()
+            self.assertTrue(msg.HasField("pub"))
             pub_msg = msg.pub
             self.bot.confirm_message(pub_msg.id, seq=0)
             await catcher.catch_event()

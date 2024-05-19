@@ -3,7 +3,7 @@ import os
 import warnings
 from abc import abstractmethod
 from collections import deque
-from inspect import isabstract
+from inspect import Parameter, isabstract
 from typing import (Any, ClassVar, Deque, Dict, Generic, Iterable, Iterator,
                     List, Literal, Optional, Tuple, Type, TypeVar, Union, cast,
                     overload)
@@ -18,6 +18,7 @@ from pydantic_core import CoreSchema, core_schema
 from typing_extensions import Annotated, Self, get_args, get_origin
 
 import karuha
+from .utils.invoker import AbstractHandlerInvoker, HandlerInvokerDependency
 
 try:
     import greenback
@@ -32,7 +33,7 @@ PrimaryKey = Annotated[T, Field(frozen=True), _PkFlagObj]
 
 
 def is_pk_annotation(annotation: Any) -> bool:
-    if not get_origin(annotation) is Annotated:
+    if get_origin(annotation) is not Annotated:
         return False
     return _PkFlagObj in get_args(annotation)
 
@@ -72,9 +73,7 @@ class DataModel(BaseModel, validate_assignment=True):
     def get_primary_key(self) -> Any:
         assert self.__class__.__primary_key__ is not None, "primary key not defined"
         pk = tuple(getattr(self, key) for key in self.__class__.__primary_key__)
-        if len(pk) == 1:
-            return pk[0]
-        return pk
+        return pk[0] if len(pk) == 1 else pk
 
     @model_validator(mode="after")
     def validate_model_update(self) -> Self:
@@ -131,7 +130,7 @@ DEFAULT_NAME = "data"
 T_Data = TypeVar("T_Data", bound=DataModel)
 
 
-class AbstractDataStore(Generic[T_Data]):
+class AbstractDataStore(HandlerInvokerDependency, Generic[T_Data]):
     __slots__ = ["name", "__orig_class__", "_data_type"]
     __orig_bases__: Tuple[Type, ...]
 
@@ -143,6 +142,24 @@ class AbstractDataStore(Generic[T_Data]):
     def __init__(self, name: str, *, data_type: Optional[Type[T_Data]] = None) -> None:
         self.name = name
         self._data_type = data_type
+
+    @classmethod
+    def resolve_dependency(cls, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
+        identifier = kwds.get("identifier", None)
+        name = (
+            f"dependency-{param.name}"
+            if identifier is None
+            else f"dependency-{identifier}-{param.name}"
+        )
+        data_type = getattr(cls, "__store_type__", None)
+        if data_type is None:
+            args = get_args(param.annotation)
+            parameters = getattr(cls, "__parameters__", ())
+            for tv, t in zip(parameters, args):
+                if tv == cls.__store_type_var__:
+                    data_type = t
+                    break
+        return cls.get_store(name, data_type=data_type)
 
     @abstractmethod
     def get(self, key: Any, /, default: Optional[T_Data] = None) -> Optional[T_Data]:
@@ -251,7 +268,7 @@ class AbstractDataStore(Generic[T_Data]):
         if hasattr(cls, "__store_type__"):
             return
         for i in cls.__orig_bases__:
-            orig = get_origin(i)
+            orig = get_origin(i) or i
             args = get_args(i)
             params = getattr(orig, "__parameters__", ())
             try:

@@ -22,10 +22,7 @@ class AbstractCommand(ABC):
     def __init__(self, name: str, /, alias: Optional[Iterable[str]] = None, *, rule: Optional[BaseRule] = None) -> None:
         self.__name__ = name
         self.rule = rule
-        if alias is None:
-            self.alias = ()
-        else:
-            self.alias = tuple(alias)
+        self.alias = () if alias is None else tuple(alias)
     
     @property
     def name(self) -> str:
@@ -53,7 +50,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         self.__signature__ = signature(func)
 
     def parse_message(self, message: Message) -> Tuple[tuple, dict]:  # pragma: no cover
-        args, kwargs = message.extract_handler_params(self.__signature__)
+        args, kwargs = message.extract_handler_params(self.__signature__, name=self.name)
         return tuple(args), kwargs
 
     async def call_command(self, message: "CommandMessage") -> Any:

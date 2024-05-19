@@ -37,10 +37,16 @@ class BotInitEvent(BotEvent):
 
     async def __default_handler__(self) -> None:
         bot = self.bot
+        try:
+            await self.bot.hello()
+        except Exception:
+            self.bot.logger.error("failed to connect to server, restarting")
+            self.bot.restart()
+            return
+        
         retry = bot.server.retry if bot.server is not None else 0
         for i in range(retry):
             try:
-                await self.bot.hello()
                 await self.bot.login()
             except asyncio.TimeoutError:
                 self.bot.logger.warning(f"login failed, retrying {i+1} times")
@@ -52,6 +58,10 @@ class BotInitEvent(BotEvent):
             except asyncio.TimeoutError:
                 self.bot.logger.error("login failed, cancel the bot")
                 self.bot.cancel()
+
+
+class BotReadyEvent(BotEvent):
+    __slots__ = []
 
 
 class BotFinishEvent(BotEvent):
@@ -488,6 +498,7 @@ class LoginEvent(ClientEvent, on_field="login"):
             "me",
             get="sub desc tags cred"
         )
+        BotReadyEvent.new(self.bot)
 
 
 class PublishEvent(ClientEvent, on_field="pub"):

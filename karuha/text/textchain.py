@@ -3,7 +3,7 @@ import os
 import operator as op
 from abc import abstractmethod
 from base64 import b64decode, b64encode
-from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal,
+from typing import (Any, ClassVar, Dict, Final, Generator, Iterable, List, Literal,
                     MutableMapping, Optional, Sequence, SupportsIndex, Type,
                     Union, overload)
 
@@ -23,6 +23,20 @@ class BaseText(BaseModel):
 
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List["BaseText"]:
         return [self]
+    
+    def join(self, chain: Iterable[Union[str, "BaseText"]], /) -> "BaseText":
+        it = iter(chain)
+        try:
+            first = next(it)
+        except StopIteration:
+            return TextChain()
+        base = TextChain(first)
+        for i in it:
+            base += self
+            if isinstance(i, str):
+                i = PlainText(i)
+            base += i
+        return base.take()
 
     def startswith(self, /, prefix: str) -> bool:
         return str(self).startswith(prefix)
@@ -126,10 +140,14 @@ class TextChain(BaseText, Sequence):
     contents: List[BaseText]
 
     def __init__(self, *args: Union[BaseText, str]) -> None:
-        contents = [
-            PlainText(t) if isinstance(t, str) else t
-            for t in args if t
-        ]
+        contents = []
+        for i in args:
+            if isinstance(i, TextChain):
+                contents.extend(i.contents)
+                continue
+            if isinstance(i, str):
+                i = PlainText(i)
+            contents.append(i)
         super().__init__(contents=contents)  # type: ignore
     
     def to_drafty(self) -> Drafty:
@@ -208,23 +226,24 @@ class TextChain(BaseText, Sequence):
                 self.contents.append(other)
         else:
             # merge with last item
-            last = self.contents[-1]
             if isinstance(other, TextChain):
-                contents_iter = iter(other.contents)
-                for i in contents_iter:
+                last = None
+                for i in other.contents:
+                    if last is None:
+                        last = self.contents.pop()
                     last += i
                     if isinstance(last, TextChain):
-                        self.contents.append(i)
-                        break
-                    else:
-                        self.contents[-1] = last
-                self.contents.extend(contents_iter)
+                        self.contents.extend(last.contents)
+                        last = None
+                if last is not None:
+                    self.contents.append(last)
             elif isinstance(other, BaseText):
+                last = self.contents.pop()
                 last += other
                 if isinstance(last, TextChain):
-                    self.contents.append(other)
+                    self.contents.extend(last.contents)
                 else:
-                    self.contents[-1] = last
+                    self.contents.append(last)
         return self
     
     def __radd__(self, other: Union[str, BaseText]) -> Self:

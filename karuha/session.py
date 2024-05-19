@@ -1,25 +1,31 @@
 import asyncio
 import os
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, NoReturn, Optional, Union
+from typing_extensions import Self
 
 from .bot import Bot
+from .exception import KaruhaRuntimeError
 
 
 class BaseSession(object):
-    __slots__ = ["bot", "topic"]
+    __slots__ = ["bot", "topic", "_closed"]
 
     def __init__(self, /, bot: Bot, topic: str) -> None:
         self.bot = bot
         self.topic = topic
+        self._closed = False
     
     async def send(
             self,
             text: Union[str, dict, "Drafty", "BaseText"],
             /, *,
             head: Optional[Dict[str, Any]] = None,
-            timeout: Optional[float] = None
+            timeout: Optional[float] = None,
+            topic: Optional[str] = None
     ) -> Optional[int]:
+        from .data import ensure_sub
+        self._ensure_status()
         if isinstance(text, str) and '\n' in text:
             text = PlainText(text)
         if isinstance(text, BaseText):
@@ -28,8 +34,10 @@ class BaseSession(object):
             text = text.model_dump(exclude_defaults=True)
             head = head or {}
             head["mime"] = "text/x-drafty"
+        topic = topic or self.topic
+        await ensure_sub(self.bot, topic)
         _, params = await asyncio.wait_for(
-            self.bot.publish(self.topic, text, head=head),
+            self.bot.publish(topic, text, head=head),
             timeout
         )
         return params.get("seq")
@@ -66,6 +74,10 @@ class BaseSession(object):
             **kwds
         )
     
+    async def finish(self, text: Union[str, dict, "Drafty", "BaseText"], /, **kwds: Any) -> NoReturn:
+        await self.send(text, **kwds)
+        self.cancel()
+    
     async def wait_reply(
             self,
             topic: Optional[str] = None,
@@ -73,6 +85,7 @@ class BaseSession(object):
             pattern: Optional[re.Pattern] = None,
             priority: float = 1.2
     ) -> "Message":
+        self._ensure_status()
         loop = asyncio.get_running_loop()
         dispatcher = SessionDispatcher(
             self,
@@ -125,9 +138,31 @@ class BaseSession(object):
     
     async def confirm(self, title: Union[str, "BaseText"], **kwds: Any) -> bool:
         return not await self.send_form(title, "Yes", "No", **kwds)
+    
+    def close(self) -> None:
+        self._closed = True
+    
+    def cancel(self) -> NoReturn:
+        self.close()
+        raise asyncio.CancelledError
 
+    def _ensure_status(self) -> None:
+        if self._closed:
+            raise KaruhaRuntimeError("session is closed")
 
-from .exception import KaruhaRuntimeError
+    @property
+    def closed(self) -> bool:
+        return self._closed
+    
+    async def __aenter__(self) -> Self:
+        from .data import ensure_sub
+        await ensure_sub(self.bot, self.topic)
+        return self
+    
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+    
+
 from .text.drafty import Drafty
 from .text.textchain import (BaseText, Bold, Button, File, Form, Image,
                              NewLine, PlainText, TextChain)

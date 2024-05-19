@@ -5,7 +5,6 @@ from weakref import WeakSet
 from tinode_grpc import pb
 
 from ..bot import Bot
-
 from ..event.message import MessageDispatcher
 from ..text.message import Message
 from .cache import message_cache
@@ -36,7 +35,7 @@ async def get_data(
         cache = message_cache.get((topic_id, seq_id))
         if cache is not None:
             return cache.message
-        return await _get_data_no_cache(bot, topic_id, seq_id, seq_id)
+        return (await _get_data_no_cache(bot, topic_id, seq_id, seq_id))[0]
     
     cache_segments = []
     start = None
@@ -59,6 +58,7 @@ async def get_data(
         start = e + 1
     if start <= hi:
         messages.extend(await _get_data_no_cache(bot, topic_id, start, hi))
+    assert len(messages) == hi - low + 1
     return messages
 
 

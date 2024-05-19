@@ -185,14 +185,18 @@ class TestCommand(TestCase):
             "test",
             "usr",
             1,
-            {"reply": "1"},
+            {"reply": "114"},
             to_json(TextChain(
                 Quote(content=TextChain(Mention(text="@user", val=bot_mock.uid), NewLine, "Quote content ...")),
                 "Hello world!"
             ).to_drafty())
         )
-        rq = rule(quote=1)
+        rq = rule(quote=True)
         self.assertEqual(rq.match(msg), 1.0)
+        rq1 = rule(quote=114)
+        self.assertEqual(rq1.match(msg), 1.0)
+        rq2 = rule(quote=514)
+        self.assertEqual(rq2.match(msg), 0.0)
         rm = rule(mention=bot_mock.uid)
         self.assertEqual(rm.match(msg), 1.0)
         r2m = rule(to_me=True)

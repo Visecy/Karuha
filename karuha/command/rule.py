@@ -4,6 +4,7 @@ from typing import Any, Optional, Union
 
 from typing_extensions import Self
 
+from ..bot import Bot
 from ..event.message import MessageDispatcher
 from ..text import Message
 
@@ -150,6 +151,20 @@ class UserIDRule(BaseRule):
         return 1.0 if message.user_id == self.user_id else 0.0
 
 
+class BotRule(BaseRule):
+    """
+    A rule that matches if the bot received the message matches the given bot.
+    """
+
+    __slots__ = ["bot"]
+
+    def __init__(self, bot: Bot) -> None:
+        self.bot = bot
+    
+    def match(self, message: Message, /) -> float:
+        return 1.0 if message.bot is self.bot else 0.0
+
+
 class KeywordRule(BaseRule):
     """
     A rule that matches if the message's text contains the given keyword.
@@ -287,11 +302,12 @@ def rule(
     topic: Optional[str] = None,
     seq_id: Optional[int] = None,
     user_id: Optional[str] = None,
+    bot: Optional[Bot] = None,
     keyword: Optional[str] = None,
     regex: Optional[Union[str, re.Pattern]] = None,
     mention: Optional[str] = None,
     to_me: bool = False,
-    quote: Optional[int] = None,
+    quote: Optional[Union[int, bool]] = None,
 ) -> BaseRule:
     """
     A decorator that creates a rule.
@@ -305,6 +321,8 @@ def rule(
 
     if user_id is not None:
         base &= UserIDRule(user_id)
+    if bot is not None:
+        base &= BotRule(bot)
     if keyword is not None:
         base &= KeywordRule(keyword)
     if regex is not None:
@@ -313,6 +331,9 @@ def rule(
         base &= MentionRule(mention)
     if to_me:
         base &= ToMeRule()
-    if quote is not None:
-        base &= QuoteRule(reply=quote)
+    if quote is not None and quote is not False:
+        if quote is True:
+            base &= QuoteRule()
+        else:
+            base &= QuoteRule(reply=quote)
     return base

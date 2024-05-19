@@ -1,3 +1,4 @@
+from asyncio import iscoroutine
 from functools import partial
 from typing import Dict, Union
 
@@ -39,7 +40,9 @@ class MessageEvent(BotEvent):
     
     async def __default_handler__(self) -> None:
         async with get_message_lock():
-            MessageDispatcher.dispatch(self.dump())
+            result = MessageDispatcher.dispatch(self.dump())
+        if iscoroutine(result):
+            await result
 
     def dump(self) -> Message:
         return self.message
@@ -55,7 +58,7 @@ class MessageEvent(BotEvent):
 @DataEvent.add_handler
 async def _(event: DataEvent) -> None:
     event.bot.logger.info(f"({event.topic})=> {ensure_text_len(event.text)}")
-    MessageEvent.from_data_event(event).trigger()
+    MessageEvent.from_data_event(event).trigger(return_exceptions=True)
     await event.bot.note_read(event.topic, event.seq_id)
 
 

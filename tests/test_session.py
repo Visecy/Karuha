@@ -1,5 +1,7 @@
 import asyncio
 
+from karuha.exception import KaruhaRuntimeError
+from karuha.session import BaseSession
 from karuha.command import MessageSession
 from karuha.event.message import get_message_lock
 from karuha.text import Drafty, PlainText, Button, File, Image, drafty2text
@@ -8,6 +10,21 @@ from .utils import AsyncBotTestCase, new_test_message, TEST_TIMEOUT
 
 
 class TestSession(AsyncBotTestCase):
+    async def test_init(self) -> None:
+        async def session_task() -> BaseSession:
+            async with BaseSession(self.bot, "test") as ss:
+                self.assertFalse(ss.closed)
+            return ss
+        task = asyncio.create_task(session_task())
+        msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("sub"))
+        self.assertEqual(msg.sub.topic, "test")
+        self.bot.confirm_message(msg.sub.id)
+        ss = await self.wait_for(task)
+        self.assertTrue(ss.closed)
+        with self.assertRaises(KaruhaRuntimeError):
+            await ss.send("test")
+
     async def test_send(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         self.assertEqual(ss.topic, "test")
@@ -17,7 +34,10 @@ class TestSession(AsyncBotTestCase):
 
         send_task = asyncio.create_task(ss.send(PlainText("test")))
         msg = await self.bot.consum_message()
-        self.assertTrue(msg.pub)
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
         self.bot.confirm_message(pubmsg.id, seq=0)
         await asyncio.wait_for(send_task, timeout=TEST_TIMEOUT)
@@ -37,7 +57,10 @@ class TestSession(AsyncBotTestCase):
         )
         msg = await self.bot.consum_message()
         self.assertTrue(get_message_lock().locked())
-        self.assertTrue(msg.pub)
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
         self.bot.confirm_message(pubmsg.id, seq=114)
         self.bot.receive_content(
@@ -58,7 +81,10 @@ class TestSession(AsyncBotTestCase):
         )
         msg = await self.bot.consum_message()
         self.assertTrue(get_message_lock().locked())
-        self.assertTrue(msg.pub)
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
         self.bot.confirm_message(pubmsg.id, seq=114)
         self.bot.receive_content(
@@ -80,7 +106,10 @@ class TestSession(AsyncBotTestCase):
         )
         msg = await self.bot.consum_message()
         self.assertTrue(get_message_lock().locked())
-        self.assertTrue(msg.pub)
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
         self.bot.confirm_message(pubmsg.id, seq=114)
         self.bot.receive_content(
@@ -94,7 +123,10 @@ class TestSession(AsyncBotTestCase):
         ss = MessageSession(self.bot, new_test_message())
         file_task = asyncio.create_task(ss.send_file("karuha/version.py"))
         msg = await self.bot.consum_message()
-        self.assertTrue(msg.pub)
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
         df = Drafty.model_validate_json(pubmsg.content)
         self.assertEqual(df.txt, '')
@@ -109,7 +141,10 @@ class TestSession(AsyncBotTestCase):
         ss = MessageSession(self.bot, new_test_message())
         image_task = asyncio.create_task(ss.send_image("docs/img/tw_icon-karuha2.png"))
         msg = await self.bot.consum_message()
-        self.assertTrue(msg.pub)
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
         df = Drafty.model_validate_json(pubmsg.content)
         self.assertEqual(df.txt, '')
