@@ -38,7 +38,6 @@ class TestCommand(TestCase):
         self.assertIsNone(simple_parser.parse(message5))
 
     def test_invoker(self) -> None:
-
         def cmd_meta(
             bot: Bot,
             message: Message,
@@ -47,7 +46,6 @@ class TestCommand(TestCase):
             content: bytes,
             argc: int,
             argv: List[str],
-            test: Head,
             undefined: None = None
         ) -> int:
             return 114
@@ -60,10 +58,15 @@ class TestCommand(TestCase):
             kwargs,
             {
                 "user_id": "user", "content": b"\"test\"",
-                "argc": 0, "argv": [], "test": None, "undefined": None
+                "argc": 0, "argv": [], "undefined": None
             }
         )
-        self.assertEqual(msg.call_handler(cmd_meta), 114)
+
+        def cmd_head(undefined: Head[None], test: Head[Optional[int]] = None) -> None:
+            self.assertEqual(test, 1)
+            self.assertIsNone(undefined)
+        msg = Message.new(bot_mock, "test", "usr_test", 0, {"test": "1"}, b"\"test\"")
+        msg.call_handler(cmd_head)
 
         with self.assertRaises(KaruhaHandlerInvokerError):
             msg.call_handler(lambda *message: ...)

@@ -32,7 +32,7 @@ class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
         data["argv"] = tuple(argv)
         return cls(**data)
     
-    def get_dependency(self, param: Parameter, **kwds: Any) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         if param.name == "argv":
             try:
                 return self.validate_dependency(param, self.argv, **kwds)

@@ -1,9 +1,11 @@
 import asyncio
 import os
 import re
-from typing import Any, Dict, NoReturn, Optional, Union
+from typing import Any, Dict, List, NoReturn, Optional, Union, overload
+from tinode_grpc import pb
 from typing_extensions import Self
 
+import karuha
 from .bot import Bot
 from .exception import KaruhaRuntimeError
 
@@ -15,7 +17,7 @@ class BaseSession(object):
         self.bot = bot
         self.topic = topic
         self._closed = False
-    
+
     async def send(
             self,
             text: Union[str, dict, "Drafty", "BaseText"],
@@ -24,8 +26,8 @@ class BaseSession(object):
             timeout: Optional[float] = None,
             topic: Optional[str] = None
     ) -> Optional[int]:
-        from .data import ensure_sub
-        self._ensure_status()
+        topic = topic or self.topic
+        await self.subscribe(topic)
         if isinstance(text, str) and '\n' in text:
             text = PlainText(text)
         if isinstance(text, BaseText):
@@ -34,14 +36,12 @@ class BaseSession(object):
             text = text.model_dump(exclude_defaults=True)
             head = head or {}
             head["mime"] = "text/x-drafty"
-        topic = topic or self.topic
-        await ensure_sub(self.bot, topic)
         _, params = await asyncio.wait_for(
             self.bot.publish(topic, text, head=head),
             timeout
         )
         return params.get("seq")
-    
+
     send_text = send
 
     async def send_file(
@@ -58,7 +58,7 @@ class BaseSession(object):
             ),
             **kwds
         )
-    
+
     async def send_image(
             self,
             path: Union[str, os.PathLike],
@@ -73,11 +73,7 @@ class BaseSession(object):
             ),
             **kwds
         )
-    
-    async def finish(self, text: Union[str, dict, "Drafty", "BaseText"], /, **kwds: Any) -> NoReturn:
-        await self.send(text, **kwds)
-        self.cancel()
-    
+
     async def wait_reply(
             self,
             topic: Optional[str] = None,
@@ -95,11 +91,18 @@ class BaseSession(object):
             pattern=pattern,
             priority=priority
         )
-        message = await dispatcher.wait()
-        return message
-    
-    async def send_form(self, title: Union[str, "BaseText"], *button: Union[str, "Button"], **kwds: Any) -> int:
-        chain = TextChain(Bold(content=PlainText(title)) if isinstance(title, str) else title)
+        return await dispatcher.wait()
+
+    async def send_form(
+        self,
+        title: Union[str, "BaseText"],
+        *button: Union[str, "Button"],
+        topic: Optional[str] = None,
+        **kwds: Any,
+    ) -> int:
+        chain = TextChain(
+            Bold(content=PlainText(title)) if isinstance(title, str) else title
+        )
         pred_resp = []
         for i in button:
             if isinstance(i, str):
@@ -114,17 +117,18 @@ class BaseSession(object):
 
         async with get_message_lock():
             # Obtain the message lock to ensure that the returned message is intercepted by the dispatcher
-            seq_id = await self.send(Form(content=chain), **kwds)
+            seq_id = await self.send(Form(content=chain), topic=topic, **kwds)
             if not button:
                 return 0
             elif seq_id is None:
                 raise KaruhaRuntimeError("failed to fetch message id")
-            
+
             loop = asyncio.get_running_loop()
             dispatcher = ButtonReplyDispatcher(
                 self,
                 loop.create_future(),
-                seq_id=seq_id
+                seq_id=seq_id,
+                topic=topic
             )
             dispatcher.activate()
         try:
@@ -135,13 +139,78 @@ class BaseSession(object):
             dispatcher.deactivate()
             raise
         return pred_resp.index(resp)
-    
+
     async def confirm(self, title: Union[str, "BaseText"], **kwds: Any) -> bool:
         return not await self.send_form(title, "Yes", "No", **kwds)
-    
+
+    async def finish(self, text: Union[str, dict, "Drafty", "BaseText"], /, **kwds: Any) -> NoReturn:
+        await self.send(text, **kwds)
+        self.cancel()
+
+    async def subscribe(
+        self,
+        topic: Optional[str] = None,
+        *,
+        force: bool = False,
+        get: Union[pb.GetQuery, str, None] = "desc sub",
+        **kwds: Any
+    ) -> None:
+        self._ensure_status()
+        topic = topic or self.topic
+        if karuha.data.has_sub(self.bot, topic) and not force:
+            return
+        await self.bot.subscribe(topic, get=get, **kwds)
+
+    async def leave(self, topic: Optional[str] = None, **kwds: Any) -> None:
+        self._ensure_status()
+        topic = topic or self.topic
+        if karuha.data.has_sub(self.bot, topic):
+            await self.bot.leave(topic, **kwds)
+
+    @overload
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        seq_id: int,
+    ) -> "Message": ...
+
+    @overload
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        low: Optional[int] = None,
+        hi: Optional[int] = None,
+    ) -> List["Message"]: ...
+
+    @overload
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        seq_id: Optional[int] = None,
+        low: Optional[int] = None,
+        hi: Optional[int] = None,
+    ) -> Union["Message", List["Message"]]: ...
+
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        seq_id: Optional[int] = None,
+        low: Optional[int] = None,
+        hi: Optional[int] = None,
+    ) -> Union["Message", List["Message"]]:
+        topic = topic or self.topic
+        await self.subscribe(topic)
+        return await karuha.data.get_data(
+            self.bot, topic, seq_id=seq_id, low=low, hi=hi
+        )
+
     def close(self) -> None:
         self._closed = True
-    
+
     def cancel(self) -> NoReturn:
         self.close()
         raise asyncio.CancelledError
@@ -153,15 +222,14 @@ class BaseSession(object):
     @property
     def closed(self) -> bool:
         return self._closed
-    
+
     async def __aenter__(self) -> Self:
-        from .data import ensure_sub
-        await ensure_sub(self.bot, self.topic)
+        await self.subscribe()
         return self
-    
+
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
-    
+
 
 from .text.drafty import Drafty
 from .text.textchain import (BaseText, Bold, Button, File, Form, Image,
@@ -212,11 +280,12 @@ class ButtonReplyDispatcher(SessionDispatcher):
             /,
             future: asyncio.Future,
             *,
+            seq_id: int,
             priority: float = 2.5,
             user_id: Optional[str] = None,
-            seq_id: int,
+            topic: Optional[str] = None
     ) -> None:
-        super().__init__(session, future, priority=priority, user_id=user_id)
+        super().__init__(session, future, priority=priority, user_id=user_id, topic=topic)
         self.seq_id = seq_id
         self._cache = {}
         

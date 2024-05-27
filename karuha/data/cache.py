@@ -4,16 +4,14 @@ from typing import (FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union,
 from pydantic import BaseModel
 from tinode_grpc import pb
 
-from ..event.sys import SystemStartEvent
-
-from ..event.message import MessageEvent
-
 from ..bot import Bot
 from ..event import on
+from ..text import Message
 from ..event.bot import MetaEvent
+from ..event.sys import SystemStartEvent
+from ..event.message import MessageEvent
 from ..store import (DataModel, LruStore, MemoryStore, MessageBoundDataModel, PrimaryKey, TopicBoundDataModel,
                      UserBoundDataModel)
-from ..text import Message
 from .meta import (BaseDesc, BaseSubscription, CommonDesc, Cred,
                    GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
                    UserCred, UserDesc, UserTags)

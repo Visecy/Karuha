@@ -6,7 +6,7 @@ Provides a text representation and a converter between the two that are easier t
 
 from .drafty import Drafty, DraftyFormat, DraftyExtend
 from .textchain import *
-from .convert import drafty2tree, tree2text, drafty2text, eval_spans, to_span_tree
+from .convert import drafty2tree, drafty2tree_ex, tree2text, drafty2text, eval_spans, to_span_tree
 from .message import Message, MessageSession, Head
 
 
@@ -31,6 +31,7 @@ __all__ = [
     "Hidden",
     "Row",
     "Form",
+    "Quote",
     "Link",
     "Mention",
     "Hashtag",
@@ -42,6 +43,7 @@ __all__ = [
     "Video",
     # converter
     "drafty2tree",
+    "drafty2tree_ex",
     "tree2text",
     "drafty2text",
     # message

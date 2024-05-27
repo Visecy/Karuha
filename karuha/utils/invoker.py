@@ -26,10 +26,10 @@ class AbstractHandlerInvoker(ABC):
     __slots__ = []
 
     @abstractmethod
-    def get_dependency(self, param: Parameter, **kwds: Any) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         raise NotImplementedError
-    
-    def validate_dependency(self, param: Parameter, val: Any, **kwds: Any) -> Any:
+
+    def validate_dependency(self, param: Parameter, val: Any, /, **kwds: Any) -> Any:
         if param.annotation is param.empty:
             return val
         ann = param.annotation
@@ -42,9 +42,13 @@ class AbstractHandlerInvoker(ABC):
                 f"failed to validate dependency '{param.name}':\n{e}"
             ) from e
 
-    def resolve_missing_dependencies(self, missing: Dict[Parameter, KaruhaHandlerInvokerError], **kwds: Any) -> Dict[str, Any]:
+    def resolve_missing_dependencies(
+        self, missing: Dict[Parameter, KaruhaHandlerInvokerError], /, **kwds: Any
+    ) -> Dict[str, Any]:
         result = {}
         still_missing = {}
+
+        # resolve dependency class & instance
         for param in missing:
             param_type = get_origin(param.annotation)
             if param_type is Annotated:
@@ -52,7 +56,7 @@ class AbstractHandlerInvoker(ABC):
                     if isinstance(i, HandlerInvokerDependency) or isclass(i) and issubclass(i, HandlerInvokerDependency):
                         param_type = i
                         break
-                else:
+                else:  # pragma: no cover
                     still_missing[param] = missing[param]
                     continue
             try:
@@ -65,13 +69,20 @@ class AbstractHandlerInvoker(ABC):
                 result[param.name] = self.validate_dependency(param, ret, **kwds)
             except KaruhaHandlerInvokerError as e:
                 still_missing[param] = e
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 err = KaruhaHandlerInvokerError(
                     f"failed to resolve dependency '{param.name}':\n{e}"
                 )
                 err.__suppress_context__ = True
                 err.__cause__ = e
                 still_missing[param] = err
+
+        # fill defaults
+        for param in list(still_missing.keys()):
+            if param.default is not param.empty:
+                result[param.name] = param.default
+                still_missing.pop(param)
+
         if not still_missing:
             return result
         raise KaruhaHandlerInvokerError(
@@ -90,10 +101,7 @@ class AbstractHandlerInvoker(ABC):
             try:
                 val = self.get_dependency(param, **kwds)
             except KaruhaHandlerInvokerError as e:
-                if param.default is not param.empty:
-                    dependencies[param.name] = param.default
-                else:
-                    missing[param] = e
+                missing[param] = e
             else:
                 dependencies[param.name] = val
 
@@ -127,7 +135,7 @@ class HandlerInvokerDependency(ABC):
 class HandlerInvokerModel(AbstractHandlerInvoker, BaseModel):
     __slots__ = []
 
-    def get_dependency(self, param: Parameter, **kwds: Any) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         if param.name not in self.model_fields_set.union(self.model_computed_fields):
             raise KaruhaHandlerInvokerError(f"dependency '{param.name}' is not in the model")
         try:
@@ -154,7 +162,7 @@ class HandlerInvoker(AbstractHandlerInvoker):
 
     __dependencies__: ClassVar[Dict[str, Callable[[Self, Parameter], Any]]] = {}
 
-    def get_dependency(self, param: Parameter, **kwds: Any) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         try:
             val = self.__dependencies__[param.name](self, param)
         except KeyError:  # pragma: no cover

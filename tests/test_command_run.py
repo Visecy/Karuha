@@ -1,6 +1,7 @@
+from pydantic_core import from_json, to_json
 from tinode_grpc import pb
 
-from karuha.command import MessageSession, get_collection, on_command, set_collection
+from karuha.command import MessageSession, get_collection, on_rule, on_command, set_collection
 from karuha.event import on
 from karuha.event.command import (
     CommandCompleteEvent,
@@ -8,7 +9,7 @@ from karuha.event.command import (
     CommandPrepareEvent,
 )
 from karuha.exception import KaruhaCommandCanceledError
-from karuha.text import Drafty
+from karuha.text import Drafty, Mention
 
 from .utils import AsyncBotTestCase
 
@@ -27,6 +28,11 @@ async def should_cancel(session: MessageSession, text: str, raw_text: Drafty) ->
 @on_command
 def has_return() -> int:
     return 1
+
+
+@on_rule(mention="usr_1")
+async def on_mention(session: MessageSession, user_id: str) -> None:
+    await session.send(f"{user_id} mentioned you")
 
 
 @on(CommandPrepareEvent)
@@ -83,3 +89,18 @@ class TestCommandRun(AsyncBotTestCase):
         with self.catchEvent(CommandCompleteEvent) as catcher:
             e = await catcher.catch_event()
         self.assertEqual(e.result, 1)
+    
+    async def test_on_rule(self) -> None:
+        set_collection(self.command_collection)
+        self.bot.receive_content(to_json(Mention(text="@1", val="usr_1").to_drafty()), from_user_id="usr_2")
+        msg = await self.bot.consum_message()
+        if msg.HasField("note"):
+            # note read message, ignore it
+            msg = await self.bot.consum_message()
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
+        pub_msg = msg.pub
+        self.bot.confirm_message(pub_msg.id, seq=0)
+        self.assertEqual(from_json(pub_msg.content), "usr_2 mentioned you")

@@ -17,8 +17,6 @@ R = TypeVar("R")
 
 
 class AbstractCommand(ABC):
-    __slots__ = ["__name__", "alias", "rule"]
-
     def __init__(self, name: str, /, alias: Optional[Iterable[str]] = None, *, rule: Optional[BaseRule] = None) -> None:
         self.__name__ = name
         self.rule = rule
@@ -32,10 +30,13 @@ class AbstractCommand(ABC):
     async def call_command(self, message: "CommandMessage") -> Any:
         pass
 
+    def format_help(self) -> str:
+        if not self.alias:
+            return self.name
+        return f"{self.name} (alias: {','.join(self.alias)})"
+
 
 class FunctionCommand(AbstractCommand, Generic[P, R]):
-    __slots__ = ["__func__", "__signature__"]
-
     def __init__(
         self,
         name: str,
@@ -47,6 +48,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
     ) -> None:
         super().__init__(name, alias, rule=rule)
         self.__func__ = func
+        self.__doc__ = getattr(func, "__doc__", None)
         self.__signature__ = signature(func)
 
     def parse_message(self, message: Message) -> Tuple[tuple, dict]:  # pragma: no cover
@@ -67,17 +69,25 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             result = self.__func__(*args, **kwargs)  # type: ignore
             if asyncio.iscoroutine(result):
                 result = await result
-        except KaruhaCommandCanceledError:
+        except KaruhaCommandCanceledError as e:
             logger.info(f"command {self.name} canceled")
+            CommandCompleteEvent.new(message.collection, self, e, cancelled=True)
             return
         except Exception as e:  # pragma: no cover
-            CommandFailEvent.new(message.collection, self, sys.exc_info())  # type: ignore
             logger.error(f"run command {self.name} failed", exc_info=True)
+            CommandFailEvent.new(message.collection, self, sys.exc_info())  # type: ignore
             raise KaruhaCommandError(f"run command {self.name} failed", name=self.name, command=self) from e
         else:
             logger.info(f"command {self.name} complete")
             CommandCompleteEvent.new(message.collection, self, result)
         return result
+    
+    def format_help(self) -> str:
+        if self.__doc__ is None:
+            return super().format_help()
+        if not self.alias:
+            return f"{self.name} - {self.__doc__.strip()}"
+        return f"{self.name} (alias: {','.join(self.alias)}) - {self.__doc__.strip()}"
 
     def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:
         return self.__func__(*args, **kwds)

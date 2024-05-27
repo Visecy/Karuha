@@ -45,10 +45,7 @@ def try_get_user(bot: Bot, /, user_id: str = "me") -> Optional[BaseUser]:
     if user_id == bot.uid:
         user_id = "me"
     desc = try_get_user_desc(bot, user_id)
-    if user_id == "me":
-        sub = None
-    else:
-        sub = try_get_sub(bot, user_id)
+    sub = None if user_id == "me" else try_get_sub(bot, user_id)
     if isinstance(desc, UserDesc) and sub is not None:
         return User(
             user_id=bot.uid,

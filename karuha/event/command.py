@@ -38,11 +38,18 @@ class CommandPrepareEvent(CommandEvent):
 
 
 class CommandCompleteEvent(CommandEvent):
-    __slots__ = ["result"]
+    __slots__ = ["result", "cancelled"]
 
-    def __init__(self, collection: "CommandCollection", command: "AbstractCommand", result: Any) -> None:
+    def __init__(
+        self,
+        collection: "CommandCollection",
+        command: "AbstractCommand",
+        result: Any,
+        cancelled: bool = False,
+    ) -> None:
         super().__init__(collection, command)
         self.result = result
+        self.cancelled = cancelled
 
 
 class CommandFailEvent(CommandEvent):

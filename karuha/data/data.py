@@ -17,9 +17,21 @@ async def _get_data_no_cache(bot: Bot, topic_id: str, low: int, hi: int) -> List
 
 
 @overload
-async def get_data(bot: Bot, topic_id: str, *, seq_id: Optional[int] = None) -> Message: ...
+async def get_data(bot: Bot, topic_id: str, *, seq_id: int) -> Message: ...
 @overload
-async def get_data(bot: Bot, topic_id: str, *, low: Optional[int] = None, hi: Optional[int] = None) -> List[Message]: ...
+async def get_data(bot: Bot, topic_id: str, *, low: int, hi: int) -> List[Message]: ...
+
+
+@overload
+async def get_data(
+    bot: Bot,
+    topic_id: str,
+    *,
+    seq_id: Optional[int] = None,
+    low: Optional[int] = None,
+    hi: Optional[int] = None,
+) -> Union[List[Message], Message]:
+    ...
 
 
 async def get_data(

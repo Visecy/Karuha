@@ -1,6 +1,7 @@
 import re
 from collections import deque
 from inspect import Parameter
+import sys
 from typing import Any, Dict, Optional, Tuple, TypeVar, Union, cast
 
 from pydantic import computed_field
@@ -61,7 +62,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
         try:
             raw_text = Drafty.model_validate(raw_text)
         except Exception:
-            logger.warning(f"unknown text format {raw_text!r}")
+            logger.warning(f"unknown text format {raw_text!r}", exc_info=sys.exc_info())
             raw_text = text = str(raw_text)
         else:
             try:
@@ -71,7 +72,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
                 text = raw_text.txt
         return raw_text, text
     
-    def get_dependency(self, param: Parameter, **kwds: Any) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         if param.name == "text":
             try:
                 return self.validate_dependency(param, self.text, **kwds)

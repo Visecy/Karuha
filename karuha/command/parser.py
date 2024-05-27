@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Iterable, List, Optional, Tuple, Union
 
-from ..text import BaseText, Message
+from ..text import BaseText, Message, Mention, Quote
 
 
 class AbstractCommandParser(ABC):
@@ -26,17 +26,23 @@ class SimpleCommandParser(AbstractCommandParser):
     
     def parse(self, message: Message) -> Optional[Tuple[str, Union[List[str], List[BaseText]]]]:
         text = message.text.split()
-        if not text:
+        for i, t in enumerate(text):
+            if isinstance(t, (Mention, Quote)):
+                continue
+            name = str(t).strip()
+            if not name:
+                continue
+            break
+        else:
             return
         
-        name = str(text[0])
         for prefix in self.prefixs:
             if name.startswith(prefix):
                 name = name[len(prefix):]
                 break
         else:
             return
-        return name, text[1:]
+        return name, text[i+1:]
     
     def precheck(self, message: Message) -> bool:
         return any(message.plain_text.startswith(prefix) for prefix in self.prefixs)

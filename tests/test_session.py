@@ -24,6 +24,9 @@ class TestSession(AsyncBotTestCase):
         self.assertTrue(ss.closed)
         with self.assertRaises(KaruhaRuntimeError):
             await ss.send("test")
+        with self.assertRaises(KaruhaRuntimeError):
+            async with ss:
+                pass
 
     async def test_send(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
@@ -104,13 +107,8 @@ class TestSession(AsyncBotTestCase):
                 Button(text="Cancel", name="cancel", val="cancel"),
             )
         )
-        msg = await self.bot.consum_message()
+        pubmsg = await self.get_bot_pub()
         self.assertTrue(get_message_lock().locked())
-        if msg.HasField("sub"):
-            self.bot.confirm_message(msg.sub.id)
-            msg = await self.bot.consum_message()
-        self.assertTrue(msg.HasField("pub"))
-        pubmsg = msg.pub
         self.bot.confirm_message(pubmsg.id, seq=114)
         self.bot.receive_content(
             b'{"ent":[{"data":{"mime":"application/json","val":{"resp":{"cancel":"cancel"},'
@@ -122,12 +120,7 @@ class TestSession(AsyncBotTestCase):
     async def test_file(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         file_task = asyncio.create_task(ss.send_file("karuha/version.py"))
-        msg = await self.bot.consum_message()
-        if msg.HasField("sub"):
-            self.bot.confirm_message(msg.sub.id)
-            msg = await self.bot.consum_message()
-        self.assertTrue(msg.HasField("pub"))
-        pubmsg = msg.pub
+        pubmsg = await self.get_bot_pub()
         df = Drafty.model_validate_json(pubmsg.content)
         self.assertEqual(df.txt, '')
         ft = drafty2text(df)
@@ -135,17 +128,12 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(ft.name, 'version.py')
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
-        await asyncio.wait_for(file_task, timeout=TEST_TIMEOUT)
+        await self.wait_for(file_task)
     
     async def test_image(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         image_task = asyncio.create_task(ss.send_image("docs/img/tw_icon-karuha2.png"))
-        msg = await self.bot.consum_message()
-        if msg.HasField("sub"):
-            self.bot.confirm_message(msg.sub.id)
-            msg = await self.bot.consum_message()
-        self.assertTrue(msg.HasField("pub"))
-        pubmsg = msg.pub
+        pubmsg = await self.get_bot_pub()
         df = Drafty.model_validate_json(pubmsg.content)
         self.assertEqual(df.txt, '')
         ft = drafty2text(df)
@@ -153,4 +141,12 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(ft.name, 'tw_icon-karuha2.png')
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
-        await asyncio.wait_for(image_task, timeout=TEST_TIMEOUT)
+        await self.wait_for(image_task)
+    
+    async def test_get_data(self) -> None:
+        ss = BaseSession(self.bot, "test_get_data")
+        task = asyncio.create_task(ss.get_data(seq_id=114))
+        await self.reply_bot_sub()
+        self.bot.receive_content(b"\"test\"", topic="test_get_data", seq_id=114)
+        msg = await self.wait_for(task)
+        self.assertEqual(msg.content, b"\"test\"")
