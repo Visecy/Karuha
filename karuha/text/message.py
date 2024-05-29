@@ -77,7 +77,8 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
             try:
                 return self.validate_dependency(param, self.text, **kwds)
             except KaruhaHandlerInvokerError:
-                pass
+                if not isinstance(self.text, BaseText):
+                    raise
             return self.validate_dependency(param, self.plain_text, **kwds)
         elif param.name == "raw_text":
             try:
@@ -101,7 +102,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
     @computed_field(repr=False)
     @property
     def session(self) -> "MessageSession":
-        return MessageSession(self.bot, self)
+        return MessageSession(self.bot, self).bind_task()
 
 
 from ..session import BaseSession

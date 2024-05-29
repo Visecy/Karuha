@@ -2,7 +2,10 @@
 A simple Tinode chatbot framework
 """
 
+
 import asyncio
+import contextlib
+import signal
 from typing import Dict, List
 
 from .config import get_config
@@ -46,31 +49,38 @@ def _get_running_loop() -> asyncio.AbstractEventLoop:
     return _loop
 
 
+def _handle_sigterm() -> None:
+    for bot in _bot_cache.values():
+        bot.cancel()
+
+
 async def async_run() -> None:
     global _loop
     config = get_config()
     _loop = asyncio.get_running_loop()
-
+    with contextlib.suppress(NotImplementedError):
+        _loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
+        
     for i in config.bots:
         if i.name in _bot_cache:
             continue
         bot = Bot.from_config(i, config)
         _bot_cache[i.name] = bot
-        
+
     tasks: List[asyncio.Task] = []
     for bot in _bot_cache.values():
         logger.debug(f"run bot {bot.config}")
         tasks.append(_loop.create_task(bot.async_run(config.server)))
-    
+
     if config.server.enable_plugin:  # pragma: no cover
         server = init_server(config.server.listen)
         _loop.call_soon(server.start)
     else:
         server = None
-    
+
     if config.log_level == "DEBUG":
         _loop.set_debug(True)
-    
+
     try:
         await SystemStartEvent.new_and_wait(config, _bot_cache.values())
         if not tasks:  # pragma: no cover

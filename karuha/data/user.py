@@ -78,9 +78,7 @@ async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: bool = Fals
 async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: bool = False) -> BaseUser:
     if user_id == bot.uid:
         user_id = "me"
-    desc = await get_user_desc(bot, user_id, ensure_meta=ensure_user)
-    if ensure_user:
-        assert isinstance(desc, UserDesc)
+    desc = await get_user_desc(bot, user_id, ensure_meta=ensure_user and user_id == "me")
     if user_id == "me":
         if isinstance(desc, UserDesc):
             return User(

@@ -235,9 +235,7 @@ class ToMeRule(BaseSingletonRule):
 
     @staticmethod
     def match(message: Message, /) -> float:
-        if message.topic.startswith("usr"):
-            return 1.0
-        return MentionMeRule.match(message)
+        return 1.0 if message.topic.startswith("usr") else MentionMeRule.match(message)
 
 
 class QuoteRule(BaseRule):
@@ -250,7 +248,7 @@ class QuoteRule(BaseRule):
     def __init__(self, /, mention: Optional[str] = None, reply: Optional[int] = None) -> None:
         self.mention = mention
         self.reply = reply
-    
+
     def match(self, message: Message, /) -> float:
         if isinstance(message.text, str):
             return 0.0
@@ -264,10 +262,25 @@ class QuoteRule(BaseRule):
         quote = message.quote
         if quote is None:
             return 0.0
-        if self.mention is not None:
-            if quote.mention is None or quote.mention.val != self.mention:
-                return 0.0
+        if self.mention is not None and (
+            quote.mention is None or quote.mention.val != self.mention
+        ):
+            return 0.0
         return 1.0
+
+
+class HasHead(BaseRule):
+    """
+    A rule that matches if the message has the given head.
+    """
+
+    __slots__ = ["name"]
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+    
+    def match(self, message: Message, /) -> float:
+        return 1.0 if self.name in message.head else 0.0
 
 
 class NoopRule(BaseSingletonRule):
@@ -308,6 +321,7 @@ def rule(
     mention: Optional[str] = None,
     to_me: bool = False,
     quote: Optional[Union[int, bool]] = None,
+    has_head: Optional[str] = None,
 ) -> BaseRule:
     """
     A decorator that creates a rule.
@@ -336,4 +350,6 @@ def rule(
             base &= QuoteRule()
         else:
             base &= QuoteRule(reply=quote)
+    if has_head is not None:
+        base &= HasHead(has_head)
     return base

@@ -51,7 +51,7 @@ class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
         self.dispatchers.discard(self)
     
     @classmethod
-    def dispatch(cls, message: T, /, threshold: float = 0.0, filter: Optional[Callable[[Self], bool]] = None) -> Any:
+    def dispatch(cls, message: T, /, threshold: float = 0.0, filter: Optional[Callable[[Self], bool]] = None) -> Optional[Any]:
         dispatchers = cls.dispatchers
         if filter is not None:
             dispatchers = {d for d in dispatchers if filter(d)}

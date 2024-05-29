@@ -198,7 +198,7 @@ class Bot(object):
         elif ctrl.code < 200 or ctrl.code >= 400:
             err_text = f"fail to login: {ctrl.text}"
             self.logger.error(err_text)
-            self.cancel()
+            # self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
 
         self.logger.info(f"login successful (schema {schema})")

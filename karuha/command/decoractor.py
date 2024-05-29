@@ -3,7 +3,6 @@ from typing import Any, Callable, Generic, Iterable, Optional, TypeVar, Union, o
 from typing_extensions import ParamSpec
 
 from ..bot import Bot
-
 from ..text.message import Message
 from .rule import BaseRule, MessageRuleDispatcher, rule as build_rule
 from .collection import CommandCollection, get_collection

@@ -20,7 +20,7 @@ from argparse import ArgumentParser
 from aiofiles import open as aio_open
 
 import karuha
-from karuha import MessageSession, on_command
+from karuha import MessageSession, on_rule
 
 
 _quotes = None
@@ -43,12 +43,13 @@ async def get_quotes():
     return _quotes
 
 
-@on_command
+@on_rule()
 async def quote(session: MessageSession) -> None:
+    """
+    Reply with a random quote for each message.
+    """
     quotes = await get_quotes()
-    await session.send(
-        random.choice(quotes)
-    )
+    await session.send(random.choice(quotes))
 
 
 if __name__ == "__main__":

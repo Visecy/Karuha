@@ -86,7 +86,7 @@ class AbstractHandlerInvoker(ABC):
         if not still_missing:
             return result
         raise KaruhaHandlerInvokerError(
-            "Missing dependencies:\n" +
+            f"Missing dependencies: (extra data: {kwds})\n" +
             ''.join(
                 f"\t{param.name}: {error}\t"
                 for param, error in still_missing.items()

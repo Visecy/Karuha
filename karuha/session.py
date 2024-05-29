@@ -11,12 +11,17 @@ from .exception import KaruhaRuntimeError
 
 
 class BaseSession(object):
-    __slots__ = ["bot", "topic", "_closed"]
+    __slots__ = ["bot", "topic", "_task", "_closed"]
 
     def __init__(self, /, bot: Bot, topic: str) -> None:
         self.bot = bot
         self.topic = topic
         self._closed = False
+        self._task = None
+    
+    def bind_task(self, task: Optional[asyncio.Task] = None) -> Self:
+        self._task = task or asyncio.current_task()
+        return self
 
     async def send(
             self,
@@ -166,6 +171,12 @@ class BaseSession(object):
         topic = topic or self.topic
         if karuha.data.has_sub(self.bot, topic):
             await self.bot.leave(topic, **kwds)
+    
+    async def get_user(self, user_id: str, *, ensure_user: bool = False) -> "karuha.data.BaseUser":
+        return await karuha.data.get_user(self.bot, user_id, ensure_user=ensure_user)
+
+    async def get_topic(self, topic: Optional[str] = None, *, ensure_topic: bool = False) -> "karuha.data.BaseTopic":
+        return await karuha.data.get_topic(self.bot, topic or self.topic, ensure_topic=ensure_topic)
 
     @overload
     async def get_data(
@@ -209,6 +220,7 @@ class BaseSession(object):
         )
 
     def close(self) -> None:
+
         self._closed = True
 
     def cancel(self) -> NoReturn:
