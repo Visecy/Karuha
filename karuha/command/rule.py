@@ -66,6 +66,8 @@ class AndRule(BaseRule):
         score = 1.0
         for rule in self.rules:
             score *= rule.match(message)
+            if score <= 0.0:
+                break
         return score
     
     def __iand__(self, other: BaseRule) -> Self:
@@ -85,8 +87,7 @@ class OrRule(BaseRule):
 
     def match(self, message: Message, /) -> float:
         scores = [0.0]
-        for rule in self.rules:
-            scores.append(rule.match(message))
+        scores.extend(rule.match(message) for rule in self.rules)
         return max(scores)
     
     def __ior__(self, other: BaseRule) -> Self:

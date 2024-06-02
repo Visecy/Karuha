@@ -31,7 +31,7 @@ def _update_model(raw: Optional[T], model: Optional[T]) -> Optional[T]:  # noqa:
         return model
     elif model is None:
         return
-    model_data  =  model.model_dump(exclude_defaults=True, exclude_none=True)
+    model_data = model.model_dump(exclude_defaults=True, exclude_none=True)
     if type(raw) is not type(model) and issubclass(type(raw), type(model)):
         return raw.model_copy(update=model_data)
     raw_data = raw.model_dump(exclude_defaults=True, exclude_none=True)
@@ -75,7 +75,7 @@ def update_user_cache(
     tags: Optional[UserTags] = None,
     cred: Optional[UserCred] = None,
 ) -> None:
-    logger.debug(f"Updating user cache for {user_id}: {desc=} {tags=} {cred=}")
+    logger.debug(f"Updating user cache for {user_id}")
     if user_id not in user_cache:
         user_cache.add(UserCache(user_id=user_id, desc=desc, tags=tags, cred=cred))
         return
@@ -90,7 +90,7 @@ def update_group_cache(
     desc: Optional[Union[BaseDesc, TopicInfo]] = None,
     tags: Optional[List[str]] = None,
 ) -> None:
-    logger.debug(f"Updating group cache for {topic}: {desc=} {tags=}")
+    logger.debug(f"Updating group cache for {topic}")
     if topic not in group_cache:
         group_cache.add(GroupTopicCache(topic=topic, desc=desc, tags=tags))
         return
@@ -100,7 +100,7 @@ def update_group_cache(
 
 
 def update_p2p_cache(user1_id: str, user2_id: str, desc: P2PTopicDesc) -> None:
-    logger.debug(f"Updating p2p cache for {user1_id} and {user2_id}: {desc=}")
+    logger.debug(f"Updating p2p cache for {user1_id} and {user2_id}")
     user_pair = frozenset((user1_id, user2_id))
     if user_pair not in p2p_cache:
         p2p_cache.add(P2PTopicCache(user_pair=user_pair, desc=desc))
@@ -110,7 +110,7 @@ def update_p2p_cache(user1_id: str, user2_id: str, desc: P2PTopicDesc) -> None:
 
 
 def update_sub_cache(topic: str, user_id: str, sub: BaseSubscription) -> None:
-    logger.debug(f"Updating sub cache for {user_id} in {topic}: {sub=}")
+    logger.debug(f"Updating sub cache for {user_id} in {topic}")
     if (topic, user_id) not in subscription_cache:
         subscription_cache.add(SubscriptionCache(topic=topic, user_id=user_id, sub=sub))
         return
@@ -119,7 +119,7 @@ def update_sub_cache(topic: str, user_id: str, sub: BaseSubscription) -> None:
 
 
 def update_message_cache(message: Message) -> None:
-    # logger.debug(f"Updating message cache for {message.topic} ({message.seq_id}): {message=}")
+    logger.debug(f"Updating message cache for {message.seq_id} in {message.topic}")
     if (message.topic, message.seq_id) not in message_cache:
         message_cache.add(MessageCache(topic=message.topic, seq_id=message.seq_id, message=message))
         return

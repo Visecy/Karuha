@@ -145,8 +145,39 @@ class TestSession(AsyncBotTestCase):
     
     async def test_get_data(self) -> None:
         ss = BaseSession(self.bot, "test_get_data")
+
+        # test get single data
         task = asyncio.create_task(ss.get_data(seq_id=114))
         await self.reply_bot_sub()
+        getmsg = await self.bot.consum_message()
+        self.assertTrue(getmsg.HasField("get"))
+        self.assertEqual(getmsg.get.query.data.since_id, 114)
+        self.assertEqual(getmsg.get.query.data.before_id, 115)
         self.bot.receive_content(b"\"test\"", topic="test_get_data", seq_id=114)
         msg = await self.wait_for(task)
         self.assertEqual(msg.content, b"\"test\"")
+
+        # test get data from cache
+        msg = await self.wait_for(ss.get_data(seq_id=114))
+        self.assertEqual(msg.content, b"\"test\"")
+
+        # test get data range
+        task = asyncio.create_task(ss.get_data(low=113, hi=115))
+        getmsg = await self.bot.consum_message()
+        if getmsg.HasField("note"):
+            getmsg = await self.bot.consum_message()
+        self.assertTrue(getmsg.HasField("get"), getmsg)
+        self.assertEqual(getmsg.get.query.data.since_id, 113)
+        self.assertEqual(getmsg.get.query.data.before_id, 114)
+        self.bot.receive_content(b"\"113\"", topic="test_get_data", seq_id=113)
+        getmsg = await self.bot.consum_message()
+        if getmsg.HasField("note"):
+            getmsg = await self.bot.consum_message()
+        self.assertTrue(getmsg.HasField("get"), getmsg)
+        self.assertEqual(getmsg.get.query.data.since_id, 115)
+        self.assertEqual(getmsg.get.query.data.before_id, 116)
+        self.bot.receive_content(b"\"115\"", topic="test_get_data", seq_id=115)
+        msgs = await self.wait_for(task)
+        self.assertEqual(msgs[0].content, b"\"113\"")
+        self.assertEqual(msgs[1].content, b"\"test\"")
+        self.assertEqual(msgs[2].content, b"\"115\"")

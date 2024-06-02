@@ -45,7 +45,13 @@ class SimpleCommandParser(AbstractCommandParser):
         return name, text[i+1:]
     
     def precheck(self, message: Message) -> bool:
-        return any(message.plain_text.startswith(prefix) for prefix in self.prefixs)
+        text = message.text.split()
+        for t in text:
+            if isinstance(t, (Mention, Quote)):
+                continue
+            name = str(t).strip()
+            return any(name.startswith(prefix) for prefix in self.prefixs)
+        return False
     
     def check_name(self, name: str) -> bool:
         return ' ' not in name

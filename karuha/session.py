@@ -274,11 +274,11 @@ class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
     
     def match(self, message: Message, /) -> float:
         if message.topic != self.topic:
-            return -1
+            return 0
         elif self.user_id and message.user_id != self.user_id:
-            return -1
+            return 0
         elif self.pattern and not self.pattern.match(message.text):
-            return -1
+            return 0
         else:
             return self.priority
 
@@ -303,10 +303,10 @@ class ButtonReplyDispatcher(SessionDispatcher):
         
     def match(self, message: Message) -> float:
         if super().match(message) < 0:
-            return -1
+            return 0
         text = message.raw_text
         if not isinstance(text, Drafty):
-            return -1
+            return 0
         for i in text.ent:
             if i.tp != "EX" or i.data.get("mime") != "application/json":
                 continue
@@ -317,7 +317,7 @@ class ButtonReplyDispatcher(SessionDispatcher):
             if value.get("seq") == self.seq_id:
                 self._cache[id(message)] = resp
                 return self.priority
-        return -1
+        return 0
     
     def run(self, message: Message) -> None:
         resp = self._cache.get((id(message)))
