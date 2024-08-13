@@ -35,13 +35,19 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(ss.last_message.plain_text, "test")
         self.assertEqual(len(ss.messages), 1)
 
-        send_task = asyncio.create_task(ss.send(PlainText("test")))
+        send_task = asyncio.create_task(ss.send("test\n", replace=114))
         msg = await self.bot.consum_message()
         if msg.HasField("sub"):
             self.bot.confirm_message(msg.sub.id)
             msg = await self.bot.consum_message()
         self.assertTrue(msg.HasField("pub"))
         pubmsg = msg.pub
+        self.assertEqual(pubmsg.topic, "test")
+        self.assertNotIn(b"\n", pubmsg.content)
+        self.assertEqual(
+            pubmsg.head,
+            {"replace": b'":114"', "auto": b"true", "mime": b'"text/x-drafty"'},
+        )
         self.bot.confirm_message(pubmsg.id, seq=0)
         await asyncio.wait_for(send_task, timeout=TEST_TIMEOUT)
 
@@ -116,7 +122,7 @@ class TestSession(AsyncBotTestCase):
         )
         bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
         self.assertEqual(bid, 2)
-    
+
     async def test_file(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         file_task = asyncio.create_task(ss.send_file("karuha/version.py"))
@@ -129,7 +135,7 @@ class TestSession(AsyncBotTestCase):
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
         await self.wait_for(file_task)
-    
+
     async def test_image(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         image_task = asyncio.create_task(ss.send_image("docs/img/tw_icon-karuha2.png"))
@@ -142,7 +148,7 @@ class TestSession(AsyncBotTestCase):
         self.assertIsNotNone(ft.val)
         self.bot.confirm_message(pubmsg.id, seq=0)
         await self.wait_for(image_task)
-    
+
     async def test_get_data(self) -> None:
         ss = BaseSession(self.bot, "test_get_data")
 
@@ -181,3 +187,14 @@ class TestSession(AsyncBotTestCase):
         self.assertEqual(msgs[0].content, b"\"113\"")
         self.assertEqual(msgs[1].content, b"\"test\"")
         self.assertEqual(msgs[2].content, b"\"115\"")
+    
+    async def test_topic(self) -> None:
+        ss = BaseSession(self.bot, "test_topic")
+        task = asyncio.create_task(ss.subscribe(force=True))
+        await self.reply_bot_sub()
+        await self.wait_for(task)
+
+        task = asyncio.create_task(ss.leave())
+        await self.reply_bot_leave()
+        await self.wait_for(task)
+

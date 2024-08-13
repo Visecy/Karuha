@@ -106,7 +106,7 @@ class NotRule(BaseRule):
         self.rule = rule
 
     def match(self, message: Message, /) -> float:
-        return 1.0 - self.rule.match(message)
+        return max(1.0 - self.rule.match(message), 0.0)
 
 
 class TopicRule(BaseRule):
@@ -251,12 +251,12 @@ class QuoteRule(BaseRule):
         self.reply = reply
 
     def match(self, message: Message, /) -> float:
-        if isinstance(message.text, str):
+        if isinstance(message.text, str):  # pragma: no cover
             return 0.0
         elif self.reply is not None:
             try:
                 reply_id = int(message.head["reply"])
-            except (KeyError, ValueError):
+            except (KeyError, ValueError):  # pragma: no cover
                 return 0.0
             if reply_id != self.reply:
                 return 0.0

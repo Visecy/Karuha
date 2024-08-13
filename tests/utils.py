@@ -234,6 +234,11 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
         assert msg.HasField("sub"), f"{msg} is not sub"
         self.bot.confirm_message(msg.sub.id)
     
+    async def reply_bot_leave(self) -> None:
+        msg = await self.bot.consum_message()
+        assert msg.HasField("leave"), f"{msg} is not leave"
+        self.bot.confirm_message(msg.leave.id)
+    
     async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
         return await asyncio.wait_for(future, timeout)
 

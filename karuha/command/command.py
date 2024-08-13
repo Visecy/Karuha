@@ -51,7 +51,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         self.__doc__ = getattr(func, "__doc__", None)
         self.__signature__ = signature(func)
 
-    def parse_message(self, message: Message) -> Tuple[tuple, dict]:  # pragma: no cover
+    def parse_message(self, message: Message) -> Tuple[tuple, dict]:
         args, kwargs = message.extract_handler_params(self.__signature__, name=self.name)
         return tuple(args), kwargs
 
@@ -77,7 +77,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             logger.error(f"run command {self.name} failed", exc_info=True)
             CommandFailEvent.new(message.collection, self, sys.exc_info())  # type: ignore
             raise KaruhaCommandError(f"run command {self.name} failed", name=self.name, command=self) from e
-        except asyncio.CancelledError:
+        except asyncio.CancelledError: # pragma: no cover
             logger.info(f"command {self.name} canceled")
             CommandCompleteEvent.new(message.collection, self, None, cancelled=True)
             raise
@@ -90,7 +90,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         if self.__doc__ is None:
             return super().format_help()
         if not self.alias:
-            return f"{self.name} - {self.__doc__.strip()}"
+            return f"{self.name} - {self.__doc__.strip().splitlines()[0]}"
         return f"{self.name} (alias: {','.join(self.alias)}) - {self.__doc__.strip()}"
 
     def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:

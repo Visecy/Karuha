@@ -128,12 +128,13 @@ class TestBot(AsyncBotTestCase):
         self.assertIsInstance(pub_msg_inner, pb.ClientPub)
         self.assertEqual(pub_msg_inner.topic, "topic_test")
         self.assertEqual(pub_msg_inner.content, b"\"Hello world!\"")
-        tid = bot.confirm_message()
+        tid = bot.confirm_message(seq=114)
         self.assertEqual(tid, pub_msg_inner.id)
         with self.catchEvent(PublishEvent) as catcher:
-            await asyncio.wait_for(pub_task, TEST_TIMEOUT)
+            await self.wait_for(pub_task)
             e = await catcher.catch_event()
             self.assertIsNotNone(e.response_message)
+            self.assertEqual(e.seq_id, 114)
         
         leave_task = asyncio.create_task(bot.leave("topic_test"))
         leave_msg = await bot.consum_message()

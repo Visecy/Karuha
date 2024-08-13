@@ -29,10 +29,14 @@ class BaseSession(object):
             /, *,
             head: Optional[Dict[str, Any]] = None,
             timeout: Optional[float] = None,
-            topic: Optional[str] = None
+            topic: Optional[str] = None,
+            replace: Optional[int] = None
     ) -> Optional[int]:
         topic = topic or self.topic
         await self.subscribe(topic)
+        if replace is not None:
+            head = head or {}
+            head["replace"] = f":{replace}"
         if isinstance(text, str) and '\n' in text:
             text = PlainText(text)
         if isinstance(text, BaseText):
@@ -125,7 +129,7 @@ class BaseSession(object):
             seq_id = await self.send(Form(content=chain), topic=topic, **kwds)
             if not button:
                 return 0
-            elif seq_id is None:
+            elif seq_id is None:  # pragma: no cover
                 raise KaruhaRuntimeError("failed to fetch message id")
 
             loop = asyncio.get_running_loop()
@@ -138,7 +142,7 @@ class BaseSession(object):
             dispatcher.activate()
         try:
             resp = await dispatcher.wait()
-        except:  # noqa: E722
+        except:  # noqa: E722  # pragma: no cover
             # The dispatcher will automatically deactivate after receiving a message,
             # so you only need to actively deactivate it when an exception occurs
             dispatcher.deactivate()
@@ -166,10 +170,10 @@ class BaseSession(object):
             return
         await self.bot.subscribe(topic, get=get, **kwds)
 
-    async def leave(self, topic: Optional[str] = None, **kwds: Any) -> None:
+    async def leave(self, topic: Optional[str] = None, *, force: bool = False, **kwds: Any) -> None:
         self._ensure_status()
         topic = topic or self.topic
-        if karuha.data.has_sub(self.bot, topic):
+        if karuha.data.has_sub(self.bot, topic) or force:
             await self.bot.leave(topic, **kwds)
     
     async def get_user(self, user_id: str, *, ensure_user: bool = False) -> "karuha.data.BaseUser":
@@ -220,7 +224,6 @@ class BaseSession(object):
         )
 
     def close(self) -> None:
-
         self._closed = True
 
     def cancel(self) -> NoReturn:
