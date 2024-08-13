@@ -64,6 +64,9 @@ class TestText(TestCase):
         self.assertEqual(len(t), 13)
         self.assertEqual(str(t[0]), "H")
         self.assertEqual(str(t[1:]), "ello world!\n")
+        t1 = t + "Hello world!\n"
+        self.assertEqual(str(t1), "Hello world!\nHello world!\n")
+        self.assertEqual(str(t), "Hello world!\n")
         empty = TextChain()
         self.assertEqual(len(empty), 0)
         self.assertEqual(str(empty), "")

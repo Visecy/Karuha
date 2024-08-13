@@ -1,6 +1,6 @@
 import asyncio
-from logging import Logger
 import sys
+from logging import Logger
 from typing import Any, Awaitable, Callable, ClassVar, List
 from typing_extensions import Self, ParamSpec
 

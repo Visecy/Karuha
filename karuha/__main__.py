@@ -35,12 +35,13 @@ version_info = ' '.join((
 ))
 
 default_config = os.environ.get("KARUHA_CONFIG", "config.json")
+default_modules = os.environ.get("KARUHA_MODULES", "").split(os.pathsep)
 
 parser = ArgumentParser("Karuha", description=description)
 parser.add_argument("config", type=Path, nargs='?', default=default_config, help="path of the Karuha config")
 parser.add_argument("--auto-create", action="store_true", help="auto create config")
 parser.add_argument("--encoding", default="utf-8", help="config encoding")
-parser.add_argument("-m", "--module", type=str, action="append", help="module to load")
+parser.add_argument("-m", "--module", type=str, action="append", help="module to load", default=default_modules)
 parser.add_argument("-v", "--version", action="version", version=version_info)
 
 
@@ -53,5 +54,7 @@ if __name__ == "__main__":
     )
     if namespace.module:
         for module in namespace.module:
+            if not module:
+                continue
             import_module(module)
     run()

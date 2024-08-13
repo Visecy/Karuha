@@ -22,7 +22,7 @@ class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
 
         Matching degree is divided into the following levels:
 
-        1. 0~1: Weak priority, the lower dispatcher should return a value within this range
+        1. 0.4~1: Weak priority, the lower dispatcher should return a value within this range
         2. 1~2: Normal matching, the regular dispatcher should return the value in this district level range
         3. 2~3: Specific matching, the dispatcher added only to process\
             specific transactions should return the value in this range
@@ -30,7 +30,7 @@ class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
             should return the value in this range.
         
         In principle, only values within the above range should be returned.
-        Values less than 0 will be ignored by default,
+        Values less than 0.4 will be ignored by default,
         while there are no specific restrictions on values that are too large.
 
         :param message: given message
@@ -51,7 +51,7 @@ class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
         self.dispatchers.discard(self)
     
     @classmethod
-    def dispatch(cls, message: T, /, threshold: float = 0.0, filter: Optional[Callable[[Self], bool]] = None) -> Any:
+    def dispatch(cls, message: T, /, threshold: float = 0.4, filter: Optional[Callable[[Self], bool]] = None) -> Optional[Any]:
         dispatchers = cls.dispatchers
         if filter is not None:
             dispatchers = {d for d in dispatchers if filter(d)}

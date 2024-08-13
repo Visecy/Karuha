@@ -221,6 +221,24 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     def assertBotMessageNowait(self, message: pb.ClientMsg, /) -> None:
         self.bot.assert_message_nowait(message)
     
+    async def get_bot_pub(self) -> pb.ClientPub:
+        msg = await self.bot.consum_message()
+        if msg.HasField("sub"):
+            self.bot.confirm_message(msg.sub.id)
+            msg = await self.bot.consum_message()
+        self.assertTrue(msg.HasField("pub"))
+        return msg.pub
+    
+    async def reply_bot_sub(self) -> None:
+        msg = await self.bot.consum_message()
+        assert msg.HasField("sub"), f"{msg} is not sub"
+        self.bot.confirm_message(msg.sub.id)
+    
+    async def reply_bot_leave(self) -> None:
+        msg = await self.bot.consum_message()
+        assert msg.HasField("leave"), f"{msg} is not leave"
+        self.bot.confirm_message(msg.leave.id)
+    
     async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
         return await asyncio.wait_for(future, timeout)
 

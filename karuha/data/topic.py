@@ -36,9 +36,7 @@ class BaseInfo(BaseModel, frozen=True):
 
     @property
     def verified(self) -> bool:
-        if self.trusted is None:
-            return False
-        return self.trusted.get("verified", False)
+        return False if self.trusted is None else self.trusted.get("verified", False)
     
     @abstractproperty
     def topic_id(self) -> str:
@@ -283,6 +281,13 @@ async def get_topic(bot: Bot, /, topic_id: str, *, ensure_topic: bool = False) -
         return await get_group_topic(bot, topic_id, ensure_topic=ensure_topic)
     else:
         return await get_p2p_topic(bot, topic_id, ensure_topic=ensure_topic)
+
+
+def try_get_topic(bot: Bot, /, topic_id: str) -> Optional[BaseTopic]:
+    if topic_id.startswith("grp"):
+        return try_get_group_topic(bot, topic_id)
+    else:
+        return try_get_p2p_topic(bot, topic_id)
 
 
 @overload

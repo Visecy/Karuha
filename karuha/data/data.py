@@ -5,22 +5,32 @@ from weakref import WeakSet
 from tinode_grpc import pb
 
 from ..bot import Bot
-
 from ..event.message import MessageDispatcher
 from ..text.message import Message
 from .cache import message_cache
 
 
-async def _get_data_no_cache(bot: Bot, topic_id: str, low: int, hi: int) -> List[Message]:
-    with DataDispatcher(topic_id, low, hi) as dispatcher:
-        await bot.get_query(topic_id, "data", data=pb.GetOpts(since_id=low, before_id=hi + 1))
-        return await dispatcher.wait()
+async def _get_data_no_cache(bot: Bot, dispatcher: "DataDispatcher", topic_id: str, low: int, hi: int) -> List[Message]:
+    await bot.get_query(topic_id, "data", data=pb.GetOpts(since_id=low, before_id=hi + 1))
+    return await dispatcher.wait()
 
 
 @overload
-async def get_data(bot: Bot, topic_id: str, *, seq_id: Optional[int] = None) -> Message: ...
+async def get_data(bot: Bot, topic_id: str, *, seq_id: int) -> Message: ...
 @overload
-async def get_data(bot: Bot, topic_id: str, *, low: Optional[int] = None, hi: Optional[int] = None) -> List[Message]: ...
+async def get_data(bot: Bot, topic_id: str, *, low: int, hi: int) -> List[Message]: ...
+
+
+@overload
+async def get_data(
+    bot: Bot,
+    topic_id: str,
+    *,
+    seq_id: Optional[int] = None,
+    low: Optional[int] = None,
+    hi: Optional[int] = None,
+) -> Union[List[Message], Message]:
+    ...
 
 
 async def get_data(
@@ -36,7 +46,8 @@ async def get_data(
         cache = message_cache.get((topic_id, seq_id))
         if cache is not None:
             return cache.message
-        return await _get_data_no_cache(bot, topic_id, seq_id, seq_id)
+        with DataDispatcher(topic_id, seq_id, seq_id) as dispatcher:
+            return (await _get_data_no_cache(bot, dispatcher, topic_id, seq_id, seq_id))[0]
     
     cache_segments = []
     start = None
@@ -54,11 +65,14 @@ async def get_data(
     start = low
     for s, e in cache_segments:
         if s > start:
-            messages.extend(await _get_data_no_cache(bot, topic_id, start, s-1))
-        messages.append(message_cache[(topic_id, start)].message)
+            with DataDispatcher(topic_id, start, s-1) as dispatcher:
+                messages.extend(await _get_data_no_cache(bot, dispatcher, topic_id, start, s-1))
+        messages.extend(message_cache[topic_id, s].message for s in range(s, e+1))
         start = e + 1
     if start <= hi:
-        messages.extend(await _get_data_no_cache(bot, topic_id, start, hi))
+        with DataDispatcher(topic_id, start, hi) as dispatcher:
+            messages.extend(await _get_data_no_cache(bot, dispatcher, topic_id, start, hi))
+    assert len(messages) == hi - low + 1
     return messages
 
 

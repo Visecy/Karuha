@@ -151,8 +151,10 @@ async def hi(session: MessageSession, argv: List[str]) -> None:
 
 在接下来可能会添加的功能包括：
 
-- [ ] 用户信息获取与设置相关的API
+- [x] 用户信息获取与设置相关的API
+- [x] 消息匹配规则
 - [ ] argparse格式的命令参数自动解析
+- [ ] 代理发送机器人
 
 ### 模块开发
 

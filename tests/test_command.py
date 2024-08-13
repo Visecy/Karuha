@@ -38,7 +38,6 @@ class TestCommand(TestCase):
         self.assertIsNone(simple_parser.parse(message5))
 
     def test_invoker(self) -> None:
-
         def cmd_meta(
             bot: Bot,
             message: Message,
@@ -47,7 +46,6 @@ class TestCommand(TestCase):
             content: bytes,
             argc: int,
             argv: List[str],
-            test: Head,
             undefined: None = None
         ) -> int:
             return 114
@@ -60,10 +58,15 @@ class TestCommand(TestCase):
             kwargs,
             {
                 "user_id": "user", "content": b"\"test\"",
-                "argc": 0, "argv": [], "test": None, "undefined": None
+                "argc": 0, "argv": [], "undefined": None
             }
         )
-        self.assertEqual(msg.call_handler(cmd_meta), 114)
+
+        def cmd_head(undefined: Head[None], test: Head[Optional[int]] = None) -> None:
+            self.assertEqual(test, 1)
+            self.assertIsNone(undefined)
+        msg = Message.new(bot_mock, "test", "usr_test", 0, {"test": "1"}, b"\"test\"")
+        msg.call_handler(cmd_head)
 
         with self.assertRaises(KaruhaHandlerInvokerError):
             msg.call_handler(lambda *message: ...)
@@ -103,6 +106,9 @@ class TestCommand(TestCase):
 
             @clt.on_command("test")
             def test(bot: Bot, /, message: Message, *, text: PlainText) -> None:
+                """
+                Test help
+                """
                 nonlocal called
                 called = True
 
@@ -110,6 +116,13 @@ class TestCommand(TestCase):
             self.assertIs(clt["test"], test)
             test(bot_mock, new_test_message(), text=PlainText("test"))
             self.assertTrue(called)
+            self.assertEqual(test.format_help(), "test - Test help")
+            test.alias += ("test1",)
+            self.assertEqual(test.format_help(), "test (alias: test1) - Test help")
+            test.__doc__ = None
+            self.assertEqual(test.format_help(), "test (alias: test1)")
+            test.alias = ()
+            self.assertEqual(test.format_help(), "test")
 
             with self.assertRaises(ValueError):
                 clt.add_command(test)
@@ -174,26 +187,39 @@ class TestCommand(TestCase):
         rr = rule(regex=r"W.+d")
         self.assertEqual(rr.match(msg), 1.0)
         ra = rk & rt
-        self.assertEqual(ra.match(msg), 1.0)
+        self.assertAlmostEqual(ra.match(msg), 1.0)
         rn = ~rt
-        self.assertEqual(rn.match(msg), 0.0)
+        self.assertAlmostEqual(rn.match(msg), 0.0)
         ro = rk | rn
-        self.assertEqual(ro.match(msg), 1.0)
+        self.assertAlmostEqual(ro.match(msg), 1.0)
+        rq = rule(quote=True)
+        self.assertEqual(rq.match(msg), 0.0)
 
         msg = Message.new(
             bot_mock,
             "test",
             "usr",
             1,
-            {"reply": "1"},
+            {"reply": "114"},
             to_json(TextChain(
                 Quote(content=TextChain(Mention(text="@user", val=bot_mock.uid), NewLine, "Quote content ...")),
                 "Hello world!"
             ).to_drafty())
         )
-        rq = rule(quote=1)
         self.assertEqual(rq.match(msg), 1.0)
+        rq1 = rule(quote=114)
+        self.assertEqual(rq1.match(msg), 1.0)
+        rq2 = rule(quote=514)
+        self.assertEqual(rq2.match(msg), 0.0)
         rm = rule(mention=bot_mock.uid)
         self.assertEqual(rm.match(msg), 1.0)
+        rm1 = rule(mention="114514")
+        self.assertEqual(rm1.match(msg), 0.0)
         r2m = rule(to_me=True)
         self.assertEqual(r2m.match(msg), 1.0)
+        rb = rule(bot=bot_mock)
+        self.assertEqual(rb.match(msg), 1.0)
+        rh = rule(has_head="reply")
+        self.assertEqual(rh.match(msg), 1.0)
+        rh1 = rule(has_head="quote")
+        self.assertEqual(rh1.match(msg), 0.0)

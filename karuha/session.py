@@ -1,25 +1,42 @@
 import asyncio
 import os
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, NoReturn, Optional, Union, overload
+from tinode_grpc import pb
+from typing_extensions import Self
 
+import karuha
 from .bot import Bot
+from .exception import KaruhaRuntimeError
 
 
 class BaseSession(object):
-    __slots__ = ["bot", "topic"]
+    __slots__ = ["bot", "topic", "_task", "_closed"]
 
     def __init__(self, /, bot: Bot, topic: str) -> None:
         self.bot = bot
         self.topic = topic
+        self._closed = False
+        self._task = None
     
+    def bind_task(self, task: Optional[asyncio.Task] = None) -> Self:
+        self._task = task or asyncio.current_task()
+        return self
+
     async def send(
             self,
             text: Union[str, dict, "Drafty", "BaseText"],
             /, *,
             head: Optional[Dict[str, Any]] = None,
-            timeout: Optional[float] = None
+            timeout: Optional[float] = None,
+            topic: Optional[str] = None,
+            replace: Optional[int] = None
     ) -> Optional[int]:
+        topic = topic or self.topic
+        await self.subscribe(topic)
+        if replace is not None:
+            head = head or {}
+            head["replace"] = f":{replace}"
         if isinstance(text, str) and '\n' in text:
             text = PlainText(text)
         if isinstance(text, BaseText):
@@ -29,11 +46,11 @@ class BaseSession(object):
             head = head or {}
             head["mime"] = "text/x-drafty"
         _, params = await asyncio.wait_for(
-            self.bot.publish(self.topic, text, head=head),
+            self.bot.publish(topic, text, head=head),
             timeout
         )
         return params.get("seq")
-    
+
     send_text = send
 
     async def send_file(
@@ -50,7 +67,7 @@ class BaseSession(object):
             ),
             **kwds
         )
-    
+
     async def send_image(
             self,
             path: Union[str, os.PathLike],
@@ -65,7 +82,7 @@ class BaseSession(object):
             ),
             **kwds
         )
-    
+
     async def wait_reply(
             self,
             topic: Optional[str] = None,
@@ -73,6 +90,7 @@ class BaseSession(object):
             pattern: Optional[re.Pattern] = None,
             priority: float = 1.2
     ) -> "Message":
+        self._ensure_status()
         loop = asyncio.get_running_loop()
         dispatcher = SessionDispatcher(
             self,
@@ -82,11 +100,18 @@ class BaseSession(object):
             pattern=pattern,
             priority=priority
         )
-        message = await dispatcher.wait()
-        return message
-    
-    async def send_form(self, title: Union[str, "BaseText"], *button: Union[str, "Button"], **kwds: Any) -> int:
-        chain = TextChain(Bold(content=PlainText(title)) if isinstance(title, str) else title)
+        return await dispatcher.wait()
+
+    async def send_form(
+        self,
+        title: Union[str, "BaseText"],
+        *button: Union[str, "Button"],
+        topic: Optional[str] = None,
+        **kwds: Any,
+    ) -> int:
+        chain = TextChain(
+            Bold(content=PlainText(title)) if isinstance(title, str) else title
+        )
         pred_resp = []
         for i in button:
             if isinstance(i, str):
@@ -101,33 +126,126 @@ class BaseSession(object):
 
         async with get_message_lock():
             # Obtain the message lock to ensure that the returned message is intercepted by the dispatcher
-            seq_id = await self.send(Form(content=chain), **kwds)
+            seq_id = await self.send(Form(content=chain), topic=topic, **kwds)
             if not button:
                 return 0
-            elif seq_id is None:
+            elif seq_id is None:  # pragma: no cover
                 raise KaruhaRuntimeError("failed to fetch message id")
-            
+
             loop = asyncio.get_running_loop()
             dispatcher = ButtonReplyDispatcher(
                 self,
                 loop.create_future(),
-                seq_id=seq_id
+                seq_id=seq_id,
+                topic=topic
             )
             dispatcher.activate()
         try:
             resp = await dispatcher.wait()
-        except:  # noqa: E722
+        except:  # noqa: E722  # pragma: no cover
             # The dispatcher will automatically deactivate after receiving a message,
             # so you only need to actively deactivate it when an exception occurs
             dispatcher.deactivate()
             raise
         return pred_resp.index(resp)
-    
+
     async def confirm(self, title: Union[str, "BaseText"], **kwds: Any) -> bool:
         return not await self.send_form(title, "Yes", "No", **kwds)
 
+    async def finish(self, text: Union[str, dict, "Drafty", "BaseText"], /, **kwds: Any) -> NoReturn:
+        await self.send(text, **kwds)
+        self.cancel()
 
-from .exception import KaruhaRuntimeError
+    async def subscribe(
+        self,
+        topic: Optional[str] = None,
+        *,
+        force: bool = False,
+        get: Union[pb.GetQuery, str, None] = "desc sub",
+        **kwds: Any
+    ) -> None:
+        self._ensure_status()
+        topic = topic or self.topic
+        if karuha.data.has_sub(self.bot, topic) and not force:
+            return
+        await self.bot.subscribe(topic, get=get, **kwds)
+
+    async def leave(self, topic: Optional[str] = None, *, force: bool = False, **kwds: Any) -> None:
+        self._ensure_status()
+        topic = topic or self.topic
+        if karuha.data.has_sub(self.bot, topic) or force:
+            await self.bot.leave(topic, **kwds)
+    
+    async def get_user(self, user_id: str, *, ensure_user: bool = False) -> "karuha.data.BaseUser":
+        return await karuha.data.get_user(self.bot, user_id, ensure_user=ensure_user)
+
+    async def get_topic(self, topic: Optional[str] = None, *, ensure_topic: bool = False) -> "karuha.data.BaseTopic":
+        return await karuha.data.get_topic(self.bot, topic or self.topic, ensure_topic=ensure_topic)
+
+    @overload
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        seq_id: int,
+    ) -> "Message": ...
+
+    @overload
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        low: Optional[int] = None,
+        hi: Optional[int] = None,
+    ) -> List["Message"]: ...
+
+    @overload
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        seq_id: Optional[int] = None,
+        low: Optional[int] = None,
+        hi: Optional[int] = None,
+    ) -> Union["Message", List["Message"]]: ...
+
+    async def get_data(
+        self,
+        topic: Optional[str] = None,
+        *,
+        seq_id: Optional[int] = None,
+        low: Optional[int] = None,
+        hi: Optional[int] = None,
+    ) -> Union["Message", List["Message"]]:
+        topic = topic or self.topic
+        await self.subscribe(topic)
+        return await karuha.data.get_data(
+            self.bot, topic, seq_id=seq_id, low=low, hi=hi
+        )
+
+    def close(self) -> None:
+        self._closed = True
+
+    def cancel(self) -> NoReturn:
+        self.close()
+        raise asyncio.CancelledError
+
+    def _ensure_status(self) -> None:
+        if self._closed:
+            raise KaruhaRuntimeError("session is closed")
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    async def __aenter__(self) -> Self:
+        await self.subscribe()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+
 from .text.drafty import Drafty
 from .text.textchain import (BaseText, Bold, Button, File, Form, Image,
                              NewLine, PlainText, TextChain)
@@ -159,11 +277,11 @@ class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
     
     def match(self, message: Message, /) -> float:
         if message.topic != self.topic:
-            return -1
+            return 0
         elif self.user_id and message.user_id != self.user_id:
-            return -1
+            return 0
         elif self.pattern and not self.pattern.match(message.text):
-            return -1
+            return 0
         else:
             return self.priority
 
@@ -177,20 +295,21 @@ class ButtonReplyDispatcher(SessionDispatcher):
             /,
             future: asyncio.Future,
             *,
+            seq_id: int,
             priority: float = 2.5,
             user_id: Optional[str] = None,
-            seq_id: int,
+            topic: Optional[str] = None
     ) -> None:
-        super().__init__(session, future, priority=priority, user_id=user_id)
+        super().__init__(session, future, priority=priority, user_id=user_id, topic=topic)
         self.seq_id = seq_id
         self._cache = {}
         
     def match(self, message: Message) -> float:
         if super().match(message) < 0:
-            return -1
+            return 0
         text = message.raw_text
         if not isinstance(text, Drafty):
-            return -1
+            return 0
         for i in text.ent:
             if i.tp != "EX" or i.data.get("mime") != "application/json":
                 continue
@@ -201,7 +320,7 @@ class ButtonReplyDispatcher(SessionDispatcher):
             if value.get("seq") == self.seq_id:
                 self._cache[id(message)] = resp
                 return self.priority
-        return -1
+        return 0
     
     def run(self, message: Message) -> None:
         resp = self._cache.get((id(message)))

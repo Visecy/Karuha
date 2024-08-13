@@ -3,7 +3,7 @@ import os
 import operator as op
 from abc import abstractmethod
 from base64 import b64decode, b64encode
-from typing import (Any, ClassVar, Dict, Final, Generator, List, Literal,
+from typing import (Any, ClassVar, Dict, Final, Generator, Iterable, List, Literal,
                     MutableMapping, Optional, Sequence, SupportsIndex, Type,
                     Union, overload)
 
@@ -23,6 +23,20 @@ class BaseText(BaseModel):
 
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List["BaseText"]:
         return [self]
+    
+    def join(self, chain: Iterable[Union[str, "BaseText"]], /) -> "BaseText":
+        it = iter(chain)
+        try:
+            first = next(it)
+        except StopIteration:
+            return TextChain()
+        base = TextChain(first)
+        for i in it:
+            base += self
+            if isinstance(i, str):
+                i = PlainText(i)
+            base += i
+        return base.take()
 
     def startswith(self, /, prefix: str) -> bool:
         return str(self).startswith(prefix)
@@ -94,6 +108,11 @@ class PlainText(_Text):
     def __init__(self, text: str) -> None:
         super().__init__(text=text)
     
+    def __add__(self, other: Any) -> BaseText:
+        if isinstance(other, PlainText):
+            return PlainText(self.text + other.text)
+        return super().__add__(other)
+    
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
         result = []
         for p in self.text.split(sep, maxsplit):
@@ -102,12 +121,6 @@ class PlainText(_Text):
             result.append(t)
         return result
 
-    def __iadd__(self, other: Union[str, BaseText]) -> BaseText:
-        if not isinstance(other, (str, PlainText)):
-            return NotImplemented
-        self.text += other if isinstance(other, str) else other.text
-        return self
-    
     def __getitem__(self, index: Union[SupportsIndex, slice], /) -> "PlainText":
         return self.__class__(text=self.text[index])
 
@@ -122,14 +135,35 @@ class InlineCode(_Text):
         return df
 
 
+class Mention(_Text):
+    type: Final[InlineType] = "MN"
+
+    val: Optional[str] = None
+
+    def to_drafty(self) -> Drafty:
+        drafty = super().to_drafty()
+        length = len(drafty.txt)
+        if self.val is None:
+            drafty.fmt.append(DraftyFormat(at=0, len=length, tp="MN"))
+            return drafty
+        key = len(drafty.ent)
+        drafty.ent.append(DraftyExtend(tp="MN", data={"val": self.val}))
+        drafty.fmt.append(DraftyFormat(at=0, len=length, key=key))
+        return drafty
+
+
 class TextChain(BaseText, Sequence):
     contents: List[BaseText]
 
     def __init__(self, *args: Union[BaseText, str]) -> None:
-        contents = [
-            PlainText(t) if isinstance(t, str) else t
-            for t in args if t
-        ]
+        contents = []
+        for i in args:
+            if isinstance(i, TextChain):
+                contents.extend(i.contents)
+                continue
+            if isinstance(i, str):
+                i = PlainText(i)
+            contents.append(i)
         super().__init__(contents=contents)  # type: ignore
     
     def to_drafty(self) -> Drafty:
@@ -162,9 +196,7 @@ class TextChain(BaseText, Sequence):
         return result
     
     def take(self) -> BaseText:
-        if len(self.contents) == 1:
-            return self.contents[0]
-        return self
+        return self.contents[0] if len(self.contents) == 1 else self
     
     @overload
     def __getitem__(self, key: SupportsIndex, /) -> BaseText: ...
@@ -173,9 +205,7 @@ class TextChain(BaseText, Sequence):
 
     def __getitem__(self, key: Union[SupportsIndex, slice], /) -> BaseText:
         item = self.contents[key]
-        if isinstance(item, list):
-            return TextChain(*item)
-        return item
+        return TextChain(*item) if isinstance(item, list) else item
 
     def __iter__(self) -> Generator[BaseText, None, None]:
         yield from self.contents
@@ -199,32 +229,31 @@ class TextChain(BaseText, Sequence):
             other = PlainText(other)
         elif not isinstance(other, BaseText):
             return NotImplemented
-        
-        if not self.contents:
-            # fast branch, no optimization
-            if isinstance(other, TextChain):
-                self.contents.extend(other.contents)
-            else:
-                self.contents.append(other)
-        else:
+
+        if self.contents:
             # merge with last item
-            last = self.contents[-1]
             if isinstance(other, TextChain):
-                contents_iter = iter(other.contents)
-                for i in contents_iter:
-                    last += i
+                last = None
+                for i in other.contents:
+                    if last is None:
+                        last = self.contents.pop()
+                    last = last + i
                     if isinstance(last, TextChain):
-                        self.contents.append(i)
-                        break
-                    else:
-                        self.contents[-1] = last
-                self.contents.extend(contents_iter)
+                        self.contents.extend(last.contents)
+                        last = None
+                if last is not None:
+                    self.contents.append(last)
             elif isinstance(other, BaseText):
-                last += other
+                last = self.contents.pop()
+                last = last + other
                 if isinstance(last, TextChain):
-                    self.contents.append(other)
+                    self.contents.extend(last.contents)
                 else:
-                    self.contents[-1] = last
+                    self.contents.append(last)
+        elif isinstance(other, TextChain):
+            self.contents.extend(other.contents)
+        else:
+            self.contents.append(other)
         return self
     
     def __radd__(self, other: Union[str, BaseText]) -> Self:
@@ -369,15 +398,6 @@ class Link(_ExtensionText):
 
     def get_data(self) -> Dict[str, Any]:
         return {"url": self.url}
-
-
-class Mention(_ExtensionText):
-    type: Final[ExtendType] = "MN"
-
-    val: str
-
-    def get_data(self) -> Dict[str, Any]:
-        return {"val": self.val}
 
 
 class Hashtag(_ExtensionText):

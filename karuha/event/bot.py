@@ -7,10 +7,11 @@ from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from .. import bot
-from .base import Event, handler_runner
+from ..exception import KaruhaBotError
 from ..session import BaseSession
 from ..utils.proxy_propery import ProxyProperty
 from ..utils.invoker import Dependency, depend_property
+from .base import Event, handler_runner
 
 
 def ensure_text_len(text: str, length: int = 128) -> str:
@@ -37,21 +38,31 @@ class BotInitEvent(BotEvent):
 
     async def __default_handler__(self) -> None:
         bot = self.bot
+        try:
+            await self.bot.hello()
+        except Exception:
+            self.bot.logger.error("failed to connect to server, restarting")
+            self.bot.restart()
+            return
+        
         retry = bot.server.retry if bot.server is not None else 0
         for i in range(retry):
             try:
-                await self.bot.hello()
                 await self.bot.login()
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, KaruhaBotError):
                 self.bot.logger.warning(f"login failed, retrying {i+1} times")
             else:
                 break
         else:
             try:
                 await self.bot.login()
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, KaruhaBotError):
                 self.bot.logger.error("login failed, cancel the bot")
                 self.bot.cancel()
+
+
+class BotReadyEvent(BotEvent):
+    __slots__ = []
 
 
 class BotFinishEvent(BotEvent):
@@ -64,7 +75,7 @@ bot.Bot.finalize_event_callback = BotFinishEvent.new_and_wait
 
 T = TypeVar("T")
 ProxyPropertyType = Dependency[ProxyProperty[T]]
-SessionProperty = depend_property(lambda ev: BaseSession(ev.bot, ev.topic))
+SessionProperty = depend_property(lambda ev: BaseSession(ev.bot, ev.topic).bind_task())
 
 
 # Server Event Part
@@ -488,6 +499,7 @@ class LoginEvent(ClientEvent, on_field="login"):
             "me",
             get="sub desc tags cred"
         )
+        BotReadyEvent.new(self.bot)
 
 
 class PublishEvent(ClientEvent, on_field="pub"):

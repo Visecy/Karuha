@@ -2,7 +2,7 @@ from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 from ..logger import logger
 from .drafty import DraftyExtend, Drafty, InlineType, ExtendType
-from .textchain import BaseText, PlainText, InlineCode, TextChain, Form, _ExtensionText, _Container
+from .textchain import BaseText, Mention, PlainText, InlineCode, TextChain, Form, _ExtensionText, _Container
 
 
 def _tp_weight(tp: str) -> int:
@@ -165,6 +165,13 @@ def CO_converter(text: str, span: Span) -> BaseText:
     return InlineCode(text=text[span.start:span.end])
 
 
+@converter("MN")
+def MN_converter(text: str, span: Span) -> BaseText:
+    if span.children:  # pragma: no cover
+        logger.warn(f"ignore children of span {span}")
+    return Mention(text=text[span.start:span.end], **(span.data or {}))
+
+
 @converter("FM")
 def FM_converter(text: str, span: Span) -> BaseText:
     content = _convert_spans(text, span.children, span.start, span.end)
@@ -190,6 +197,4 @@ def drafty2text(drafty: Drafty) -> BaseText:
     text = tree2text(drafty.txt, spans)
     for i in attachments:
         text += _ExtensionText.tp_map[i.tp](**i.data)
-    if isinstance(text, TextChain):
-        return text.take()
-    return text
+    return text.take() if isinstance(text, TextChain) else text

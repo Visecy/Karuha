@@ -1,16 +1,17 @@
 import re
 from collections import deque
 from inspect import Parameter
-from typing import Any, Dict, Optional, Tuple, TypeVar, Union
+import sys
+from typing import Any, Dict, Optional, Tuple, TypeVar, Union, cast
 
-from pydantic import BeforeValidator, computed_field
-from pydantic_core import core_schema, from_json
-from typing_extensions import Annotated, Self, get_args
+from pydantic import computed_field
+from pydantic_core import from_json
+from typing_extensions import Annotated, Self
 
 from ..bot import Bot
 from ..exception import KaruhaHandlerInvokerError
 from ..logger import logger
-from ..utils.invoker import HandlerInvokerModel
+from ..utils.invoker import HandlerInvokerModel, HandlerInvokerDependency
 from .convert import drafty2text
 from .drafty import Drafty
 from .textchain import BaseText, PlainText, Quote, TextChain
@@ -25,10 +26,16 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
     content: bytes
     raw_text: Union[str, Drafty]
     text: Union[str, BaseText]
+    quote: Optional[Quote]
 
     @classmethod
     def new(cls, bot: Bot, topic: str, user_id: str, seq_id: int, head: Dict[str, Any], content: bytes) -> Self:
         raw_text, text = cls.parse_content(content)
+        if isinstance(text, TextChain) and isinstance(text[0], Quote):
+            quote = cast(Quote, text[0])
+            text = text[1:].take()
+        else:
+            quote = None
         return cls(
             bot=bot,
             topic=topic,
@@ -37,7 +44,8 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
             head=head,
             content=content,
             raw_text=raw_text,
-            text=text
+            text=text,
+            quote=quote,
         )
     
     @staticmethod
@@ -54,7 +62,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
         try:
             raw_text = Drafty.model_validate(raw_text)
         except Exception:
-            logger.warning(f"unknown text format {raw_text!r}")
+            logger.warning(f"unknown text format {raw_text!r}", exc_info=sys.exc_info())
             raw_text = text = str(raw_text)
         else:
             try:
@@ -64,35 +72,23 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
                 text = raw_text.txt
         return raw_text, text
     
-    def get_dependency(self, param: Parameter) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         if param.name == "text":
             try:
-                return self.validate_dependency(param, self.text)
+                return self.validate_dependency(param, self.text, **kwds)
             except KaruhaHandlerInvokerError:
-                pass
-            return self.validate_dependency(param, self.plain_text)
+                if not isinstance(self.text, BaseText):
+                    raise
+            return self.validate_dependency(param, self.plain_text, **kwds)
         elif param.name == "raw_text":
             try:
-                return self.validate_dependency(param, self.raw_text)
+                return self.validate_dependency(param, self.raw_text, **kwds)
             except KaruhaHandlerInvokerError:
                 if not isinstance(self.raw_text, Drafty):
                     raise
-            return self.validate_dependency(param, self.raw_text.txt)
-        return super().get_dependency(param)
+            return self.validate_dependency(param, self.raw_text.txt, **kwds)
+        return super().get_dependency(param, **kwds)
     
-    def resolve_missing_dependencies(self, missing: Dict[Parameter, KaruhaHandlerInvokerError]) -> Dict[str, Any]:
-        dependencies = {}
-        still_missing = {}
-        for param, error in missing.items():
-            if param.annotation is not param.empty and is_message_extend_type(param.annotation):
-                val = self.validate_dependency(param, self)
-                dependencies[param.name] = val
-            else:
-                still_missing[param] = error
-        if still_missing:
-            dependencies.update(super().resolve_missing_dependencies(still_missing))
-        return dependencies
-
     @computed_field(repr=False)
     @property
     def plain_text(self) -> str:
@@ -106,13 +102,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
     @computed_field(repr=False)
     @property
     def session(self) -> "MessageSession":
-        return MessageSession(self.bot, self)
-
-    @computed_field(repr=False)
-    @property
-    def quote(self) -> Optional[Quote]:
-        if isinstance(self.text, TextChain) and isinstance(self.text[0], Quote):
-            return self.text[0]  # type: ignore
+        return MessageSession(self.bot, self).bind_task()
 
 
 from ..session import BaseSession
@@ -151,17 +141,13 @@ class MessageSession(BaseSession):
         return self._messages[-1]
 
 
-MESSAGE_EXTEND_TYPE_FLAG = object()
+class _HeadDependency(HandlerInvokerDependency):
+    __slots__ = []
 
-
-def is_message_extend_type(tp: Any) -> bool:
-    return MESSAGE_EXTEND_TYPE_FLAG in get_args(tp)
-
-
-def _head_getter(msg: Message, info: core_schema.ValidationInfo) -> Any:
-    assert info.context is not None
-    return msg.head.get(info.context["name"])
+    @classmethod
+    def resolve_dependency(cls, invoker: Message, param: Parameter, **kwds: Any) -> Any:
+        return invoker.head.get(param.name)
 
 
 T = TypeVar("T")
-Head = Annotated[T, BeforeValidator(_head_getter), MESSAGE_EXTEND_TYPE_FLAG]
+Head = Annotated[T, _HeadDependency]

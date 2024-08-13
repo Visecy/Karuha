@@ -1,8 +1,10 @@
+import re
 from typing import Any, Callable, Generic, Iterable, Optional, TypeVar, Union, overload
 from typing_extensions import ParamSpec
 
+from ..bot import Bot
 from ..text.message import Message
-from .rule import BaseRule, MessageRuleDispatcher
+from .rule import BaseRule, MessageRuleDispatcher, rule as build_rule
 from .collection import CommandCollection, get_collection
 from .command import FunctionCommand
 
@@ -44,24 +46,59 @@ def on_command(
 class _RuleDispatcherWrapper(MessageRuleDispatcher, Generic[P, R]):
     __slots__ = ["__wrapped__"]
 
-    def __init__(self, rule: BaseRule, func: Callable[P, R], *, once: bool = False) -> None:
-        super().__init__(rule, once=once)
+    def __init__(self, rule: BaseRule, func: Callable[P, R], *, once: bool = False, weights: float = 1.5) -> None:
+        super().__init__(rule, once=once, weights=weights)
         self.__wrapped__ = func
     
     def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:
         return self.__wrapped__(*args, **kwds)
     
-    def run(self, message: Message) -> Any:
+    def run(self, message: Message) -> R:
         return message.call_handler(self.__wrapped__)
 
 
+@overload
 def on_rule(
         rule: BaseRule,
         *,
-        once: bool = False
+        once: bool = False,
+        weights: float = 1.5,
+) -> Callable[[Callable[P, R]], _RuleDispatcherWrapper[P, R]]:
+    ...
+
+
+@overload
+def on_rule(
+        *,
+        once: bool = False,
+        weights: float = 1.5,
+        topic: Optional[str] = None,
+        seq_id: Optional[int] = None,
+        user_id: Optional[str] = None,
+        bot: Optional[Bot] = None,
+        keyword: Optional[str] = None,
+        regex: Optional[Union[str, re.Pattern]] = None,
+        mention: Optional[str] = None,
+        to_me: bool = False,
+        quote: Optional[Union[int, bool]] = None,
+) -> Callable[[Callable[P, R]], _RuleDispatcherWrapper[P, R]]:
+    ...
+
+
+def on_rule(
+        rule: Optional[BaseRule] = None,
+        *,
+        once: bool = False,
+        weights: float = 1.5,
+        **kwds: Any
 ) -> Callable[[Callable[P, R]], _RuleDispatcherWrapper[P, R]]:
     def wrapper(func: Callable[P, R], /) -> _RuleDispatcherWrapper[P, R]:
-        dispatcher = _RuleDispatcherWrapper(rule, func, once=once)
+        if rule is None:
+            r = build_rule(**kwds)
+        else:
+            assert not kwds, "rule and kwds cannot be used together"
+            r = rule
+        dispatcher = _RuleDispatcherWrapper(r, func, once=once, weights=weights)
         dispatcher.activate()
         return dispatcher
     return wrapper

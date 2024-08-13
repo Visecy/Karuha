@@ -4,6 +4,7 @@ from typing import Any, Optional, Union
 
 from typing_extensions import Self
 
+from ..bot import Bot
 from ..event.message import MessageDispatcher
 from ..text import Message
 
@@ -65,6 +66,8 @@ class AndRule(BaseRule):
         score = 1.0
         for rule in self.rules:
             score *= rule.match(message)
+            if score <= 0.0:
+                break
         return score
     
     def __iand__(self, other: BaseRule) -> Self:
@@ -84,8 +87,7 @@ class OrRule(BaseRule):
 
     def match(self, message: Message, /) -> float:
         scores = [0.0]
-        for rule in self.rules:
-            scores.append(rule.match(message))
+        scores.extend(rule.match(message) for rule in self.rules)
         return max(scores)
     
     def __ior__(self, other: BaseRule) -> Self:
@@ -104,7 +106,7 @@ class NotRule(BaseRule):
         self.rule = rule
 
     def match(self, message: Message, /) -> float:
-        return 1.0 - self.rule.match(message)
+        return max(1.0 - self.rule.match(message), 0.0)
 
 
 class TopicRule(BaseRule):
@@ -148,6 +150,20 @@ class UserIDRule(BaseRule):
 
     def match(self, message: Message, /) -> float:
         return 1.0 if message.user_id == self.user_id else 0.0
+
+
+class BotRule(BaseRule):
+    """
+    A rule that matches if the bot received the message matches the given bot.
+    """
+
+    __slots__ = ["bot"]
+
+    def __init__(self, bot: Bot) -> None:
+        self.bot = bot
+    
+    def match(self, message: Message, /) -> float:
+        return 1.0 if message.bot is self.bot else 0.0
 
 
 class KeywordRule(BaseRule):
@@ -220,9 +236,7 @@ class ToMeRule(BaseSingletonRule):
 
     @staticmethod
     def match(message: Message, /) -> float:
-        if message.topic.startswith("usr"):
-            return 1.0
-        return MentionMeRule.match(message)
+        return 1.0 if message.topic.startswith("usr") else MentionMeRule.match(message)
 
 
 class QuoteRule(BaseRule):
@@ -235,24 +249,39 @@ class QuoteRule(BaseRule):
     def __init__(self, /, mention: Optional[str] = None, reply: Optional[int] = None) -> None:
         self.mention = mention
         self.reply = reply
-    
+
     def match(self, message: Message, /) -> float:
-        if isinstance(message.text, str):
+        if isinstance(message.text, str):  # pragma: no cover
             return 0.0
         elif self.reply is not None:
             try:
                 reply_id = int(message.head["reply"])
-            except (KeyError, ValueError):
+            except (KeyError, ValueError):  # pragma: no cover
                 return 0.0
             if reply_id != self.reply:
                 return 0.0
         quote = message.quote
         if quote is None:
             return 0.0
-        if self.mention is not None:
-            if quote.mention is None or quote.mention.val != self.mention:
-                return 0.0
+        if self.mention is not None and (
+            quote.mention is None or quote.mention.val != self.mention
+        ):
+            return 0.0
         return 1.0
+
+
+class HasHead(BaseRule):
+    """
+    A rule that matches if the message has the given head.
+    """
+
+    __slots__ = ["name"]
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+    
+    def match(self, message: Message, /) -> float:
+        return 1.0 if self.name in message.head else 0.0
 
 
 class NoopRule(BaseSingletonRule):
@@ -287,11 +316,13 @@ def rule(
     topic: Optional[str] = None,
     seq_id: Optional[int] = None,
     user_id: Optional[str] = None,
+    bot: Optional[Bot] = None,
     keyword: Optional[str] = None,
     regex: Optional[Union[str, re.Pattern]] = None,
     mention: Optional[str] = None,
     to_me: bool = False,
-    quote: Optional[int] = None,
+    quote: Optional[Union[int, bool]] = None,
+    has_head: Optional[str] = None,
 ) -> BaseRule:
     """
     A decorator that creates a rule.
@@ -305,6 +336,8 @@ def rule(
 
     if user_id is not None:
         base &= UserIDRule(user_id)
+    if bot is not None:
+        base &= BotRule(bot)
     if keyword is not None:
         base &= KeywordRule(keyword)
     if regex is not None:
@@ -313,6 +346,11 @@ def rule(
         base &= MentionRule(mention)
     if to_me:
         base &= ToMeRule()
-    if quote is not None:
-        base &= QuoteRule(reply=quote)
+    if quote is not None and quote is not False:
+        if quote is True:
+            base &= QuoteRule()
+        else:
+            base &= QuoteRule(reply=quote)
+    if has_head is not None:
+        base &= HasHead(has_head)
     return base

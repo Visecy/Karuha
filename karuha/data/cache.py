@@ -4,16 +4,15 @@ from typing import (FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union,
 from pydantic import BaseModel
 from tinode_grpc import pb
 
-from ..event.sys import SystemStartEvent
-
-from ..event.message import MessageEvent
-
 from ..bot import Bot
 from ..event import on
+from ..text import Message
+from ..logger import logger
 from ..event.bot import MetaEvent
+from ..event.sys import SystemStartEvent
+from ..event.message import MessageEvent
 from ..store import (DataModel, LruStore, MemoryStore, MessageBoundDataModel, PrimaryKey, TopicBoundDataModel,
                      UserBoundDataModel)
-from ..text import Message
 from .meta import (BaseDesc, BaseSubscription, CommonDesc, Cred,
                    GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
                    UserCred, UserDesc, UserTags)
@@ -32,9 +31,11 @@ def _update_model(raw: Optional[T], model: Optional[T]) -> Optional[T]:  # noqa:
         return model
     elif model is None:
         return
+    model_data = model.model_dump(exclude_defaults=True, exclude_none=True)
     if type(raw) is not type(model) and issubclass(type(raw), type(model)):
-        return raw.model_copy(update=model.model_dump(exclude_defaults=True))
-    return model.model_copy()
+        return raw.model_copy(update=model_data)
+    raw_data = raw.model_dump(exclude_defaults=True, exclude_none=True)
+    return model.model_copy(update=dict(raw_data, **model_data))
 
 
 class UserCache(UserBoundDataModel):
@@ -74,6 +75,7 @@ def update_user_cache(
     tags: Optional[UserTags] = None,
     cred: Optional[UserCred] = None,
 ) -> None:
+    logger.debug(f"Updating user cache for {user_id}")
     if user_id not in user_cache:
         user_cache.add(UserCache(user_id=user_id, desc=desc, tags=tags, cred=cred))
         return
@@ -88,6 +90,7 @@ def update_group_cache(
     desc: Optional[Union[BaseDesc, TopicInfo]] = None,
     tags: Optional[List[str]] = None,
 ) -> None:
+    logger.debug(f"Updating group cache for {topic}")
     if topic not in group_cache:
         group_cache.add(GroupTopicCache(topic=topic, desc=desc, tags=tags))
         return
@@ -97,6 +100,7 @@ def update_group_cache(
 
 
 def update_p2p_cache(user1_id: str, user2_id: str, desc: P2PTopicDesc) -> None:
+    logger.debug(f"Updating p2p cache for {user1_id} and {user2_id}")
     user_pair = frozenset((user1_id, user2_id))
     if user_pair not in p2p_cache:
         p2p_cache.add(P2PTopicCache(user_pair=user_pair, desc=desc))
@@ -106,6 +110,7 @@ def update_p2p_cache(user1_id: str, user2_id: str, desc: P2PTopicDesc) -> None:
 
 
 def update_sub_cache(topic: str, user_id: str, sub: BaseSubscription) -> None:
+    logger.debug(f"Updating sub cache for {user_id} in {topic}")
     if (topic, user_id) not in subscription_cache:
         subscription_cache.add(SubscriptionCache(topic=topic, user_id=user_id, sub=sub))
         return
@@ -114,6 +119,7 @@ def update_sub_cache(topic: str, user_id: str, sub: BaseSubscription) -> None:
 
 
 def update_message_cache(message: Message) -> None:
+    logger.debug(f"Updating message cache for {message.seq_id} in {message.topic}")
     if (message.topic, message.seq_id) not in message_cache:
         message_cache.add(MessageCache(topic=message.topic, seq_id=message.seq_id, message=message))
         return
@@ -122,10 +128,7 @@ def update_message_cache(message: Message) -> None:
 
 
 def try_get_user_desc(bot: Bot, /, user_id: str) -> Optional[BaseDesc]:
-    if user_id == "me":
-        cache = user_cache.get(bot.uid)
-    else:
-        cache = user_cache.get(user_id)
+    cache = user_cache.get(bot.uid if user_id == "me" else user_id)
     return cache and cache.desc
 
 
@@ -293,7 +296,7 @@ def cache_p2p_topic(user_id: str, topic_id: str, desc: pb.TopicDesc) -> None:
     user = CommonDesc.from_meta(desc)
     sub = BaseSubscription.from_meta(desc)
     update_p2p_cache(user_id, topic_id, desc=topic)
-    update_user_cache(user_id, desc=user)
+    update_user_cache(topic_id, desc=user)
     update_sub_cache(topic_id, user_id, sub)
 
 
@@ -359,7 +362,7 @@ def handle_meta(event: MetaEvent) -> None:
     if meta.cred:
         assert topic == "me" or topic.startswith("usr")
         update_user_cache(
-            topic,
+            user if topic == "me" else topic,
             cred=[
                 {"method": c.method, "value": c.value, "done": c.done}
                 for c in meta.cred

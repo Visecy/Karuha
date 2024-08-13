@@ -4,6 +4,7 @@ branch = True
 omit =
     __main__.py
     karuha/plugin_server.py
+    karuha/utils/locks.py
 
 [report]
 # Regexes for lines to exclude from consideration
@@ -28,9 +29,6 @@ exclude_lines =
     # Don't complain aboud typing hint
     class (\w+)\(Protocol\):
     @(typing\.)?overload
-
-    # Don't complain about deprecated code
-    @(typing(_extensions)?\.)?deprecated(.*)
 
 
 ignore_errors = True

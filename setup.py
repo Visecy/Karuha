@@ -30,7 +30,7 @@ except OSError:
 
 try:
     with open("karuha/version.py") as f:
-        version = re.search(r"__version__\s*=\s*\"(.*)\"\n", f.read()).group(1) # type: ignore
+        version = re.search(r"__version__\s*=\s*\"(.*)\"\n", f.read())[1]  # type: ignore
 except Exception as e:
     raise ValueError("fail to read karuha version") from e
 

@@ -1,5 +1,5 @@
 from inspect import Parameter
-from typing import Any, Deque, Iterable, NoReturn, Tuple, Union
+from typing import Any, Iterable, NoReturn, Tuple, Union
 from pydantic import computed_field
 from typing_extensions import Self
 
@@ -32,14 +32,14 @@ class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
         data["argv"] = tuple(argv)
         return cls(**data)
     
-    def get_dependency(self, param: Parameter) -> Any:
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         if param.name == "argv":
             try:
-                return self.validate_dependency(param, self.argv)
+                return self.validate_dependency(param, self.argv, **kwds)
             except KaruhaHandlerInvokerError:
                 pass
             return self.validate_dependency(param, tuple(str(i) for i in self.argv))
-        return super().get_dependency(param)
+        return super().get_dependency(param, **kwds)
     
     @computed_field
     @property
@@ -55,18 +55,9 @@ class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
 class CommandSession(MessageSession):
     __slots__ = []
 
-    _messages: Deque["CommandMessage"]
-
     def cancel(self) -> NoReturn:
+        self.close()
         raise KaruhaCommandCanceledError
-    
-    @property
-    def messages(self) -> Tuple["CommandMessage", ...]:
-        return tuple(self._messages)
-    
-    @property
-    def last_message(self) -> "CommandMessage":
-        return self._messages[-1]
 
 
 from .command import AbstractCommand
