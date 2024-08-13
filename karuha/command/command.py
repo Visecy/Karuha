@@ -77,7 +77,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             logger.error(f"run command {self.name} failed", exc_info=True)
             CommandFailEvent.new(message.collection, self, sys.exc_info())  # type: ignore
             raise KaruhaCommandError(f"run command {self.name} failed", name=self.name, command=self) from e
-        except asyncio.CancelledError: # pragma: no cover
+        except asyncio.CancelledError:  # pragma: no cover
             logger.info(f"command {self.name} canceled")
             CommandCompleteEvent.new(message.collection, self, None, cancelled=True)
             raise

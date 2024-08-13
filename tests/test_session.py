@@ -4,7 +4,7 @@ from karuha.exception import KaruhaRuntimeError
 from karuha.session import BaseSession
 from karuha.command import MessageSession
 from karuha.event.message import get_message_lock
-from karuha.text import Drafty, PlainText, Button, File, Image, drafty2text
+from karuha.text import Drafty, Button, File, Image, drafty2text
 
 from .utils import AsyncBotTestCase, new_test_message, TEST_TIMEOUT
 
@@ -197,4 +197,3 @@ class TestSession(AsyncBotTestCase):
         task = asyncio.create_task(ss.leave())
         await self.reply_bot_leave()
         await self.wait_for(task)
-

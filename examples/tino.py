@@ -13,8 +13,8 @@ Or:
 """
 
 import asyncio
-from pathlib import Path
 import random
+from pathlib import Path
 from argparse import ArgumentParser
 
 from aiofiles import open as aio_open
