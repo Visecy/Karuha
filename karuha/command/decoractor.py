@@ -1,5 +1,6 @@
 from typing import Any, Callable, Generic, Iterable, Optional, TypeVar, Union, overload
 from typing_extensions import ParamSpec
+import asyncio
 
 from ..text.message import Message
 from .rule import BaseRule, MessageRuleDispatcher
@@ -51,8 +52,8 @@ class _RuleDispatcherWrapper(MessageRuleDispatcher, Generic[P, R]):
     def __call__(self, *args: P.args, **kwds: P.kwargs) -> R:
         return self.__wrapped__(*args, **kwds)
     
-    def run(self, message: Message) -> Any:
-        return message.call_handler(self.__wrapped__)
+    def run(self, message: Message) -> asyncio.Task:
+        return asyncio.create_task(message.call_handler(self.__wrapped__))
 
 
 def on_rule(
