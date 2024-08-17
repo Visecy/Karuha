@@ -199,7 +199,7 @@ class UserDesc(TimeInfo, CommonDesc):
 
 class BaseSubscription(BaseModel):
     acs: Access
-    private: Optional[Dict[str, Any]] = None
+    private: Optional[Json[Dict[str, Any]]] = None
     read: Optional[int] = None
     recv: Optional[int] = None
     clear: Optional[int] = None

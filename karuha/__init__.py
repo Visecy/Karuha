@@ -58,6 +58,7 @@ __all__ = [
     "get_user",
     "get_topic",
     "try_get_user",
+    "try_get_topic",
     # decorator
     "on",
     "on_event",

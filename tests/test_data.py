@@ -43,6 +43,14 @@ class TestData(AsyncBotTestCase):
         )
         with self.assertRaises(ValueError):
             AccessPermission.model_validate("NJRW")
+        self.assertEqual(
+            AccessPermission(
+                join=True,
+                read=True,
+                write=True,
+            ).model_dump(),
+            'JRW'
+        )
 
     def test_cache(self) -> None:
         base_desc = BaseDesc(
@@ -137,6 +145,7 @@ class TestData(AsyncBotTestCase):
                     read_id=70,
                     recv_id=70,
                     public=to_json({"fn": "Test Group"}),
+                    private=to_json({"note": "test note"}),
                     topic="grp_test_1",
                     touched_at=1708326545004,
                     seq_id=70,
