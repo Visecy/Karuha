@@ -20,8 +20,8 @@ class Server(BaseModel):
 
 class Bot(BaseModel):
     name: str = "chatbot"
-    schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
-    secret: str
+    schema_: Optional[Literal["basic", "token", "cookie"]] = Field(default=None, alias="schema")
+    secret: Optional[str] = None
     auto_subscribe_new_user: bool = False
 
 

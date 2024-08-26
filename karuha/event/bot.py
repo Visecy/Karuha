@@ -44,7 +44,8 @@ class BotInitEvent(BotEvent):
             self.bot.logger.error("failed to connect to server, restarting")
             self.bot.restart()
             return
-        
+        if not bot._needs_login:
+            return
         retry = bot.server.retry if bot.server is not None else 0
         for i in range(retry):
             try:

@@ -110,8 +110,8 @@ class Bot(object):
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
-        elif schema is None or secret is None:
-            raise ValueError("authentication scheme not defined")
+        # elif schema is None or secret is None:
+        #     raise ValueError("authentication scheme not defined")
         else:
             self.config = BotConfig(name=name, schema=schema, secret=secret)
         self.state = State.stopped
@@ -126,6 +126,7 @@ class Bot(object):
         self._tid_counter = 100
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
         self._loop_task_ref = lambda: None
+        self.user_id = None
 
     async def hello(self, /, lang: str = "EN") -> Tuple[str, Dict[str, Any]]:
         """
@@ -160,6 +161,123 @@ class Bot(object):
         ver = ctrl.params["ver"].decode()
         if build:
             self.logger.info(f"server: {build} {ver}")
+        return tid, decode_mapping(ctrl.params)
+    
+    async def account(self, user = 'new', scheme = 'basic', secret= b'', uname= None, password= None, do_login: bool = False, tags: str= None, fn= None, photo= None, private: str= None, note= None, trusted= None, auth= None, anon= None, cred= None, suspend= None) -> Tuple[str, Dict[str, Any]]:
+        """
+        
+        """
+        def parse_cred(cred):
+            result = None
+            if cred != None:
+                result = []
+                for c in cred.split(","):
+                    parts = c.split(":")
+                    result.append(pb.ClientCred(method=parts[0] if len(parts) > 0 else None,
+                        value=parts[1] if len(parts) > 1 else None,
+                        response=parts[2] if len(parts) > 2 else None))
+
+            return result
+        
+        # Parse trusted values: [staff,rm-verified].
+        def parse_trusted(trusted):
+            result = None
+            if trusted != None:
+                result = {}
+                for t in trusted.split(","):
+                    t = t.strip()
+                    if t.startswith("rm-"):
+                        result[t[3:]] = False
+                    else:
+                        result[t] = True
+
+            return result
+        
+        # Pack name, description, and avatar into a theCard.
+        def makeTheCard(fn, note, photofile):
+            import base64
+            import mimetypes
+            TINODE_DEL = '␡'
+            DELETE_MARKER = 'DEL!'
+            card = None
+
+            if (fn != None and fn.strip() != "") or photofile != None or note != None:
+                card = {}
+                if fn != None:
+                    fn = fn.strip()
+                    card['fn'] = TINODE_DEL if fn == DELETE_MARKER or fn == '' else fn
+
+                if note != None:
+                    note = note.strip()
+                    card['note'] = TINODE_DEL if note == DELETE_MARKER or note == '' else note
+
+                if photofile != None:
+                    if photofile == '' or photofile == DELETE_MARKER:
+                        # Delete the avatar.
+                        card['photo'] = {
+                            'data': TINODE_DEL
+                        }
+                    else:
+                        try:
+                            f = open(photofile, 'rb')
+                            # File extension is used as a file type
+                            mimetype = mimetypes.guess_type(photofile)
+                            if mimetype[0]:
+                                mimetype = mimetype[0].split("/")[1]
+                            else:
+                                mimetype = 'jpeg'
+                            data = base64.b64encode(f.read())
+                            # python3 fix.
+                            if type(data) is not str:
+                                data = data.decode()
+                            card['photo'] = {
+                                'data': data,
+                                'type': mimetype
+                            }
+                            f.close()
+                        except IOError as err:
+                            self.logger.error("Error opening '" + photofile + "':", err)
+
+            return card
+
+        # encode_to_bytes converts the 'src' to a byte array.
+        # An object/dictionary is first converted to json string then it's converted to bytes.
+        # A string is directly converted to bytes.
+        def encode_to_bytes(src):
+            import json
+            if src == None:
+                return None
+            if isinstance(src, str):
+                return ('"' + src + '"').encode()
+            return json.dumps(src).encode('utf-8')
+
+        tid = self._get_tid()
+
+        state = ('susp' if suspend else 'ok' ) if suspend != None else None
+
+        ctrl = await self.send_message(
+            tid,
+            acc=pb.ClientAcc(
+                id=tid, 
+                user_id=user, 
+                state=state,
+                scheme=scheme, 
+                secret=secret.encode('utf-8'), 
+                login=do_login, 
+                tags=tags.split(",") if tags else None,
+                desc=pb.SetDesc(
+                    default_acs=pb.DefaultAcsMode(auth=auth, anon=anon),
+                    public=encode_to_bytes(makeTheCard(fn, note, photo)), 
+                    private=encode_to_bytes(private), 
+                    trusted=encode_to_bytes(parse_trusted(trusted))),
+                cred=parse_cred(cred)
+            )
+        )
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
+            err_text = f"fail to create account: {ctrl.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
+
         return tid, decode_mapping(ctrl.params)
 
     async def login(self) -> Tuple[str, Dict[str, Any]]:
@@ -583,6 +701,16 @@ class Bot(object):
     async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
+    async def delete(
+        self,
+        what,
+        user,
+        seq = None,
+        hard = False,
+        cred = None
+    ):
+        pass
+        
     @overload
     async def send_message(
         self,
@@ -649,6 +777,7 @@ class Bot(object):
             raise ValueError("server not specified")
 
         self._prepare_loop_task()
+        self.initialize_event_callback(self)
         while self.state == State.running:
             self.logger.info(f"starting the bot {self.name}")
             async with self._run_context(server) as channel:
@@ -729,6 +858,10 @@ class Bot(object):
     @property
     def uid(self) -> str:
         return self.user_id
+    
+    @property
+    def _needs_login(self) -> bool:
+        return (self.config.schema_ != None) or (self.config.secret != None)
 
     def _get_tid(self) -> str:
         tid = str(self._tid_counter)
@@ -784,7 +917,6 @@ class Bot(object):
         old_server_config = self.server
         self.server = server_config
         try:
-            self.initialize_event_callback(self)
             yield channel
         except grpc.RpcError:
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
