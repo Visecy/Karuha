@@ -663,8 +663,6 @@ class Bot(object):
         run the bot
 
         NOTE: this method is deprecated, use karuha.run() instead
-        
-        :rtype: None
         """
         # synchronize with configuration
         try:
@@ -738,6 +736,7 @@ class Bot(object):
     @contextmanager
     def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
         tid = tid or self._get_tid()
+        assert tid not in self._wait_list, f"duplicated tid {tid}"
         future = asyncio.get_running_loop().create_future()
         self._wait_list[tid] = future
         try:
@@ -748,10 +747,9 @@ class Bot(object):
             assert self._wait_list.pop(tid, None) is future
 
     def _set_reply_message(self, tid: str, message: Any) -> None:
-        if tid in self._wait_list:
-            f = self._wait_list[tid]
-            if not f.done():
-                f.set_result(message)
+        f = self._wait_list.get(tid)
+        if f is not None and not f.done():
+            f.set_result(message)
 
     def _create_task(self, coro: Coroutine, /) -> asyncio.Task:
         task = asyncio.create_task(coro)
@@ -837,7 +835,7 @@ class Bot(object):
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
         return core_schema.no_info_plain_validator_function(
-            lambda x: x if isinstance(x, source_type) else Bot(x)
+            lambda x: x if isinstance(x, source_type) else cls(x)
         )
 
     def __repr__(self) -> str:

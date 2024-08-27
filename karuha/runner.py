@@ -1,8 +1,3 @@
-"""
-A simple Tinode chatbot framework
-"""
-
-
 import asyncio
 import contextlib
 import signal
@@ -97,10 +92,8 @@ async def async_run() -> None:
     
 
 def run() -> None:
-    try:
+    with contextlib.suppress(KeyboardInterrupt, asyncio.CancelledError):
         asyncio.run(async_run())
-    except (KeyboardInterrupt, asyncio.CancelledError):  # pragma: no cover
-        pass
 
 
 from .plugin_server import init_server
