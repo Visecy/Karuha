@@ -26,7 +26,7 @@ _aigc_cache: Dict[Tuple[str, int], Tuple[Optional[int], str, Any]] = {}
 
 async def parse_aigc_user_text(session: MessageSession, topic: str, message: Message) -> Tuple[Optional[int], str, Namespace]:
     aigc_parser = ArgumentParser(session, "aigc", description="Large language model interface commands. Use the reply function to add context to them.")
-    aigc_parser.add_argument("-m", "--model", type=str, help="指定用于对话的模型名称")
+    aigc_parser.add_argument("-m", "--model", type=str)
     aigc_parser.add_argument("-t", "--temperature", type=float, default=0.85)
     aigc_parser.add_argument("-s", "--seed", type=int, default=1234)
     aigc_parser.add_argument("-S", "--system-prompt")
