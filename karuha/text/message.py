@@ -67,7 +67,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
         else:
             try:
                 text = drafty2text(raw_text)
-            except Exception:
+            except Exception:  # pragma: no cover
                 logger.error(f"cannot decode drafty {raw_text!r}")
                 text = raw_text.txt
         return raw_text, text
@@ -77,7 +77,7 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
             try:
                 return self.validate_dependency(param, self.text, **kwds)
             except KaruhaHandlerInvokerError:
-                if not isinstance(self.text, BaseText):
+                if not isinstance(self.text, BaseText):  # pragma: no cover
                     raise
             return self.validate_dependency(param, self.plain_text, **kwds)
         elif param.name == "raw_text":

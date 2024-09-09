@@ -84,7 +84,7 @@ class NoopChannel(grpc_aio.Channel):
 
 
 class BotMock(Bot):
-    __slots__ = []
+    user_id = "usr"
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
         self.logger.debug(f"in: {message}")
@@ -151,17 +151,13 @@ class BotMock(Bot):
         self.confirm_message(sub_msg.sub.id)
     
     def get_latest_tid(self) -> str:
-        print(self._wait_list)
         assert len(self._wait_list) == 1
         return tuple(self._wait_list.keys())[0]
     
     def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
         if tid is None:
             tid = self.get_latest_tid()
-        if code < 200 or code >= 400:
-            text = "test error"
-        else:
-            text = "OK"
+        text = "test error" if code < 200 or code >= 400 else "OK"
         self._wait_list[tid].set_result(
             pb.ServerCtrl(
                 id=tid,
@@ -189,7 +185,6 @@ class BotMock(Bot):
 
 
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
-bot_mock.user_id = "usr"
 
 
 class EventCatcher(_EventCatcher[T_Event]):
@@ -206,7 +201,7 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.assertEqual(self.bot.state, State.stopped)
         try_add_bot(self.bot)
-        asyncio.create_task(async_run())
+        self._main_task = asyncio.create_task(async_run())
         await self.bot.wait_init()
     
     async def asyncTearDown(self) -> None:

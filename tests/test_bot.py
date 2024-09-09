@@ -8,6 +8,7 @@ from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
                               LoginEvent, MetaEvent, PresEvent, PublishEvent,
                               SubscribeEvent)
 from karuha.exception import KaruhaBotError
+from karuha.runner import remove_bot
 
 from .utils import TEST_TIMEOUT, AsyncBotTestCase, BotMock
 
@@ -152,3 +153,7 @@ class TestBot(AsyncBotTestCase):
         self.bot.restart()
         self.assertEqual(self.bot.state, State.restarting)
         await self.bot.wait_state(State.running)
+    
+    @classmethod
+    def tearDownClass(cls) -> None:
+        remove_bot(cls.bot)
