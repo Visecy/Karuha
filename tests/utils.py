@@ -11,7 +11,7 @@ from tinode_grpc import pb
 from typing_extensions import Self
 
 from karuha import async_run, try_add_bot
-from karuha.bot import Bot, State
+from karuha.bot import Bot, BotState
 from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
@@ -131,7 +131,7 @@ class BotMock(Bot):
             note_read=pb.ClientNote(topic=topic, seq_id=seq_id, what=pb.READ)
         )
 
-    async def wait_state(self, state: State, /, timeout: float = TEST_TIMEOUT) -> None:
+    async def wait_state(self, state: BotState, /, timeout: float = TEST_TIMEOUT) -> None:
         start = time()
         while self.state != state:
             await asyncio.sleep(0)
@@ -139,7 +139,7 @@ class BotMock(Bot):
                 raise TimeoutError(f"bot state has not changed to {state}")
 
     async def wait_init(self) -> None:
-        await self.wait_state(State.running)
+        await self.wait_state(BotState.running)
         hi_msg = await self.consum_message()
         assert hi_msg.hi
         self.confirm_message(hi_msg.hi.id, ver="0.22", build="mysql:v0.22.11")
@@ -175,7 +175,7 @@ class BotMock(Bot):
             raise ValueError("server not specified")
         
         self._prepare_loop_task()
-        while self.state == State.running:
+        while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
             async with self._run_context(server):
                 await run_forever()
@@ -199,13 +199,13 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     config = init_config(log_level="DEBUG")
 
     async def asyncSetUp(self) -> None:
-        self.assertEqual(self.bot.state, State.stopped)
+        self.assertEqual(self.bot.state, BotState.stopped)
         try_add_bot(self.bot)
         self._main_task = asyncio.create_task(async_run())
         await self.bot.wait_init()
     
     async def asyncTearDown(self) -> None:
-        self.assertEqual(self.bot.state, State.running)
+        self.assertEqual(self.bot.state, BotState.running)
         self.bot.cancel()
     
     catchEvent = EventCatcher

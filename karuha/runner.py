@@ -4,7 +4,7 @@ import signal
 from typing import Dict, List, MutableSequence, Optional, Awaitable
 
 from .config import get_config
-from .bot import Bot, State
+from .bot import Bot, BotState
 from .event.sys import SystemStartEvent, SystemStopEvent
 from .logger import logger
 
@@ -136,7 +136,7 @@ def try_add_bot(bot: Bot) -> bool:
     if bot.name in _bot_cache:
         return False
     _bot_cache[bot.name] = bot
-    if bot.state == State.stopped and _gathering_future is not None:
+    if bot.state == BotState.stopped and _gathering_future is not None:
         config = get_config()
         logger.debug(f"run bot {bot.config}")
         _gathering_future.add_coroutine(bot.async_run(config.server))
@@ -151,7 +151,7 @@ def add_bot(bot: Bot) -> None:
 def remove_bot(bot: Bot) -> None:
     if bot.name not in _bot_cache:
         raise ValueError(f"bot {bot.name} not found")
-    if bot.state == State.running:
+    if bot.state == BotState.running:
         bot.cancel()
     del _bot_cache[bot.name]
 

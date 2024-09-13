@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from datetime import datetime, timezone
 import platform
 import sys
@@ -29,7 +30,7 @@ from .version import APP_VERSION, LIB_VERSION
 from .utils.decode import decode_mapping, encode_mapping
 
 
-class State(IntEnum):
+class BotState(IntEnum):
     disabled = 0
     running = 1
     stopped = 2
@@ -114,14 +115,14 @@ class Bot(object):
             raise ValueError("authentication scheme not defined")
         else:
             self.config = BotConfig(name=name, schema=schema, secret=secret)
-        self.state = State.stopped
+        self.state = BotState.stopped
         self.logger = get_sub_logger(self.name)
         if log_level is not None:
             self.logger.setLevel(log_level)
         if server is not None and not isinstance(server, ServerConfig):
             server = ServerConfig.model_validate(server)
         self.server = server
-        self.token = None
+        self.token: Optional[str] = None
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
@@ -173,11 +174,11 @@ class Bot(object):
         schema, secret = self.config.schema_, self.config.secret
         try:
             if self.token is not None and self.token_expires > datetime.now(timezone.utc):
-                schema, secret = "token", self.token.encode("ascii")
+                schema, secret = "token", base64.b64decode(self.token.encode())
             elif schema == "cookie":
                 schema, secret = await read_auth_cookie(self.config.secret)
             else:
-                secret = secret.encode("ascii")
+                secret = secret.encode()
         except Exception as e:  # pragma: no cover
             err_text = f"fail to read auth secret: {e}"
             self.logger.error(err_text)
@@ -618,7 +619,7 @@ class Bot(object):
         :rtype: Optional[Message]
         """
 
-        if self.state != State.running:
+        if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds)  # type: ignore
         ret = None
@@ -649,7 +650,7 @@ class Bot(object):
             raise ValueError("server not specified")
 
         self._prepare_loop_task()
-        while self.state == State.running:
+        while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
             async with self._run_context(server) as channel:
                 stream = get_stream(channel)  # type: ignore
@@ -683,19 +684,19 @@ class Bot(object):
             raise KaruhaBotError("the connection was closed", bot=self) from None
 
     def cancel(self, cancel_loop: bool = True) -> None:
-        if self.state in [State.stopped, State.disabled]:
+        if self.state in [BotState.stopped, BotState.disabled]:
             return
-        self.state = State.stopped
+        self.state = BotState.stopped
         self.logger.info(f"canceling the bot {self.name}")
         loop_task = self._loop_task_ref()
         if cancel_loop and loop_task is not None:
             loop_task.cancel()
 
     def restart(self) -> None:
-        if self.state == State.disabled:
+        if self.state == BotState.disabled:
             raise KaruhaBotError(f"cannot restart disabled bot {self.name}", bot=self)
         loop_task = self._loop_task_ref()
-        self.state = State.restarting
+        self.state = BotState.restarting
         if loop_task is not None:
             self.logger.info(f"restarting the bot {self.name}")
             loop_task.cancel()
@@ -757,11 +758,11 @@ class Bot(object):
         return task
 
     def _prepare_loop_task(self) -> None:
-        if self.state == State.running:
+        if self.state == BotState.running:
             raise KaruhaBotError(f"rerun bot {self.name}", bot=self)
-        elif self.state != State.stopped:
+        elif self.state != BotState.stopped:
             raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
-        self.state = State.running
+        self.state = BotState.running
         self.queue = Queue()
         self._loop_task_ref = ref(asyncio.current_task())
 
@@ -788,9 +789,9 @@ class Bot(object):
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
             await asyncio.sleep(0.5)
         except asyncio.CancelledError:
-            if self.state == State.restarting:
+            if self.state == BotState.restarting:
                 # uncancel from Bot.restart()
-                self.state = State.running
+                self.state = BotState.running
             else:
                 self.cancel(cancel_loop=False)
                 raise
@@ -816,7 +817,7 @@ class Bot(object):
 
     async def _message_generator(self) -> AsyncGenerator[pb.ClientMsg, None]:  # pragma: no cover
         while True:
-            assert self.state == State.running
+            assert self.state == BotState.running
             msg: pb.ClientMsg = await self.queue.get()
             self.logger.debug(f"out: {msg}")
             yield msg
