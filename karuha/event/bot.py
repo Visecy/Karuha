@@ -489,12 +489,18 @@ class LoginEvent(ClientEvent, on_field="login"):
     __slots__ = []
 
     client_message: pb.ClientLogin
+    response_message: Optional[pb.ServerCtrl]
 
     id: ProxyPropertyType[str] = ClientMessageProperty()
     scheme: ProxyPropertyType[str] = ClientMessageProperty()
     secret: ProxyPropertyType[bytes] = ClientMessageProperty()
 
     async def __default_handler__(self) -> None:
+        if self.response_message is not None:
+            code = self.response_message.code
+            if code < 200 or code >= 400 and code != 409:
+                # login failed
+                return
         await self.bot.subscribe(
             "me",
             get="sub desc tags cred"

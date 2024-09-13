@@ -4,6 +4,7 @@ from tinode_grpc import pb
 
 from karuha.data.cache import UserCache, clear_cache, get_user_cred, get_user_tags, update_user_cache, user_cache
 from karuha.data.meta import AccessPermission, BaseDesc, Cred, UserDesc
+from karuha.data.sub import has_sub
 from karuha.data.topic import BaseTopic, Topic, TopicSub, get_topic, get_topic_list
 from karuha.data.user import BaseUser, User, get_user
 
@@ -319,3 +320,6 @@ class TestData(AsyncBotTestCase):
             AccessPermission(join=True, read=True, write=True, presence=True, sharing=True)
         )
         self.assertTrue(topic.is_chan)
+    
+    async def test_sub(self) -> None:
+        self.assertFalse(has_sub(self.bot, "test"))

@@ -22,6 +22,11 @@ class TestRunner(AsyncBotTestCase):
 
         config = get_config()
         config.bots += (self.bot1.config,)
+
+        @self.addCleanup
+        def _cleanup():
+            config.bots = config.bots[:-1]
+        
         bot1 = get_bot("test1")
         self.assertEqual(bot1.name, "test1")
         self.assertIsNot(bot1, self.bot1)

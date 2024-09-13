@@ -205,8 +205,10 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
         await self.bot.wait_init()
     
     async def asyncTearDown(self) -> None:
+        loop = asyncio.get_running_loop()
         self.assertEqual(self.bot.state, BotState.running)
         self.bot.cancel()
+        await loop.shutdown_asyncgens()
     
     catchEvent = EventCatcher
 

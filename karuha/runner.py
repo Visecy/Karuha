@@ -27,8 +27,16 @@ class DynamicGatheringFuture(asyncio.Future):
         self.children = children
         self.nfinished = 0
         self._cancel_requested = False
+        done_futs = []
+
         for child in children:
-            child.add_done_callback(self._done_callback)
+            if child.done():
+                done_futs.append(child)
+            else:
+                child.add_done_callback(self._done_callback)
+        
+        for child in done_futs:
+            self._done_callback(child)
 
     def add_task(self, fut: asyncio.Future) -> None:
         if self.done():  # pragma: no cover
@@ -51,8 +59,8 @@ class DynamicGatheringFuture(asyncio.Future):
             return False
         ret = False
         for child in self.children:
-            canceled = child.cancel(msg=msg) if msg is None else child.cancel()  # type: ignore
-            if canceled:
+            cancelled = child.cancel(msg=msg) if msg is not None else child.cancel()  # type: ignore
+            if cancelled:
                 ret = True
         if ret:
             # If any child tasks were actually cancelled, we should
@@ -74,7 +82,10 @@ class DynamicGatheringFuture(asyncio.Future):
             # Check if 'fut' is cancelled first, as
             # 'fut.exception()' will *raise* a CancelledError
             # instead of returning it.
-            exc = asyncio.CancelledError()
+            try:
+                exc = fut._make_cancelled_error()  # type: ignore
+            except AttributeError:
+                exc = asyncio.CancelledError()
             self.set_exception(exc)
             return
         else:
@@ -93,7 +104,9 @@ class DynamicGatheringFuture(asyncio.Future):
                     # Check if 'fut' is cancelled first, as
                     # 'fut.exception()' will *raise* a CancelledError
                     # instead of returning it.
-                    res = asyncio.CancelledError()
+                    res = asyncio.CancelledError(
+                        getattr(fut, "_cancel_message", '') or ''
+                    )
                 else:
                     res = fut.exception()
                     if res is None:
@@ -104,7 +117,11 @@ class DynamicGatheringFuture(asyncio.Future):
                 # If gather is being cancelled we must propagate the
                 # cancellation regardless of *return_exceptions* argument.
                 # See issue 32684.
-                self.set_exception(asyncio.CancelledError())
+                try:
+                    exc = fut._make_cancelled_error()  # type: ignore
+                except AttributeError:
+                    exc = asyncio.CancelledError()
+                self.set_exception(exc)
             else:
                 self.set_result(results)
 

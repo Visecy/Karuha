@@ -1,15 +1,15 @@
 import asyncio
 import base64
-from datetime import datetime, timezone
 import platform
 import sys
 from asyncio.queues import Queue
 from base64 import b64decode
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime, timezone
 from enum import IntEnum
-from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator, Iterable,
-                    List, Literal, Optional, Tuple, Union, overload)
+from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
+                    Iterable, List, Literal, Optional, Tuple, Union, overload)
 from weakref import WeakSet, ref
 
 import grpc
@@ -26,8 +26,8 @@ from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
-from .version import APP_VERSION, LIB_VERSION
 from .utils.decode import decode_mapping, encode_mapping
+from .version import APP_VERSION, LIB_VERSION
 
 
 class BotState(IntEnum):
@@ -35,6 +35,7 @@ class BotState(IntEnum):
     running = 1
     stopped = 2
     restarting = 3
+    cancelling = 4
 
 
 class Bot(object):
@@ -684,9 +685,9 @@ class Bot(object):
             raise KaruhaBotError("the connection was closed", bot=self) from None
 
     def cancel(self, cancel_loop: bool = True) -> None:
-        if self.state in [BotState.stopped, BotState.disabled]:
+        if self.state in [BotState.stopped, BotState.cancelling, BotState.disabled]:
             return
-        self.state = BotState.stopped
+        self.state = BotState.cancelling
         self.logger.info(f"canceling the bot {self.name}")
         loop_task = self._loop_task_ref()
         if cancel_loop and loop_task is not None:
@@ -792,7 +793,7 @@ class Bot(object):
             if self.state == BotState.restarting:
                 # uncancel from Bot.restart()
                 self.state = BotState.running
-            else:
+            elif self.state == BotState.running:
                 self.cancel(cancel_loop=False)
                 raise
         except:  # noqa: E722
@@ -806,6 +807,7 @@ class Bot(object):
                 self.logger.exception("error while finalizing event callback", exc_info=True)
             except asyncio.CancelledError:
                 pass
+            self.state = BotState.stopped
             self.server = old_server_config
 
             # clean up for restarting
