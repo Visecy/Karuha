@@ -45,13 +45,14 @@ class DynamicGatheringFuture(asyncio.Future):
             # warning.
             fut._log_destroy_pending = False  # type: ignore[attr-defined]
         self.add_task(fut)
-
-    def cancel(self) -> bool:  # pragma: no cover
+    
+    def cancel(self, msg=None) -> bool:  # pragma: no cover
         if self.done():
             return False
         ret = False
         for child in self.children:
-            if child.cancel():
+            canceled = child.cancel(msg=msg) if msg is None else child.cancel()  # type: ignore
+            if canceled:
                 ret = True
         if ret:
             # If any child tasks were actually cancelled, we should

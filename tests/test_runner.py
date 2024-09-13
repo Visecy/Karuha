@@ -1,6 +1,9 @@
 import asyncio
+
 from karuha.config import get_config
-from karuha.runner import DynamicGatheringFuture, add_bot, get_all_bots, get_bot, remove_bot, try_add_bot, try_get_bot, _get_running_loop
+from karuha.runner import (DynamicGatheringFuture, _get_running_loop, add_bot,
+                           get_all_bots, get_bot, remove_bot, try_add_bot,
+                           try_get_bot)
 
 from .utils import AsyncBotTestCase, BotMock
 
