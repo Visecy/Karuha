@@ -1,9 +1,9 @@
 import asyncio
 import base64
+import os
 import platform
 import sys
 from asyncio.queues import Queue
-from base64 import b64decode
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
@@ -14,6 +14,7 @@ from weakref import WeakSet, ref
 
 import grpc
 from aiofiles import open as aio_open
+from aiohttp import ClientError, ClientSession, FormData
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
 from pydantic import GetCoreSchemaHandler, TypeAdapter
@@ -162,6 +163,42 @@ class Bot(object):
         ver = ctrl.params["ver"].decode()
         if build:
             self.logger.info(f"server: {build} {ver}")
+        return tid, decode_mapping(ctrl.params)
+
+    async def account(
+            self,
+            user_id: str,
+            scheme: Optional[str] = None,
+            secret: Optional[bytes] = None,
+            *,
+            state: str = "ok",
+            do_login: bool = True,
+            desc: Optional[pb.SetDesc] = None,
+            tags: Iterable[str] = (),
+            cred: Iterable[pb.ClientCred] = (),
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        tid = self._get_tid()
+        ctrl = await self.send_message(
+            tid,
+            account=pb.ClientAcc(
+                id=tid,
+                user_id=user_id,
+                scheme=scheme,
+                secret=secret,
+                state=state,
+                login=do_login,
+                desc=desc,
+                tags=tags,
+                cred=cred,
+            ),
+            extra=extra
+        )
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
+            err_text = f"fail to update account: {ctrl.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         return tid, decode_mapping(ctrl.params)
 
     async def login(self) -> Tuple[str, Dict[str, Any]]:
@@ -340,10 +377,7 @@ class Bot(object):
         :return: tid and params
         :rtype: Tuple[str, Dict[str, Any]]
         """
-        if head is None:
-            head = {}
-        else:
-            head = encode_mapping(head)
+        head = {} if head is None else encode_mapping(head)
         if "auto" not in head:
             head["auto"] = b"true"
         tid = self._get_tid()
@@ -585,6 +619,59 @@ class Bot(object):
     async def note_read(self, /, topic: str, seq: int) -> None:
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
+    async def upload(
+            self,
+            path: Union[str, os.PathLike]
+    ) -> Tuple[str, Dict[str, Any]]:
+        tid = self._get_tid()
+
+        data = FormData()
+        data.add_field("id", tid)
+        try:
+            async with await self._get_http_session() as session:
+                self.logger.debug(f"upload request: {tid=} {path=} {session.headers=}")
+                with open(path, "rb") as f:
+                    data.add_field("file", f, filename=os.path.basename(path))
+                    async with session.post("/v0/file/u/", data=data) as resp:
+                        ret = await resp.text()
+            self.logger.debug(f"upload response: {ret}")
+            ctrl = from_json(ret)["ctrl"]
+        except OSError as e:
+            raise KaruhaBotError(f"fail to read file {path}", bot=self) from e
+        except ClientError as e:
+            self.logger.error(f"fail to upload file {path}: {e}", exc_info=True)
+            raise KaruhaBotError("http connection error", bot=self) from e
+        assert ctrl["id"] == tid, "tid mismatch"
+        params = ctrl["params"]
+        code = ctrl["code"]
+        if code < 200 or code >= 400:  # pragma: no cover
+            err_text = f"fail to upload file {path}: {ctrl['text']}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self, code=code)
+        return tid, params
+
+    async def download(
+            self,
+            url: str,
+            path: Union[str, os.PathLike]
+    ) -> None:
+        tid = self._get_tid()
+        try:
+            async with await self._get_http_session() as session:
+                self.logger.debug(f"download request: {tid=} {path=} {session.headers=}")
+                async with aio_open(path, "wb") as f:
+                    async with session.get(url, params={"id": tid}) as resp:
+                        resp.raise_for_status()
+                        async for chunk in resp.content.iter_any():
+                            await f.write(chunk)
+                    size = await f.tell()
+            self.logger.debug(f"download length: {size}")
+        except OSError as e:
+            raise KaruhaBotError(f"fail to write file {path}", bot=self) from e
+        except ClientError as e:
+            self.logger.error(f"fail to download file {path}: {e}", exc_info=True)
+            raise KaruhaBotError("http connection error", bot=self) from e
+
     @overload
     async def send_message(
         self,
@@ -734,6 +821,32 @@ class Bot(object):
         tid = str(self._tid_counter)
         self._tid_counter += 1
         return tid
+    
+    async def _get_http_session(self) -> ClientSession:
+        if self.server is None:
+            raise ValueError("server not specified")
+        web_host = self.server.web_host
+
+        try:
+            schema, secret = self.config.schema_, self.config.secret
+            if self.token is not None and self.token_expires > datetime.now(timezone.utc):
+                schema, secret = "token", self.token
+            elif schema == "cookie":
+                schema, secret_bytes = await read_auth_cookie(secret)
+                secret = base64.b64encode(secret_bytes).decode()
+            else:
+                secret = base64.b64encode(secret.encode()).decode()
+        except Exception as e:  # pragma: no cover
+            err_text = f"fail to read auth secret: {e}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self) from e
+
+        headers = {
+            'X-Tinode-APIKey': self.server.api_key,
+            "X-Tinode-Auth": f"{schema.title()} {secret}",
+            "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}",
+        }
+        return ClientSession(web_host, headers=headers)
 
     @contextmanager
     def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
@@ -848,6 +961,70 @@ class Bot(object):
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
 
+class AgentBot(Bot):
+    """
+    the bot that runs on the `extra.on_behalf_of` agent
+    """
+    __slots__ = ['on_behalf_of']
+
+    def __init__(self, *args: Any, on_behalf_of: str, **kwds: Any) -> None:
+        super().__init__(*args, **kwds)
+        self.on_behalf_of = on_behalf_of
+    
+    @classmethod
+    def from_bot(cls, bot: Bot, /, on_behalf_of: str) -> Self:
+        return cls(bot.config, bot.server, bot.logger.level, on_behalf_of=on_behalf_of)
+    
+    @overload
+    async def send_message(
+        self,
+        wait_tid: str,
+        /,
+        *,
+        extra: Optional[pb.ClientExtra] = None,
+        **kwds: Optional[Message],
+    ) -> Message: ...
+
+    @overload
+    async def send_message(
+        self,
+        wait_tid: None = None,
+        /,
+        *,
+        extra: Optional[pb.ClientExtra] = None,
+        **kwds: Optional[Message],
+    ) -> None: ...
+
+    async def send_message(
+            self,
+            wait_tid: Optional[str] = None,
+            /, *,
+            extra: Optional[pb.ClientExtra] = None,
+            **kwds: Optional[Message]
+    ) -> Optional[Message]:
+        """set messages to Tinode server
+
+        :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
+        :type wait_tid: Optional[str], optional
+        :param extra: extra fields, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :return: message which has the same tid
+        :rtype: Optional[Message]
+        """
+        exclude_msg = {"hi", "login"}
+        keys = set(kwds)
+        if exclude_keys := keys & exclude_msg:
+            if len(exclude_keys) != len(keys):
+                raise KaruhaBotError("cannot mix message types", bot=self)
+        elif extra is None:
+            extra = pb.ClientExtra(on_behalf_of=self.on_behalf_of)
+        elif not extra.on_behalf_of:
+            extra.on_behalf_of = self.on_behalf_of
+        elif extra.on_behalf_of != self.on_behalf_of:
+            raise KaruhaBotError(f"on_behalf_of mismatch: {extra.on_behalf_of} != {self.on_behalf_of}", bot=self)
+        return await super().send_message(wait_tid, extra=extra, **kwds)
+
+
 def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:  # pragma: no cover
     return channel.stream_stream(
         '/pbx.Node/MessageLoop',
@@ -856,16 +1033,16 @@ def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallab
     )
 
 
-async def read_auth_cookie(cookie_file_name) -> Union[Tuple[str, bytes], Tuple[None, None]]:
+async def read_auth_cookie(cookie_file_name: Union[str, os.PathLike]) -> Tuple[str, bytes]:
     """Read authentication token from a file"""
     async with aio_open(cookie_file_name, 'r') as cookie:
         params = from_json(await cookie.read())
     schema = params.get("schema")
     secret = params.get('secret')
     if schema is None or secret is None:
-        return None, None
+        raise ValueError("invalid cookie file")
     if schema == 'token':
-        secret = b64decode(secret)
+        secret = base64.b64decode(secret)
     else:
         secret = secret.encode('utf-8')
     return schema, secret

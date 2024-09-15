@@ -178,6 +178,10 @@ def get_all_bots() -> List[Bot]:
     return list(_bot_cache.values())
 
 
+def cancel_all_bots() -> bool:
+    return False if _gathering_future is None else _gathering_future.cancel()
+
+
 def _get_running_loop() -> asyncio.AbstractEventLoop:
     if _gathering_future is None:  # pragma: no cover
         raise RuntimeError("no running loop")

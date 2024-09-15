@@ -10,7 +10,7 @@ from grpc import aio as grpc_aio
 from tinode_grpc import pb
 from typing_extensions import Self
 
-from karuha import async_run, try_add_bot
+from karuha import async_run, try_add_bot, cancel_all_bots
 from karuha.bot import Bot, BotState
 from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
@@ -205,10 +205,12 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
         await self.bot.wait_init()
     
     async def asyncTearDown(self) -> None:
-        loop = asyncio.get_running_loop()
         self.assertEqual(self.bot.state, BotState.running)
-        self.bot.cancel()
-        await loop.shutdown_asyncgens()
+        cancel_all_bots()
+        try:
+            await self.wait_for(self._main_task)
+        except asyncio.CancelledError:
+            pass
     
     catchEvent = EventCatcher
 

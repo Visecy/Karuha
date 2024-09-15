@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Iterable, Literal, Optional, Tuple, Union
-from pydantic import AnyUrl, BaseModel, Field, PrivateAttr, ValidationError, field_validator
+from pydantic import AnyUrl, BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator
 from typing_extensions import Annotated
 
 from .logger import logger, Level
@@ -8,7 +8,7 @@ from .logger import logger, Level
 
 class Server(BaseModel):
     host: Annotated[str, AnyUrl] = "localhost:16060"
-    web_host: Annotated[str, AnyUrl] = "localhost:6060"
+    web_host: Annotated[str, HttpUrl] = "http://localhost:6060"
     api_key: str = "AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K"
     ssl: bool = False
     ssl_host: Optional[str] = None
@@ -74,7 +74,7 @@ def load_config(
         with open(path, "r", encoding=encoding) as f:
             config = Config.model_validate_json(f.read())
     except OSError:
-        logger.warn(f"failed to load file '{path}'", exc_info=True)
+        logger.warning(f"failed to load file '{path}'", exc_info=True)
         config = Config(_path=path)  # type: ignore
         if auto_create:
             config.save(path, encoding=encoding, ignore_error=True)
@@ -90,16 +90,19 @@ def load_config(
 
 
 def init_config(
-    server: Union[dict, Server] = Server(),
+    server: Union[dict, Server, Config] = Server(),
     bots: Optional[Iterable[Union[dict, Bot]]] = None,
     log_level: Level = "INFO"
 ) -> Config:
     global _config
-    _config = Config(
-        server=server,  # type: ignore
-        bots=bots or (),  # type: ignore
-        log_level=log_level
-    )
+    if isinstance(server, Config):
+        _config = server
+    else:
+        _config = Config(
+            server=server,  # type: ignore
+            bots=bots or (),  # type: ignore
+            log_level=log_level
+        )
     return _config
 
 
