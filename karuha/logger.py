@@ -1,6 +1,6 @@
 import logging
-from logging import LogRecord
 import os
+from logging import LogRecord
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Union

@@ -16,7 +16,7 @@ def encode_mapping(data: Mapping[str, Any]) -> Dict[str, bytes]:
 
 
 def decode_mapping(data: Mapping[str, bytes]) -> Dict[str, Any]:
-    return {k: from_json(v) for k, v in data.items()}
+    return {k: from_json(v) for k, v in data.items() if v}
 
 
 def msg2dict(msg: Message) -> Dict[str, Any]:

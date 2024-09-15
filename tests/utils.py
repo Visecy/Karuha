@@ -11,7 +11,7 @@ from tinode_grpc import pb
 from typing_extensions import Self
 
 from karuha import async_run, try_add_bot
-from karuha.bot import Bot, State
+from karuha.bot import Bot, BotState
 from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
@@ -84,7 +84,7 @@ class NoopChannel(grpc_aio.Channel):
 
 
 class BotMock(Bot):
-    __slots__ = []
+    user_id = "usr"
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
         self.logger.debug(f"in: {message}")
@@ -131,7 +131,7 @@ class BotMock(Bot):
             note_read=pb.ClientNote(topic=topic, seq_id=seq_id, what=pb.READ)
         )
 
-    async def wait_state(self, state: State, /, timeout: float = TEST_TIMEOUT) -> None:
+    async def wait_state(self, state: BotState, /, timeout: float = TEST_TIMEOUT) -> None:
         start = time()
         while self.state != state:
             await asyncio.sleep(0)
@@ -139,7 +139,7 @@ class BotMock(Bot):
                 raise TimeoutError(f"bot state has not changed to {state}")
 
     async def wait_init(self) -> None:
-        await self.wait_state(State.running)
+        await self.wait_state(BotState.running)
         hi_msg = await self.consum_message()
         assert hi_msg.hi
         self.confirm_message(hi_msg.hi.id, ver="0.22", build="mysql:v0.22.11")
@@ -151,17 +151,13 @@ class BotMock(Bot):
         self.confirm_message(sub_msg.sub.id)
     
     def get_latest_tid(self) -> str:
-        print(self._wait_list)
         assert len(self._wait_list) == 1
         return tuple(self._wait_list.keys())[0]
     
     def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
         if tid is None:
             tid = self.get_latest_tid()
-        if code < 200 or code >= 400:
-            text = "test error"
-        else:
-            text = "OK"
+        text = "test error" if code < 200 or code >= 400 else "OK"
         self._wait_list[tid].set_result(
             pb.ServerCtrl(
                 id=tid,
@@ -179,7 +175,7 @@ class BotMock(Bot):
             raise ValueError("server not specified")
         
         self._prepare_loop_task()
-        while self.state == State.running:
+        while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
             async with self._run_context(server):
                 await run_forever()
@@ -189,7 +185,6 @@ class BotMock(Bot):
 
 
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
-bot_mock.user_id = "usr"
 
 
 class EventCatcher(_EventCatcher[T_Event]):
@@ -204,14 +199,16 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     config = init_config(log_level="DEBUG")
 
     async def asyncSetUp(self) -> None:
-        self.assertEqual(self.bot.state, State.stopped)
+        self.assertEqual(self.bot.state, BotState.stopped)
         try_add_bot(self.bot)
-        asyncio.create_task(async_run())
+        self._main_task = asyncio.create_task(async_run())
         await self.bot.wait_init()
     
     async def asyncTearDown(self) -> None:
-        self.assertEqual(self.bot.state, State.running)
+        loop = asyncio.get_running_loop()
+        self.assertEqual(self.bot.state, BotState.running)
         self.bot.cancel()
+        await loop.shutdown_asyncgens()
     
     catchEvent = EventCatcher
 

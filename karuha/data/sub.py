@@ -30,7 +30,7 @@ async def ensure_sub(bot: Bot, topic: str) -> bool:
 
 
 def reset_sub(bot: Bot) -> None:
-    _subscriptions[bot.uid].clear()
+    del _subscriptions[bot.uid]
 
 
 @on(SubscribeEvent)
@@ -49,4 +49,5 @@ def handle_leave(event: LeaveEvent) -> None:
 
 @on(BotFinishEvent)
 def handle_bot_stop(event: BotFinishEvent) -> None:
-    reset_sub(event.bot)
+    if hasattr(event.bot, "user_id"):
+        reset_sub(event.bot)

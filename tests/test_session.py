@@ -12,13 +12,13 @@ from .utils import AsyncBotTestCase, new_test_message, TEST_TIMEOUT
 class TestSession(AsyncBotTestCase):
     async def test_init(self) -> None:
         async def session_task() -> BaseSession:
-            async with BaseSession(self.bot, "test") as ss:
+            async with BaseSession(self.bot, "test_session") as ss:
                 self.assertFalse(ss.closed)
             return ss
         task = asyncio.create_task(session_task())
         msg = await self.bot.consum_message()
         self.assertTrue(msg.HasField("sub"))
-        self.assertEqual(msg.sub.topic, "test")
+        self.assertEqual(msg.sub.topic, "test_session")
         self.bot.confirm_message(msg.sub.id)
         ss = await self.wait_for(task)
         self.assertTrue(ss.closed)

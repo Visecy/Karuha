@@ -165,10 +165,11 @@ disabled.*
 
 # vscode config
 .vscode/
+.VSCodeCounter/
 
 # Karuha data file
 .bot/
 config.json
 
-# tinode
+# tinode cli
 .tn-cli-cookie

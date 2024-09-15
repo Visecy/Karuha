@@ -2,12 +2,13 @@ import asyncio
 
 from tinode_grpc import pb
 
-from karuha.bot import State
+from karuha.bot import BotState
 from karuha.config import Bot as BotConfig, Server
 from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
                               LoginEvent, MetaEvent, PresEvent, PublishEvent,
                               SubscribeEvent)
 from karuha.exception import KaruhaBotError
+from karuha.runner import remove_bot
 
 from .utils import TEST_TIMEOUT, AsyncBotTestCase, BotMock
 
@@ -25,7 +26,7 @@ class TestBot(AsyncBotTestCase):
             Server()
         )
         self.assertTrue(self.bot.queue.empty())
-        self.assertEqual(self.bot.state, State.running)
+        self.assertEqual(self.bot.state, BotState.running)
 
     async def test_server_message(self) -> None:
         with self.catchEvent(DataEvent) as catcher:
@@ -150,5 +151,9 @@ class TestBot(AsyncBotTestCase):
         
     async def test_restart(self) -> None:
         self.bot.restart()
-        self.assertEqual(self.bot.state, State.restarting)
-        await self.bot.wait_state(State.running)
+        self.assertEqual(self.bot.state, BotState.restarting)
+        await self.bot.wait_state(BotState.running)
+    
+    @classmethod
+    def tearDownClass(cls) -> None:
+        remove_bot(cls.bot)
