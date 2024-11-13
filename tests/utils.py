@@ -2,27 +2,29 @@ import asyncio
 import json
 from time import time
 from types import coroutine
-from typing import Any, Awaitable, Dict, Generator, Optional
-from unittest import IsolatedAsyncioTestCase
+from typing import Any, Awaitable, ClassVar, Dict, Generator, Optional, TypeVar
+from unittest import IsolatedAsyncioTestCase, SkipTest
 
 from grpc import ChannelConnectivity
 from grpc import aio as grpc_aio
 from tinode_grpc import pb
 from typing_extensions import Self
 
-from karuha import async_run, try_add_bot, cancel_all_bots
+from karuha import Config, async_run, get_bot, try_add_bot, cancel_all_bots, reset
 from karuha.bot import Bot, BotState
 from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
-from karuha.config import init_config
-from karuha.store import T
+from karuha.config import init_config, load_config
+from karuha.event.bot import BotReadyEvent
 from karuha.text.message import Message
 from karuha.utils.event_catcher import T_Event
 from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
 TEST_TIMEOUT = 3
+
+T = TypeVar("T")
 
 
 @coroutine
@@ -196,7 +198,12 @@ class EventCatcher(_EventCatcher[T_Event]):
 
 class AsyncBotTestCase(IsolatedAsyncioTestCase):
     bot = bot_mock
-    config = init_config(log_level="DEBUG")
+    config: ClassVar[Config]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        reset()
+        cls.config = init_config(log_level="DEBUG")
 
     async def asyncSetUp(self) -> None:
         self.assertEqual(self.bot.state, BotState.stopped)
@@ -241,6 +248,47 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
         return await asyncio.wait_for(future, timeout)
 
+
+class AsyncBotClientTestCase(IsolatedAsyncioTestCase):
+    config_path = "config.json"
+    bot_name = "chatbot"
+    auto_login: ClassVar[bool] = True
+    bot: ClassVar[Bot]
+
+    __unittest_skip__ = False
+    __unittest_skip_why__ = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        try:
+            cls.config = load_config(cls.config_path, auto_create=False)
+            cls.bot = get_bot(cls.bot_name)
+        except Exception:
+            cls.__unittest_skip__ = True
+            cls.__unittest_skip_why__ = "not bot config found"
+            raise SkipTest(cls.__unittest_skip_why__) from None
+        cls.bot.config.auto_login = cls.auto_login
+    
+    async def asyncSetUp(self) -> None:
+        self.assertEqual(self.bot.state, BotState.stopped)
+        try_add_bot(self.bot)
+        self._main_task = asyncio.create_task(async_run())
+        with EventCatcher(BotReadyEvent) as catcher:
+            await catcher.catch_event()
+    
+    async def asyncTearDown(self) -> None:
+        self.assertEqual(self.bot.state, BotState.running)
+        cancel_all_bots()
+        try:
+            await self.wait_for(self._main_task)
+        except asyncio.CancelledError:
+            pass
+    
+    catchEvent = EventCatcher
+
+    async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
+        return await asyncio.wait_for(future, timeout)
+    
 
 def new_test_message(content: bytes = b"\"test\"") -> Message:
     return Message.new(

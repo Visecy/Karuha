@@ -51,16 +51,17 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
-        "typing_extensions>=4.0",
+        "typing_extensions>=4.9",
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
         "pydantic>2.0",
-        "aiofiles"
+        "aiohttp>=3.7",
+        "aiofiles>=23.1"
     ],
     extras_require={
-        "image": ["pillow"],
+        "image": ["pillow>=10.0"],
         "data": ["greenback"],
-        "all": ["pillow", "greenback"],
+        "all": ["pillow>=10.0", "greenback"],
     },
 
     classifiers=[
@@ -72,6 +73,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Communications :: Chat",
     ]

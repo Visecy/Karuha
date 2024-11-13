@@ -1,26 +1,55 @@
 import asyncio
+import mimetypes
 import os
 import re
-from typing import Any, Dict, List, NoReturn, Optional, Union, overload
+import weakref
+from functools import partialmethod
+from typing import (Any, Dict, Iterable, List, NoReturn, Optional, Union,
+                    overload)
+
+from aiofiles.ospath import getsize
 from tinode_grpc import pb
 from typing_extensions import Self
 
 import karuha
+
 from .bot import Bot
 from .exception import KaruhaRuntimeError
 
 
 class BaseSession(object):
+    """Represents a session for interacting with a bot on a specific topic.
+
+    This class manages the communication between the bot and the user,
+    allowing for sending messages, handling attachments,
+    and managing subscriptions to topics.
+    """
     __slots__ = ["bot", "topic", "_task", "_closed"]
 
     def __init__(self, /, bot: Bot, topic: str) -> None:
+        """Initializes the BaseSession with a bot and a topic.
+
+        :param bot: the bot instance to interact with
+        :type bot: Bot
+        :param topic: the topic to send messages to
+        :type topic: str
+        """
         self.bot = bot
         self.topic = topic
         self._closed = False
         self._task = None
-    
+
     def bind_task(self, task: Optional[asyncio.Task] = None) -> Self:
+        """Binds an asyncio task to the session.
+
+        :param task: the task to bind; If None, the current task is used, defaults to None
+        :type task: Optional[asyncio.Task], optional
+        :return: the current session instance
+        :rtype: Self
+        """
         self._task = task or asyncio.current_task()
+        if self._task is not None:
+            self._task.add_done_callback(lambda _: self.close())
         return self
 
     async def send(
@@ -30,8 +59,25 @@ class BaseSession(object):
             head: Optional[Dict[str, Any]] = None,
             timeout: Optional[float] = None,
             topic: Optional[str] = None,
-            replace: Optional[int] = None
+            replace: Optional[int] = None,
+            attachments: Optional[Iterable[str]] = None
     ) -> Optional[int]:
+        """Send a message to the specified topic.
+        
+        :param text: the text or Drafty model to send
+        :type text: Union[str, dict, "Drafty", "BaseText"]
+        :param head: additional metadata to include in the message, defaults to None
+        :type head: Optional[Dict[str, Any]], optional
+        :param timeout: the timeout in seconds for sending the message, defaults to None
+        :type timeout: Optional[float], optional
+        :param topic: the topic to send the message to, defaults to None
+        :type topic: Optional[str], optional
+        :param replace: the message ID to replace, defaults to None
+        :type replace: Optional[int], optional
+        :param attachments: the list of attachment URLs to include in the message, defaults to None
+        :type attachments: Optional[Iterable[str]], optional
+        :return: the message ID if successful, None otherwise
+        :rtype: Optional[int]"""
         topic = topic or self.topic
         await self.subscribe(topic)
         if replace is not None:
@@ -46,42 +92,66 @@ class BaseSession(object):
             head = head or {}
             head["mime"] = "text/x-drafty"
         _, params = await asyncio.wait_for(
-            self.bot.publish(topic, text, head=head),
-            timeout
+            self.bot.publish(
+                topic, text, head=head,
+                extra=pb.ClientExtra(attachments=attachments) if attachments else None
+            ),
+            timeout,
         )
         return params.get("seq")
 
     send_text = send
 
-    async def send_file(
+    async def send_attachment(
             self,
             path: Union[str, os.PathLike],
             /, *,
             name: Optional[str] = None,
             mime: Optional[str] = None,
+            attachment_cls_name: str = "File",
+            force_upload: bool = False,
             **kwds: Any
     ) -> Optional[int]:
+        """Send an attachment to the specified topic.
+        
+        :param path: the path to the file to send
+        :type path: Union[str, os.PathLike]
+        :param name: the name of the file, defaults to None
+        :type name: Optional[str], optional
+        :param mime: the MIME type of the file, defaults to None
+        :type mime: Optional[str], optional
+        :param attachment_cls_name: the name of the attachment class to use, defaults to "File"
+        :type attachment_cls_name: str, optional
+        :param force_upload: force upload even if the file size is below the threshold, defaults to False
+        :type force_upload: bool, optional
+        :return: the message ID if successful, None otherwise
+        :rtype: Optional[int]
+        """
+        self._ensure_status()
+        attachment_cls = getattr(textchain, attachment_cls_name, None)
+        if attachment_cls is None:
+            raise KaruhaRuntimeError("unknown attachment type name")
+        elif not issubclass(attachment_cls, _Attachment):
+            raise KaruhaRuntimeError("unknown attachment type")
+        size = await getsize(path)
+        if force_upload or size < self.bot.config.file_size_threshold:
+            return await self.send(
+                await attachment_cls.from_file(
+                    path, name=name, mime=mime
+                ),
+                **kwds
+            )
+        _, upload_params = await self.bot.upload(path)
+        url = upload_params["url"]
+        mime = mime or mimetypes.guess_type(path)[0]
         return await self.send(
-            await File.from_file(
-                path, name=name, mime=mime
-            ),
+            attachment_cls.from_url(url, name=name, mime=mime),
+            attachments=[url],
             **kwds
         )
 
-    async def send_image(
-            self,
-            path: Union[str, os.PathLike],
-            /, *,
-            name: Optional[str] = None,
-            mime: Optional[str] = None,
-            **kwds: Any
-    ) -> Optional[int]:
-        return await self.send(
-            await Image.from_file(
-                path, name=name, mime=mime
-            ),
-            **kwds
-        )
+    send_file = partialmethod(send_attachment, attachment_cls_name="File")
+    send_image = partialmethod(send_attachment, attachment_cls_name="Image")
 
     async def wait_reply(
             self,
@@ -90,6 +160,19 @@ class BaseSession(object):
             pattern: Optional[re.Pattern] = None,
             priority: float = 1.2
     ) -> "Message":
+        """Wait for a reply from the specified topic.
+        
+        :param topic: the topic to wait for, defaults to None
+        :type topic: Optional[str], optional
+        :param user_id: the user ID to wait for, defaults to None
+        :type user_id: Optional[str], optional
+        :param pattern: the pattern to match, defaults to None
+        :type pattern: Optional[re.Pattern], optional
+        :param priority: the priorityof the message, defaults to 1.2
+        :type priority: float, optional
+        :return: the message
+        :rtype: "Message"
+        """
         self._ensure_status()
         loop = asyncio.get_running_loop()
         dispatcher = SessionDispatcher(
@@ -109,6 +192,18 @@ class BaseSession(object):
         topic: Optional[str] = None,
         **kwds: Any,
     ) -> int:
+        """Send a form to the specified topic.
+        
+        :param title: the title of the form
+        :type title: Union[str, "BaseText"]
+        :param button: the buttons to include in the form
+        :type button: Union[str, "Button"], optional
+        :param topic: the topic to send the form to, defaults to None
+        :type topic: Optional[str], optional
+        :return: the message ID if successful, None otherwise
+        :rtype: int
+        """
+        self._ensure_status()
         chain = TextChain(
             Bold(content=PlainText(title)) if isinstance(title, str) else title
         )
@@ -133,7 +228,7 @@ class BaseSession(object):
                 raise KaruhaRuntimeError("failed to fetch message id")
 
             loop = asyncio.get_running_loop()
-            dispatcher = ButtonReplyDispatcher(
+            dispatcher = _ButtonReplyDispatcher(
                 self,
                 loop.create_future(),
                 seq_id=seq_id,
@@ -144,15 +239,28 @@ class BaseSession(object):
             resp = await dispatcher.wait()
         except:  # noqa: E722  # pragma: no cover
             # The dispatcher will automatically deactivate after receiving a message,
-            # so you only need to actively deactivate it when an exception occurs
+            # so we only need to actively deactivate it when an exception occurs
             dispatcher.deactivate()
             raise
         return pred_resp.index(resp)
 
     async def confirm(self, title: Union[str, "BaseText"], **kwds: Any) -> bool:
+        """A convenience method to send a form and wait for a reply.
+        
+        :param title: the title of the form
+        :type title: Union[str, "BaseText"]
+        :return: True if the user selects "Yes", False otherwise
+        :rtype: bool
+        """
         return not await self.send_form(title, "Yes", "No", **kwds)
 
     async def finish(self, text: Union[str, dict, "Drafty", "BaseText"], /, **kwds: Any) -> NoReturn:
+        """Finish the session and send a message to the user.
+        
+        :param text: the message to send
+        :type text: Union[str, dict, "Drafty", "BaseText"]
+        :raises KaruhaRuntimeError: if the session is not active
+        """
         await self.send(text, **kwds)
         self.cancel()
 
@@ -164,6 +272,15 @@ class BaseSession(object):
         get: Union[pb.GetQuery, str, None] = "desc sub",
         **kwds: Any
     ) -> None:
+        """Subscribe to the specified topic.
+        
+        :param topic: the topic to subscribe to, defaults to None
+        :type topic: Optional[str], optional
+        :param force: whether to force the subscription, defaults to False
+        :type force: bool, optional
+        :param get: the query to use, defaults to "desc sub
+        :type get: Union[pb.GetQuery, str, None], optional
+        """
         self._ensure_status()
         topic = topic or self.topic
         if karuha.data.has_sub(self.bot, topic) and not force:
@@ -171,15 +288,42 @@ class BaseSession(object):
         await self.bot.subscribe(topic, get=get, **kwds)
 
     async def leave(self, topic: Optional[str] = None, *, force: bool = False, **kwds: Any) -> None:
+        """Leave the specified topic.
+        
+        :param topic: the topic to leave, defaults to None
+        :type topic: Optional[str], optional
+        :param force: whether to force the leave, defaults to False
+        :type force: bool, optional
+        """
         self._ensure_status()
         topic = topic or self.topic
         if karuha.data.has_sub(self.bot, topic) or force:
             await self.bot.leave(topic, **kwds)
-    
+
     async def get_user(self, user_id: str, *, ensure_user: bool = False) -> "karuha.data.BaseUser":
+        """Get the user data from the specified user ID.
+        
+        :param user_id: the user ID to get the data from
+        :type user_id: str
+        :param ensure_user: whether to ensure that the user exists, defaults to False
+        :type ensure_user: bool, optional
+        :return: the user data
+        :rtype: "karuha.data.BaseUser"
+        """
+        self._ensure_status()
         return await karuha.data.get_user(self.bot, user_id, ensure_user=ensure_user)
 
     async def get_topic(self, topic: Optional[str] = None, *, ensure_topic: bool = False) -> "karuha.data.BaseTopic":
+        """Get the topic data from the specified topic ID.
+        
+        :param topic: the topic ID to get the data from, defaults to None
+        :type topic: Optional[str], optional
+        :param ensure_topic: whether to ensure that the topic exists, defaults to False
+        :type ensure_topic: bool, optional
+        :return: the topic data
+        :rtype: "karuha.data.BaseTopic"
+        """
+        self._ensure_status()
         return await karuha.data.get_topic(self.bot, topic or self.topic, ensure_topic=ensure_topic)
 
     @overload
@@ -188,7 +332,16 @@ class BaseSession(object):
         topic: Optional[str] = None,
         *,
         seq_id: int,
-    ) -> "Message": ...
+    ) -> "Message":
+        """Get the message data from the specified message ID.
+        
+        :param topic: the topic ID to get the data from, defaults to None
+        :type topic: Optional[str], optional
+        :param seq_id: the message ID to get the data from
+        :type seq_id: int
+        :return: the message data
+        :rtype: "Message"
+        """
 
     @overload
     async def get_data(
@@ -197,7 +350,18 @@ class BaseSession(object):
         *,
         low: Optional[int] = None,
         hi: Optional[int] = None,
-    ) -> List["Message"]: ...
+    ) -> List["Message"]:
+        """Get the message data from the specified range.
+        
+        :param topic: the topic ID to get the data from, defaults to None
+        :type topic: Optional[str], optional
+        :param low: the lower bound of the range, defaults to None
+        :type low: Optional[int], optional
+        :param hi: the upper bound of the range, defaults to None
+        :type hi: Optional[int], optional
+        :return: the message data
+        :rtype: List["Message"]
+        """
 
     @overload
     async def get_data(
@@ -207,7 +371,20 @@ class BaseSession(object):
         seq_id: Optional[int] = None,
         low: Optional[int] = None,
         hi: Optional[int] = None,
-    ) -> Union["Message", List["Message"]]: ...
+    ) -> Union["Message", List["Message"]]:
+        """Get the message data from the specified range.
+        
+        :param topic: the topic ID to get the data from, defaults to None
+        :type topic: Optional[str], optional
+        :param seq_id: the message ID to get the data from, defaults to None
+        :type seq_id: Optional[int], optional
+        :param low: the lower bound of the range, defaults to None
+        :type low: Optional[int], optional
+        :param hi: the upper bound of the range, defaults to None
+        :type hi: Optional[int], optional
+        :return: the message data
+        :rtype: Union["Message", List["Message"]]
+        """
 
     async def get_data(
         self,
@@ -224,34 +401,50 @@ class BaseSession(object):
         )
 
     def close(self) -> None:
+        """Close the session."""
         self._closed = True
 
     def cancel(self) -> NoReturn:
+        """Cancel the session.
+
+        :raises asyncio.CancelledError: cancels the session
+        """
         self.close()
+        if (
+            self._task is not None
+            and self._task is not asyncio.current_task()
+            and not self._task.done()
+        ):
+            self._task.cancel()
         raise asyncio.CancelledError
+
+    @property
+    def closed(self) -> bool:
+        """Whether the session is closed."""
+        return self._closed
+
+    async def __aenter__(self) -> Self:
+        """Enter the session."""
+        self.bind_task()
+        await self.subscribe()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Exit the session."""
+        self.close()
 
     def _ensure_status(self) -> None:
         if self._closed:
             raise KaruhaRuntimeError("session is closed")
 
-    @property
-    def closed(self) -> bool:
-        return self._closed
 
-    async def __aenter__(self) -> Self:
-        await self.subscribe()
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.close()
-
-
-from .text.drafty import Drafty
-from .text.textchain import (BaseText, Bold, Button, File, Form, Image,
-                             NewLine, PlainText, TextChain)
-from .text.message import Message
-from .utils.dispatcher import FutureDispatcher
 from .event.message import MessageDispatcher, get_message_lock
+from .text import textchain
+from .text.drafty import Drafty
+from .text.message import Message
+from .text.textchain import (BaseText, Bold, Button, Form, NewLine, PlainText,
+                             TextChain, _Attachment)
+from .utils.dispatcher import FutureDispatcher
 
 
 class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
@@ -286,7 +479,7 @@ class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
             return self.priority
 
 
-class ButtonReplyDispatcher(SessionDispatcher):
+class _ButtonReplyDispatcher(SessionDispatcher):
     __slots__ = ["seq_id", "_cache"]
     
     def __init__(
@@ -319,9 +512,10 @@ class ButtonReplyDispatcher(SessionDispatcher):
             resp = value.get("resp")
             if value.get("seq") == self.seq_id:
                 self._cache[id(message)] = resp
+                weakref.finalize(message, self._cache.pop, id(message), None)
                 return self.priority
         return 0
     
     def run(self, message: Message) -> None:
-        resp = self._cache.get((id(message)))
+        resp = self._cache[id(message)]
         self.future.set_result(resp)

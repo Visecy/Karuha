@@ -22,7 +22,9 @@ class Bot(BaseModel):
     name: str = "chatbot"
     schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
     secret: str
+    auto_login: bool = True
     auto_subscribe_new_user: bool = False
+    file_size_threshold: int = 1024 * 1024
 
 
 class Config(BaseModel):
@@ -110,3 +112,8 @@ def save_config() -> Path:
     config = get_config()
     config.save()
     return config._path
+
+
+def reset_config() -> None:
+    global _config
+    _config = None

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from io import IOBase, TextIOBase
 import os
 import platform
 import sys
@@ -52,9 +53,12 @@ class Bot(object):
 
     initialize_event_callback: Callable[[Self], Any]
     finalize_event_callback: Callable[[Self], Coroutine]
-    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = (
-        defaultdict(list)
-    )
+    server_event_callbacks: Dict[
+        str,
+        List[
+            Callable[[Self, Message], Any]
+        ]
+    ] = defaultdict(list)
     client_event_callbacks: Dict[
         str,
         List[
@@ -181,7 +185,7 @@ class Bot(object):
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
-            account=pb.ClientAcc(
+            acc=pb.ClientAcc(
                 id=tid,
                 user_id=user_id,
                 scheme=scheme,
@@ -616,61 +620,214 @@ class Bot(object):
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         return tid, decode_mapping(ctrl.params)
 
+    @overload
+    async def delete(
+            self,
+            what: Literal["msg"],
+            *,
+            topic: str,
+            del_seq: Iterable[pb.SeqRange] = (),
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        ...
+    
+    @overload
+    async def delete(
+            self,
+            what: Literal["topic"],
+            *,
+            topic: str,
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        ...
+    
+    @overload
+    async def delete(
+            self,
+            what: Literal["sub"],
+            *,
+            topic: str,
+            user_id: str,
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        ...
+    
+    @overload
+    async def delete(
+            self,
+            what: Literal["user"],
+            *,
+            user_id: str,
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        ...
+    
+    @overload
+    async def delete(
+            self,
+            what: Literal["cred"],
+            *,
+            cred: pb.ClientCred,
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        ...
+
+    @overload
+    async def delete(
+            self,
+            what: Literal["msg", "topic", "sub", "user", "cred"],
+            *,
+            topic: Optional[str] = None,
+            del_seq: Iterable[pb.SeqRange] = (),
+            user_id: Optional[str] = None,
+            cred: Optional[pb.ClientCred] = None,
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        ...
+    
+    async def delete(
+            self,
+            what: Literal["msg", "topic", "sub", "user", "cred"],
+            *,
+            topic: Optional[str] = None,
+            del_seq: Iterable[pb.SeqRange] = (),
+            user_id: Optional[str] = None,
+            cred: Optional[pb.ClientCred] = None,
+            hard: bool = False,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        tid = self._get_tid()
+        ctrl = await self.send_message(
+            tid, extra=extra, **{"del": pb.ClientDel(
+                id=tid, what=getattr(pb.ClientDel.What, what.upper()),
+                topic=topic,
+                del_seq=del_seq,
+                user_id=user_id,
+                cred=cred,
+                hard=hard
+            )}
+        )
+        assert isinstance(ctrl, pb.ServerCtrl)
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
+            err_text = f"fail to delete: {ctrl.text}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
+        return tid, decode_mapping(ctrl.params)
+
     async def note_read(self, /, topic: str, seq: int) -> None:
+        """mark a text as read
+
+        :param topic: topic to mark
+        :type topic: str
+        :param seq: sequence id
+        :type seq: int
+        """
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
     async def upload(
             self,
-            path: Union[str, os.PathLike]
+            path: Union[str, os.PathLike, IOBase]
     ) -> Tuple[str, Dict[str, Any]]:
+        """
+        upload a file
+
+        :param path: file path
+        :type path: Union[str, os.PathLike]
+        :raises KaruhaBotError: fail to upload file
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
         tid = self._get_tid()
 
-        data = FormData()
-        data.add_field("id", tid)
         try:
             async with await self._get_http_session() as session:
                 self.logger.debug(f"upload request: {tid=} {path=} {session.headers=}")
-                with open(path, "rb") as f:
-                    data.add_field("file", f, filename=os.path.basename(path))
-                    async with session.post("/v0/file/u/", data=data) as resp:
-                        ret = await resp.text()
-            self.logger.debug(f"upload response: {ret}")
-            ctrl = from_json(ret)["ctrl"]
+                while True:
+                    url = "/v0/file/u/"
+                    data = FormData()
+                    data.add_field("id", tid)
+                    if isinstance(path, IOBase):
+                        f = path
+                        _path = None
+                    else:
+                        f = open(path, "rb")
+                        _path = os.path.basename(path)
+                    with f:
+                        data.add_field("file", f, filename=_path)
+                        async with session.post(url, data=data) as resp:
+                            ret = await resp.text()
+                    self.logger.debug(f"upload response: {ret}")
+                    ctrl = from_json(ret)["ctrl"]
+                    params = ctrl["params"]
+                    code = ctrl["code"]
+                    if code != 307:
+                        break
+                    url = params["url"]
+                    # If 307 Temporary Redirect is returned, the client must retry the upload at the provided URL.
+                    self.logger.info(f"upload redirected to {url}")
         except OSError as e:
             raise KaruhaBotError(f"fail to read file {path}", bot=self) from e
         except ClientError as e:
-            self.logger.error(f"fail to upload file {path}: {e}", exc_info=True)
-            raise KaruhaBotError("http connection error", bot=self) from e
+            err_text = f"fail to upload file {path}: {e}"
+            self.logger.error(err_text, exc_info=True)
+            raise KaruhaBotError(err_text, bot=self) from e
         assert ctrl["id"] == tid, "tid mismatch"
-        params = ctrl["params"]
-        code = ctrl["code"]
         if code < 200 or code >= 400:  # pragma: no cover
             err_text = f"fail to upload file {path}: {ctrl['text']}"
             self.logger.error(err_text)
             raise KaruhaBotError(err_text, bot=self, code=code)
+        self.logger.info(f"upload file {path}")
         return tid, params
 
     async def download(
             self,
             url: str,
-            path: Union[str, os.PathLike]
+            path: Union[str, os.PathLike, IOBase]
     ) -> None:
+        """
+        download a file
+
+        :param url: file url
+        :type url: str
+        :param path: file path to save
+        :type path: Union[str, os.PathLike]
+        :raises KaruhaBotError: fail to download file
+        """
         tid = self._get_tid()
         try:
             async with await self._get_http_session() as session:
                 self.logger.debug(f"download request: {tid=} {path=} {session.headers=}")
-                async with aio_open(path, "wb") as f:
+                size = 0
+                if isinstance(path, IOBase):
                     async with session.get(url, params={"id": tid}) as resp:
                         resp.raise_for_status()
                         async for chunk in resp.content.iter_any():
-                            await f.write(chunk)
-                    size = await f.tell()
+                            if isinstance(path, TextIOBase):
+                                path.write(chunk.decode())
+                            else:
+                                path.write(chunk)
+                            size += len(chunk)
+                else:
+                    async with aio_open(path, "wb") as f:
+                        async with session.get(url, params={"id": tid}) as resp:
+                            resp.raise_for_status()
+                            async for chunk in resp.content.iter_any():
+                                await f.write(chunk)
+                        size = await f.tell()
             self.logger.debug(f"download length: {size}")
         except OSError as e:
             raise KaruhaBotError(f"fail to write file {path}", bot=self) from e
         except ClientError as e:
-            self.logger.error(f"fail to download file {path}: {e}", exc_info=True)
-            raise KaruhaBotError("http connection error", bot=self) from e
+            err_text = f"fail to download file {path}: {e}"
+            self.logger.error(err_text, exc_info=True)
+            raise KaruhaBotError(err_text, bot=self) from e
+        self.logger.info(f"download file {path}")
 
     @overload
     async def send_message(
@@ -701,7 +858,7 @@ class Bot(object):
     ) -> Optional[Message]:
         """set messages to Tinode server
 
-        :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
+        :param wait_tid: if set, it will wait until a response message with the same tid is received, defaults to None
         :type wait_tid: Optional[str], optional
         :return: message which has the same tid
         :rtype: Optional[Message]
@@ -821,7 +978,7 @@ class Bot(object):
         tid = str(self._tid_counter)
         self._tid_counter += 1
         return tid
-    
+
     async def _get_http_session(self) -> ClientSession:
         if self.server is None:
             raise ValueError("server not specified")

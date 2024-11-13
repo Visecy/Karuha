@@ -39,26 +39,30 @@ class BotInitEvent(BotEvent):
     async def __default_handler__(self) -> None:
         bot = self.bot
         try:
-            await self.bot.hello()
+            await bot.hello()
         except Exception:
-            self.bot.logger.error("failed to connect to server, restarting")
-            self.bot.restart()
+            bot.logger.error("failed to connect to server, restarting")
+            bot.restart()
+            return
+        
+        if not bot.config.auto_login:
+            bot.logger.info("auto login is disabled, skipping")
             return
         
         retry = bot.server.retry if bot.server is not None else 0
         for i in range(retry):
             try:
-                await self.bot.login()
+                await bot.login()
             except (asyncio.TimeoutError, KaruhaBotError):
-                self.bot.logger.warning(f"login failed, retrying {i+1} times")
+                bot.logger.warning(f"login failed, retrying {i+1} times")
             else:
                 break
         else:
             try:
-                await self.bot.login()
+                await bot.login()
             except (asyncio.TimeoutError, KaruhaBotError):
-                self.bot.logger.error("login failed, cancel the bot")
-                self.bot.cancel()
+                bot.logger.error("login failed, cancel the bot")
+                bot.cancel()
 
 
 class BotReadyEvent(BotEvent):

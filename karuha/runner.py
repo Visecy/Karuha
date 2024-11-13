@@ -1,129 +1,17 @@
 import asyncio
 import contextlib
 import signal
-from typing import Dict, List, MutableSequence, Optional, Awaitable
+from typing import Dict, List, Optional
 
-from .config import get_config
+from .config import get_config, reset_config
 from .bot import Bot, BotState
 from .event.sys import SystemStartEvent, SystemStopEvent
 from .logger import logger
+from .utils.gathering import DynamicGatheringFuture
 
 
 _bot_cache: Dict[str, Bot] = {}
-_gathering_future: Optional["DynamicGatheringFuture"] = None
-
-
-class DynamicGatheringFuture(asyncio.Future):
-    """
-    A dynamic version of `asyncio.tasks._GatheringFuture`.
-
-    It allows to add new tasks to the gathering future.
-    """
-
-    __slots__ = ["children", "nfinished", "_cancel_requested"]
-
-    def __init__(self, children: MutableSequence[asyncio.Future], *, loop=None):
-        super().__init__(loop=loop)
-        self.children = children
-        self.nfinished = 0
-        self._cancel_requested = False
-        done_futs = []
-
-        for child in children:
-            if child.done():
-                done_futs.append(child)
-            else:
-                child.add_done_callback(self._done_callback)
-        
-        for child in done_futs:
-            self._done_callback(child)
-
-    def add_task(self, fut: asyncio.Future) -> None:
-        if self.done():  # pragma: no cover
-            raise RuntimeError("cannot add child to cancelled parent")
-        fut.add_done_callback(self._done_callback)
-        self.children.append(fut)
-
-    def add_coroutine(self, coro: Awaitable) -> None:
-        fut = asyncio.ensure_future(coro)
-        if fut is not coro:
-            # 'coro' was not a Future, therefore, 'fut' is a new
-            # Future created specifically for 'coro'.  Since the caller
-            # can't control it, disable the "destroy pending task"
-            # warning.
-            fut._log_destroy_pending = False  # type: ignore[attr-defined]
-        self.add_task(fut)
-    
-    def cancel(self, msg=None) -> bool:  # pragma: no cover
-        if self.done():
-            return False
-        ret = False
-        for child in self.children:
-            cancelled = child.cancel(msg=msg) if msg is not None else child.cancel()  # type: ignore
-            if cancelled:
-                ret = True
-        if ret:
-            # If any child tasks were actually cancelled, we should
-            # propagate the cancellation request regardless of
-            # *return_exceptions* argument.  See issue 32684.
-            self._cancel_requested = True
-        return ret
-
-    def _done_callback(self, fut: asyncio.Future) -> None:
-        self.nfinished += 1
-
-        if self.done():  # pragma: no cover
-            if not fut.cancelled():
-                # Mark exception retrieved.
-                fut.exception()
-            return
-
-        if fut.cancelled():
-            # Check if 'fut' is cancelled first, as
-            # 'fut.exception()' will *raise* a CancelledError
-            # instead of returning it.
-            try:
-                exc = fut._make_cancelled_error()  # type: ignore
-            except AttributeError:
-                exc = asyncio.CancelledError()
-            self.set_exception(exc)
-            return
-        else:
-            exc = fut.exception()
-            if exc is not None:  # pragma: no cover
-                self.set_exception(exc)
-                return
-
-        if self.nfinished == len(self.children):
-            # All futures are done; create a list of results
-            # and set it to the 'outer' future.
-            results = []
-
-            for fut in self.children:
-                if fut.cancelled():  # pragma: no cover
-                    # Check if 'fut' is cancelled first, as
-                    # 'fut.exception()' will *raise* a CancelledError
-                    # instead of returning it.
-                    res = asyncio.CancelledError(
-                        getattr(fut, "_cancel_message", '') or ''
-                    )
-                else:
-                    res = fut.exception()
-                    if res is None:
-                        res = fut.result()
-                results.append(res)
-
-            if self._cancel_requested:  # pragma: no cover
-                # If gather is being cancelled we must propagate the
-                # cancellation regardless of *return_exceptions* argument.
-                # See issue 32684.
-                try:
-                    exc = fut._make_cancelled_error()  # type: ignore
-                except AttributeError:
-                    exc = asyncio.CancelledError()
-                self.set_exception(exc)
-            else:
-                self.set_result(results)
+_gathering_future: Optional[DynamicGatheringFuture] = None
 
 
 def try_get_bot(name: str = "chatbot") -> Optional[Bot]:
@@ -189,8 +77,8 @@ def _get_running_loop() -> asyncio.AbstractEventLoop:
 
 
 def _handle_sigterm() -> None:  # pragma: no cover
-    for bot in _bot_cache.values():
-        bot.cancel()
+    if _gathering_future is not None:
+        _gathering_future.cancel()
 
 
 async def async_run() -> None:
@@ -239,6 +127,12 @@ async def async_run() -> None:
 def run() -> None:  # pragma: no cover
     with contextlib.suppress(KeyboardInterrupt, asyncio.CancelledError):
         asyncio.run(async_run())
+
+
+def reset() -> None:
+    global _bot_cache
+    _bot_cache = {}
+    reset_config()
 
 
 from .plugin_server import init_server

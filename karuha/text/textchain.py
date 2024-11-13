@@ -466,12 +466,28 @@ class _Attachment(_ExtensionText):
             ref: Optional[str] = None,
             **kwds: Any
     ) -> Self:
-        return cls(  # type: ignore
+        return cls(
             mime=mime or "text/plain",
             name=name,
             ref=ref,
             raw_val=content,  # type: ignore
             size=len(content),
+            **kwds
+        )
+
+    @classmethod
+    def from_url(
+            cls,
+            url: str,
+            *,
+            mime: Optional[str] = None,
+            name: Optional[str] = None,
+            **kwds: Any
+    ) -> Self:
+        return cls(
+            mime=mime or "text/plain",
+            name=name,
+            ref=url,
             **kwds
         )
 
@@ -493,7 +509,7 @@ class _Attachment(_ExtensionText):
                 ref=ref,
                 **kwds
             )
-
+    
     async def save(self, path: Union[str, os.PathLike, None] = None) -> None:
         path = path or self.name
         if path is None:
