@@ -30,7 +30,7 @@ async def ensure_sub(bot: Bot, topic: str) -> bool:
 
 
 def reset_sub(bot: Bot) -> None:
-    del _subscriptions[bot.uid]
+    _subscriptions[bot.uid].clear()
 
 
 @on(SubscribeEvent)
