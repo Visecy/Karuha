@@ -136,7 +136,10 @@ class Bot(object):
 
     async def hello(self, /, lang: str = "EN") -> Tuple[str, Dict[str, Any]]:
         """
-        send a hello message to the server and get the server id
+        Handshake message client uses to inform the server of its version and user agent.
+        This message must be the first that the client sends to the server.
+        Server responds with a {ctrl} which contains server build build, wire protocol version ver,
+        session ID sid in case of long polling, as well as server constraints, all in ctrl.params.
         
         :param lang: the language of the chatbot
         :type lang: str
@@ -182,6 +185,36 @@ class Bot(object):
             cred: Iterable[pb.ClientCred] = (),
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Message {acc} creates users or updates tags or authentication credentials scheme and secret of exiting users.
+        To create a new user set user to the string new optionally followed by any character sequence, e.g. newr15gsr.
+        Either authenticated or anonymous session can send an {acc} message to create a new user.
+        To update authentication data or validate a credential of the current user leave user unset.
+
+        The {acc} message cannot be used to modify desc or cred of an existing user.
+        Update user's me topic instead.
+
+        :param user_id: the user id
+        :type user_id: str
+        :param scheme: the authentication scheme
+        :type scheme: Optional[str]
+        :param secret: the authentication secret
+        :type secret: Optional[bytes]
+        :param state: the account state
+        :type state: str
+        :param do_login: whether to login after updating
+        :type do_login:bool
+        :param desc: the account description
+        :type desc: Optional[pb.SetDesc]
+        :param tags: the account tags
+        :type tags: Iterable[str]
+        :param cred: the account credentials
+        :type cred: Iterable[pb.ClientCred]
+        :param extra: the extra data
+        :type extra: Optional[pb.ClientExtra]
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
@@ -207,7 +240,7 @@ class Bot(object):
 
     async def login(self) -> Tuple[str, Dict[str, Any]]:
         """
-        login to the server and get the user id
+        Login is used to authenticate the current session.
         
         :return: tid and params
         :rtype: Tuple[str, Dict[str, Any]]
@@ -266,7 +299,12 @@ class Bot(object):
         extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        subscribe to a topic
+        The {sub} packet serves the following functions:
+
+        - creating a new topic
+        - subscribing user to an existing topic
+        - attaching session to a previously subscribed topic
+        - fetching topic data
         
         :param topic: topic to subscribe
         :type topic: str
@@ -326,7 +364,13 @@ class Bot(object):
 
     async def leave(self, /, topic: str, *, extra: Optional[pb.ClientExtra] = None) -> Tuple[str, Dict[str, Any]]:
         """
-        leave a topic
+        This is a counterpart to {sub} message. It also serves two functions:
+
+        - leaving the topic without unsubscribing (unsub=false)
+        - unsubscribing (unsub=true)
+        
+        Server responds to {leave} with a {ctrl} packet. Leaving without unsubscribing affects just the current session.
+        Leaving with unsubscribing will affect all user's sessions.
 
         :param topic: topic to leave
         :type topic: str
@@ -368,7 +412,7 @@ class Bot(object):
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        publish message to a topic
+        The message is used to distribute content to topic subscribers.
 
         :param topic: topic to publish
         :type topic: str
@@ -412,7 +456,23 @@ class Bot(object):
         *,
         desc: Optional[pb.GetOpts] = None,
         extra: Optional[pb.ClientExtra] = None,
-    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
+        """
+        Query topic for description.
+        
+        NOTE: only one of `what` can be specified at a time
+        
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get
+        :type what: Literal["desc", "sub", "data", "tags"], optional
+        :param desc: description query options
+        :type desc: Optional[pb.GetOpts]
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
+        :return: tid and meta
+        :rtype: Tuple[str, Optional[pb.ServerMeta]]
+        """
 
     @overload
     async def get(
@@ -423,7 +483,23 @@ class Bot(object):
         *,
         sub: Optional[pb.GetOpts] = None,
         extra: Optional[pb.ClientExtra] = None,
-    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
+        """
+        Query topic for subscriptions.
+        
+        NOTE: only one of `what` can be specified at a time
+        
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get
+        :type what: Literal["desc", "sub", "data", "tags"], optional
+        :param sub: subscriptions query options
+        :type sub: Optional[pb.GetOpts]
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
+        :return: tid and meta
+        :rtype: Tuple[str, Optional[pb.ServerMeta]]
+        """
 
     @overload
     async def get(
@@ -434,28 +510,73 @@ class Bot(object):
         *,
         data: Optional[pb.GetOpts] = None,
         extra: Optional[pb.ClientExtra] = None,
-    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
+        """
+        Query topic for data.
+        
+        NOTE: only one of `what` can be specified at a time
+        
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get
+        :type what: Literal["desc", "sub", "data", "tags"], optional
+        :param data: data query options
+        :type data: Optional[pb.GetOpts]
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
+        :return: tid and meta
+        :rtype: Tuple[str, Optional[pb.ServerMeta]]
+        """
 
     @overload
     async def get(
         self,
         /,
         topic: str,
-        what: Literal["tags"],
+        what: Optional[Literal["tags"]] = None,
         *,
         extra: Optional[pb.ClientExtra] = None,
-    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
+        """
+        Query topic for tags.
+        
+        NOTE: only one of `what` can be specified at a time
+        
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get
+        :type what: Literal["desc", "sub", "data", "tags"], optional
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
+        :return: tid and meta
+        :rtype: Tuple[str, Optional[pb.ServerMeta]]
+        """
 
     @overload
     async def get(
         self,
         /,
         topic: str,
-        what: Literal["cred"],
+        what: Optional[Literal["cred"]] = None,
         *,
         extra: Optional[pb.ClientExtra] = None,
-    ) -> Tuple[str, Optional[pb.ServerMeta]]: ...
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
+        """
+        Query topic for credentials.
 
+        NOTE: only one of `what` can be specified at a time
+
+        :param topic: topic to get
+        :type topic: str
+        :param what: fields to get
+        :type what: Literal["cred"], optional
+        :param extra: extra data
+        :type extra: Optional[pb.ClientExtra]
+        :return: tid and meta
+        :rtype: Tuple[str, Optional[pb.ServerMeta]]
+        """
+    
+    @overload
     async def get(
             self,
             /,
@@ -468,7 +589,9 @@ class Bot(object):
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
-        get data from a topic
+        Query topic for metadata, such as description or a list of subscribers, or query message history.
+        The requester must be subscribed and attached to the topic to receive the full response.
+        Some limited desc and sub information is available without being attached.
 
         NOTE: only one of `what` can be specified at a time
 
@@ -487,6 +610,18 @@ class Bot(object):
         :return: tid and meta
         :rtype: Tuple[str, Optional[pb.ServerMeta]]
         """
+
+    async def get(
+            self,
+            /,
+            topic: str,
+            what: Optional[Literal["desc", "sub", "data", "tags", "cred"]] = None,
+            *,
+            desc: Optional[pb.GetOpts] = None,
+            sub: Optional[pb.GetOpts] = None,
+            data: Optional[pb.GetOpts] = None,
+            extra: Optional[pb.ClientExtra] = None
+    ) -> Tuple[str, Optional[pb.ServerMeta]]:
         tid = self._get_tid()
         if what is None:
             if desc is not None:
@@ -580,7 +715,9 @@ class Bot(object):
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        set data to a topic
+        Update topic metadata, delete messages or topic.
+        The requester is generally expected to be subscribed and attached to the topic.
+        Only desc.private and requester's sub.mode can be updated without attaching first.
 
         :param topic: topic to set
         :type topic: str
@@ -630,8 +767,31 @@ class Bot(object):
             hard: bool = False,
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        ...
-    
+        """
+        User can soft-delete hard=false (default) or hard-delete hard=true messages.
+        Soft-deleting messages hides them from the requesting user but does not delete them from storage.
+        An R permission is required to soft-delete messages.
+        Hard-deleting messages deletes message content from storage (head, content) leaving a message stub.
+        It affects all users. A D permission is needed to hard-delete messages.
+        Messages can be deleted in bulk by specifying one or more message ID ranges in delseq parameter.
+        Each delete operation is assigned a unique delete ID.
+        The greatest delete ID is reported back in the clear of the {meta} message.
+
+        :param what: delete type, defaults to "msg"
+        :type what: Literal["msg"]
+        :param topic: topic to delete
+        :type topic: str
+        :param del_seq: message ID ranges to delete, defaults to ()
+        :type del_seq: Iterable[pb.SeqRange], optional
+        :param hard: hard delete, defaults to False
+        :type hard: bool, optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: fail to delete messages
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
+
     @overload
     async def delete(
             self,
@@ -641,8 +801,23 @@ class Bot(object):
             hard: bool = False,
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        ...
-    
+        """
+        Deleting a topic deletes the topic including all subscriptions, and all messages.
+        Only the owner can delete a topic.
+        
+        :param what: delete type, defaults to "topic"
+        :type what: Literal["topic"]
+        :param topic: topic to delete
+        :type topic: str
+        :param hard: hard delete, defaults to False
+        :type hard: bool, optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: fail to delete topic
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
+
     @overload
     async def delete(
             self,
@@ -653,8 +828,27 @@ class Bot(object):
             hard: bool = False,
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        ...
-    
+        """
+        Deleting a subscription removes specified user from topic subscribers.
+        It requires an A permission. A user cannot delete own subscription.
+        A {leave} should be used instead. If the subscription is soft-deleted (default),
+        it's marked as deleted without actually deleting a record from storage.
+
+        :param what: delete type, defaults to "sub"
+        :type what: Literal["sub"]
+        :param topic: topic to delete
+        :type topic: str
+        :param user_id: user ID to delete
+        :type user_id: str
+        :param hard: hard delete, defaults to False
+        :type hard: bool, optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: fail to delete topic
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
+
     @overload
     async def delete(
             self,
@@ -664,8 +858,22 @@ class Bot(object):
             hard: bool = False,
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        ...
-    
+        """
+        Deleting a user is a very heavy operation. Use caution.
+        
+        :param what: delete type, defaults to "user"
+        :type what: Literal["user"]
+        :param user_id: user ID to delete
+        :type user_id: str
+        :param hard: hard delete, defaults to False
+        :type hard: bool, optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: fail to delete user
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
+
     @overload
     async def delete(
             self,
@@ -675,7 +883,23 @@ class Bot(object):
             hard: bool = False,
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        ...
+        """
+        Delete credential.
+        Validated credentials and those with no attempts at validation are hard-deleted.
+        Credentials with failed attempts at validation are soft-deleted which prevents their reuse by the same user.
+        
+        :param what: delete type, defaults to "cred"
+        :type what: Literal["cred"]
+        :param cred: credential to delete
+        :type cred: pb.ClientCred
+        :param hard: hard delete, defaults to False
+        :type hard: bool, optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: failto delete credential
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
 
     @overload
     async def delete(
@@ -689,8 +913,28 @@ class Bot(object):
             hard: bool = False,
             extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        ...
-    
+        """
+        Delete messages, subscriptions, topics, users.
+
+        :param what: delete type
+        :type what: Literal["msg", "topic", "sub", "user", "cred"]
+        :param topic: topic to delete, defaults to None
+        :type topic: Optional[str], optional
+        :param del_seq: message ID ranges to delete, defaults to ()
+        :type del_seq: Iterable[pb.SeqRange], optional
+        :param user_id: user ID to delete, defaults to None
+        :type user_id: Optional[str], optional
+        :param cred: credential to delete, defaults to None
+        :type cred: Optional[pb.ClientCred], optional
+        :param hard: hard delete, defaults to False
+        :type hard: bool, optional
+        :param extra: extra data, defaults to None
+        :type extra: Optional[pb.ClientExtra], optional
+        :raises KaruhaBotError: fail to delete messages
+        :return: tid and params
+        :rtype: Tuple[str, Dict[str, Any]]
+        """
+
     async def delete(
             self,
             what: Literal["msg", "topic", "sub", "user", "cred"],
@@ -720,8 +964,29 @@ class Bot(object):
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         return tid, decode_mapping(ctrl.params)
 
+    async def note_kp(self, /, topic: str) -> None:
+        """key press, i.e. a typing notification.
+        The client should use it to indicate that the user is composing a new message.
+        
+        :param topic: topic to note
+        :type topic: str
+        """
+        await self.send_message(note=pb.ClientNote(topic=topic, what=pb.KP))
+
+    async def note_recv(self, /, topic: str, seq: int) -> None:
+        """mark a text as received
+        a {data} message is received by the client software but may not yet seen by user.
+        
+        :param topic: topic to mark
+        :type topic: str
+        :param seq: sequence id
+        :type seq: int
+        """
+        await self.send_message(note=pb.ClientNote(topic=topic, what=pb.RECV, seq_id=seq))
+
     async def note_read(self, /, topic: str, seq: int) -> None:
         """mark a text as read
+        a {data} message is seen (read) by the user. It implies recv as well.
 
         :param topic: topic to mark
         :type topic: str
@@ -866,7 +1131,7 @@ class Bot(object):
 
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
-        client_msg = pb.ClientMsg(**kwds)  # type: ignore
+        client_msg = pb.ClientMsg(**kwds, extra=extra)  # type: ignore
         ret = None
         if wait_tid is None:
             await self.queue.put(client_msg)
@@ -1122,15 +1387,20 @@ class AgentBot(Bot):
     """
     the bot that runs on the `extra.on_behalf_of` agent
     """
-    __slots__ = ['on_behalf_of']
+    __slots__ = ["on_behalf_of", "login_user_id"]
 
     def __init__(self, *args: Any, on_behalf_of: str, **kwds: Any) -> None:
         super().__init__(*args, **kwds)
         self.on_behalf_of = on_behalf_of
     
     @classmethod
-    def from_bot(cls, bot: Bot, /, on_behalf_of: str) -> Self:
-        return cls(bot.config, bot.server, bot.logger.level, on_behalf_of=on_behalf_of)
+    def from_bot(cls, bot: Bot, /, on_behalf_of: str, name: Optional[str] = None) -> Self:
+        config = bot.config.model_copy()
+        if name is None:
+            config.name = f"{config.name}_agent_{on_behalf_of}"
+        else:
+            config.name = name
+        return cls(config, bot.server, bot.logger.level, on_behalf_of=on_behalf_of)
     
     @overload
     async def send_message(
@@ -1180,6 +1450,14 @@ class AgentBot(Bot):
         elif extra.on_behalf_of != self.on_behalf_of:
             raise KaruhaBotError(f"on_behalf_of mismatch: {extra.on_behalf_of} != {self.on_behalf_of}", bot=self)
         return await super().send_message(wait_tid, extra=extra, **kwds)
+    
+    @property
+    def user_id(self) -> str:
+        return self.on_behalf_of
+
+    @user_id.setter
+    def user_id(self, val: str) -> None:
+        self.login_user_id = val
 
 
 def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:  # pragma: no cover
