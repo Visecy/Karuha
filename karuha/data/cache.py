@@ -14,9 +14,10 @@ from ..logger import logger
 from ..store import (DataModel, LruStore, MemoryStore, MessageBoundDataModel,
                      PrimaryKey, TopicBoundDataModel, UserBoundDataModel)
 from ..text import Message
-from .meta import (BaseDesc, BaseSubscription, CommonDesc, Cred,
+from .meta import (BaseDesc, BaseSubscription, CommonDesc,
                    GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
                    UserDesc)
+from .model import Cred
 from .sub import ensure_sub, has_sub
 
 
@@ -216,7 +217,14 @@ def try_get_sub(bot: Bot, /, topic_id: str) -> Optional[BaseSubscription]:
     return sub and sub.sub
 
 
-async def get_sub(bot: Bot, /, topic_id: str, *, skip_cache: bool = False, skip_sub_check: bool = False) -> Optional[BaseSubscription]:
+async def get_sub(
+    bot: Bot,
+    /,
+    topic_id: str,
+    *,
+    skip_cache: bool = False,
+    skip_sub_check: bool = False,
+) -> Optional[BaseSubscription]:
     if topic_id == "me":
         return
     sub = subscription_cache.get((topic_id, bot.uid))

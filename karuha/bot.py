@@ -16,7 +16,7 @@ from weakref import WeakSet, ref
 import grpc
 from aiofiles import open as aio_open
 from aiofiles.threadpool.binary import AsyncBufferedIOBase
-from aiohttp import ClientError, ClientSession, FormData
+from aiohttp import ClientError, ClientSession, ClientTimeout, FormData
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
 from pydantic import GetCoreSchemaHandler, TypeAdapter
@@ -1270,7 +1270,7 @@ class Bot(object):
             "X-Tinode-Auth": f"{schema.title()} {secret}",
             "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}",
         }
-        return ClientSession(str(web_host), headers=headers, timeout=self.server.timeout)
+        return ClientSession(str(web_host), headers=headers, timeout=ClientTimeout(self.server.timeout))
 
     @contextmanager
     def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:

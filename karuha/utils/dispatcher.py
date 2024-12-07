@@ -1,5 +1,5 @@
 import asyncio
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any, Callable, ClassVar, Generic, Optional, Set, TypeVar
 from typing_extensions import Self
 

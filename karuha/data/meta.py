@@ -1,12 +1,12 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 from typing_extensions import Self
 
 from pydantic import BaseModel, Json
 from tinode_grpc import pb
 
 from ..utils.decode import msg2dict
-from .model import Access, DefaultAccess, Cred
+from .model import Access, DefaultAccess
 
 
 class TimeInfo(BaseModel):

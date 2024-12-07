@@ -301,7 +301,7 @@ class BaseSession(object):
         if karuha.data.has_sub(self.bot, topic) or force:
             await self.bot.leave(topic, **kwds)
 
-    async def get_user(self, user_id: str, *, ensure_user: bool = False) -> "karuha.data.BaseUser":
+    async def get_user(self, user_id: str, *, skip_cache: bool = False) -> "karuha.data.BaseUser":
         """Get the user data from the specified user ID.
         
         :param user_id: the user ID to get the data from
@@ -312,9 +312,9 @@ class BaseSession(object):
         :rtype: "karuha.data.BaseUser"
         """
         self._ensure_status()
-        return await karuha.data.get_user(self.bot, user_id, ensure_user=ensure_user)
+        return await karuha.data.get_user(self.bot, user_id, skip_cache=skip_cache)
 
-    async def get_topic(self, topic: Optional[str] = None, *, ensure_topic: bool = False) -> "karuha.data.BaseTopic":
+    async def get_topic(self, topic: Optional[str] = None, *, skip_cache: bool = False) -> "karuha.data.BaseTopic":
         """Get the topic data from the specified topic ID.
         
         :param topic: the topic ID to get the data from, defaults to None
@@ -325,7 +325,7 @@ class BaseSession(object):
         :rtype: "karuha.data.BaseTopic"
         """
         self._ensure_status()
-        return await karuha.data.get_topic(self.bot, topic or self.topic, ensure_topic=ensure_topic)
+        return await karuha.data.get_topic(self.bot, topic or self.topic, skip_cache=skip_cache)
 
     @overload
     async def get_data(

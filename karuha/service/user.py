@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, Mapping, Optional, Tuple, TypedDict, Union
+from typing import Any, Iterable, Mapping, Optional, Tuple, Union
 
 from pydantic_core import to_json
 from tinode_grpc import pb
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from .base import BaseService
 from ..runner import add_bot, run_bot
-from ..data.user import User, BaseUser, get_user
+from ..data.user import BaseUser, get_user
 from ..data.types import ClientCredType, UserStateType
 from ..bot import Bot, ProxyBot
 

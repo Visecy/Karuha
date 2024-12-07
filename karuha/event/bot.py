@@ -7,7 +7,6 @@ from google.protobuf.message import Message
 from tinode_grpc import pb
 
 from .. import bot
-from ..exception import KaruhaBotError
 from ..session import BaseSession
 from ..utils.proxy_propery import ProxyProperty
 from ..utils.invoker import Dependency, depend_property
@@ -38,7 +37,7 @@ class BotInitEvent(BotEvent):
 
     async def __default_handler__(self) -> None:
         prepare_task = asyncio.create_task(self.bot._prepare_account())
-        prepare_task.add_done_callback(lambda _:BotReadyEvent.new(self.bot))
+        prepare_task.add_done_callback(lambda _: BotReadyEvent.new(self.bot))
 
 
 class BotReadyEvent(BotEvent):

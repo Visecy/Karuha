@@ -1,10 +1,9 @@
-from abc import abstractmethod
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
 from pydantic_core import to_json
 from tinode_grpc import pb
+from typing_extensions import deprecated
 
 from ..bot import Bot
 from ..utils.decode import load_json, msg2dict
@@ -12,75 +11,7 @@ from .cache import (get_group_desc, get_p2p_desc, get_sub, get_user_desc,
                     try_get_group_desc, try_get_my_sub, try_get_p2p_desc,
                     try_get_sub, try_get_user_desc)
 from .meta import Access, CommonDesc, DefaultAccess, GroupTopicDesc
-
-
-class BaseInfo(BaseModel, frozen=True):
-    public: Optional[Dict[str, Any]] = None
-    trusted: Optional[Dict[str, Any]] = None
-    private: Optional[Dict[str, Any]] = None
-
-    @property
-    def fn(self) -> Optional[str]:
-        if self.public:
-            return self.public.get("fn")
-
-    @property
-    def note(self) -> Optional[str]:
-        if self.public:
-            return self.public.get("note")
-
-    @property
-    def comment(self) -> Optional[str]:
-        if self.private:
-            return self.private.get("comment")
-
-    @property
-    def verified(self) -> bool:
-        return False if self.trusted is None else self.trusted.get("verified", False)
-    
-    @property
-    @abstractmethod
-    def topic_id(self) -> str:
-        raise NotImplementedError
-
-    async def set_info(
-        self,
-        bot: Bot,
-        /,
-        public: Optional[Dict[str, Any]] = None,
-        trusted: Optional[Dict[str, Any]] = None,
-        private: Optional[Dict[str, Any]] = None,
-        *,
-        update: bool = False,
-    ) -> None:
-        if update:
-            if public is not None and self.public is not None:
-                public = public.copy().update(self.public)
-            if trusted is not None and self.trusted is not None:
-                trusted = trusted.copy().update(self.trusted)
-            if private is not None and self.private is not None:
-                private = private.copy().update(self.private)
-        await set_info(
-            bot, self.topic_id, public=public, trusted=trusted, private=private
-        )
-
-    async def set_public(self, bot: Bot, /, public: Optional[Dict[str, Any]] = None, *, update: bool = False) -> None:
-        await self.set_info(bot, public=public, update=update)
-
-    async def set_trusted(self, bot: Bot, /, trusted: Optional[Dict[str, Any]] = None, *, update: bool = False) -> None:
-        await self.set_info(bot, trusted=trusted, update=update)
-
-    async def set_private(self, bot: Bot, /, private: Optional[Dict[str, Any]] = None, *, update: bool = False) -> None:
-        await self.set_info(bot, private=private, update=update)
-
-    async def set_fn(self, bot: Bot, /, fn: str) -> None:
-        await self.set_info(bot, public={"fn": fn}, update=True)
-
-    async def set_note(self, bot: Bot, /, note: str) -> None:
-        await self.set_info(bot, public={"note": note}, update=True)
-
-    async def set_comment(self, bot: Bot, /, comment: str) -> None:
-        await self.set_info(bot, private={"comment": comment}, update=True)
+from .model import BaseInfo
 
 
 class BaseTopic(BaseInfo, frozen=True):
@@ -117,6 +48,7 @@ class TopicSub(BaseTopic, frozen=True):
     acs: Optional[Access] = None
 
 
+@deprecated("Use `UserService.set_info` instead")
 async def set_info(
     bot: Bot,
     /,
