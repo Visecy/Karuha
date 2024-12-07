@@ -1,6 +1,5 @@
 import asyncio
 import base64
-from io import IOBase, TextIOBase
 import os
 import platform
 import sys
@@ -9,12 +8,14 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
+from io import IOBase, TextIOBase
 from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
                     Iterable, List, Literal, Optional, Tuple, Union, overload)
 from weakref import WeakSet, ref
 
 import grpc
 from aiofiles import open as aio_open
+from aiofiles.threadpool.binary import AsyncBufferedIOBase
 from aiohttp import ClientError, ClientSession, FormData
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
@@ -28,6 +29,7 @@ from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
+from .utils.context import nullcontext
 from .utils.decode import decode_mapping, encode_mapping
 from .version import APP_VERSION, LIB_VERSION
 
@@ -1018,12 +1020,13 @@ class Bot(object):
                     data = FormData()
                     data.add_field("id", tid)
                     if isinstance(path, IOBase):
-                        f = path
+                        path.seek(0)
+                        cm = nullcontext(path)
                         _path = None
                     else:
-                        f = open(path, "rb")
+                        cm = open(path, "rb")
                         _path = os.path.basename(path)
-                    with f:
+                    with cm as f:
                         data.add_field("file", f, filename=_path)
                         async with session.post(url, data=data) as resp:
                             ret = await resp.text()
@@ -1065,26 +1068,25 @@ class Bot(object):
         :raises KaruhaBotError: fail to download file
         """
         tid = self._get_tid()
+        if isinstance(path, IOBase):
+            path.seek(0)
+            cm = nullcontext(path)
+        else:
+            cm = aio_open(path, "wb")
         try:
-            async with await self._get_http_session() as session:
+            async with await self._get_http_session() as session, cm as f:
                 self.logger.debug(f"download request: {tid=} {path=} {session.headers=}")
                 size = 0
-                if isinstance(path, IOBase):
-                    async with session.get(url, params={"id": tid}) as resp:
-                        resp.raise_for_status()
-                        async for chunk in resp.content.iter_any():
-                            if isinstance(path, TextIOBase):
-                                path.write(chunk.decode())
-                            else:
-                                path.write(chunk)
-                            size += len(chunk)
-                else:
-                    async with aio_open(path, "wb") as f:
-                        async with session.get(url, params={"id": tid}) as resp:
-                            resp.raise_for_status()
-                            async for chunk in resp.content.iter_any():
-                                await f.write(chunk)
-                        size = await f.tell()
+                async with session.get(url, params={"id": tid}) as resp:
+                    resp.raise_for_status()
+                    async for chunk in resp.content.iter_any():
+                        size += len(chunk)
+                        if isinstance(f, AsyncBufferedIOBase):
+                            await f.write(chunk)
+                        elif isinstance(f, TextIOBase):
+                            f.write(chunk.decode())
+                        else:
+                            f.write(chunk)
             self.logger.debug(f"download length: {size}")
         except OSError as e:
             raise KaruhaBotError(f"fail to write file {path}", bot=self) from e
@@ -1268,7 +1270,7 @@ class Bot(object):
             "X-Tinode-Auth": f"{schema.title()} {secret}",
             "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}",
         }
-        return ClientSession(web_host, headers=headers)
+        return ClientSession(str(web_host), headers=headers, timeout=self.server.timeout)
 
     @contextmanager
     def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
@@ -1292,6 +1294,38 @@ class Bot(object):
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
+    
+    async def _prepare_account(self) -> None:
+        try:
+            await self.hello()
+        except Exception:
+            self.logger.error("failed to connect to server, restarting")
+            self.restart()
+            return
+        
+        if not self.config.auto_login:
+            self.logger.info("auto login is disabled, skipping")
+            return
+        
+        retry = self.server.retry if self.server is not None else 0
+        for i in range(retry):
+            try:
+                await self.login()
+            except (asyncio.TimeoutError, KaruhaBotError):
+                self.logger.warning(f"login failed, retrying {i+1} times")
+            else:
+                break
+        else:
+            try:
+                await self.login()
+            except (asyncio.TimeoutError, KaruhaBotError):
+                self.logger.error("login failed, cancel the bot")
+                self.cancel()
+        
+        await self.subscribe(
+            "me",
+            get="sub desc tags cred"
+        )
 
     def _prepare_loop_task(self) -> None:
         if self.state == BotState.running:
@@ -1383,9 +1417,9 @@ class Bot(object):
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
 
-class AgentBot(Bot):
+class ProxyBot(Bot):
     """
-    the bot that runs on the `extra.on_behalf_of` agent
+    the bot that runs on the `extra.on_behalf_of` proxy
     """
     __slots__ = ["on_behalf_of", "login_user_id"]
 
@@ -1397,7 +1431,7 @@ class AgentBot(Bot):
     def from_bot(cls, bot: Bot, /, on_behalf_of: str, name: Optional[str] = None) -> Self:
         config = bot.config.model_copy()
         if name is None:
-            config.name = f"{config.name}_agent_{on_behalf_of}"
+            config.name = f"{config.name}_proxy_{on_behalf_of}"
         else:
             config.name = name
         return cls(config, bot.server, bot.logger.level, on_behalf_of=on_behalf_of)

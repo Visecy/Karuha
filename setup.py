@@ -54,9 +54,10 @@ setup(
         "typing_extensions>=4.9",
         "grpcio>=1.40.0",
         "tinode-grpc>=0.20.0b3",
-        "pydantic>2.0",
+        "pydantic>=2.9",
         "aiohttp>=3.7",
-        "aiofiles>=23.1"
+        "aiofiles>=23.1",
+        "puremagic>=1.20"
     ],
     extras_require={
         "image": ["pillow>=10.0"],

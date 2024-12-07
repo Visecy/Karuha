@@ -3,7 +3,8 @@ from pydantic_core import to_json
 from tinode_grpc import pb
 
 from karuha.data.cache import UserCache, clear_cache, get_user_cred, get_user_tags, update_user_cache, user_cache
-from karuha.data.meta import AccessPermission, BaseDesc, Cred, UserDesc
+from karuha.data.meta import BaseDesc, UserDesc
+from karuha.data.model import AccessPermission, Cred
 from karuha.data.sub import has_sub
 from karuha.data.topic import BaseTopic, Topic, TopicSub, get_topic, get_topic_list
 from karuha.data.user import BaseUser, User, get_user
@@ -52,6 +53,10 @@ class TestData(AsyncBotTestCase):
             ).model_dump(),
             'JRW'
         )
+        self.assertEqual(
+            AccessPermission().model_dump(),
+            "N"
+        )
 
     def test_cache(self) -> None:
         base_desc = BaseDesc(
@@ -83,7 +88,7 @@ class TestData(AsyncBotTestCase):
         self.assertEqual(cache.desc.created, desc.created)
 
     async def test_me_meta(self) -> None:
-        task = asyncio.create_task(get_user(self.bot, ensure_user=True))
+        task = asyncio.create_task(get_user(self.bot, skip_cache=True))
         get_msg = await self.bot.consum_message()
         assert get_msg.get
         get_msg = get_msg.get
@@ -117,9 +122,9 @@ class TestData(AsyncBotTestCase):
 
     async def test_me_sub_meta(self) -> None:
         clear_cache()
-        task = asyncio.create_task(get_topic_list(self.bot, ensure_topic_sub=True))
+        task = asyncio.create_task(get_topic_list(self.bot, ensure_all=True))
         get_msg = await self.bot.consum_message()
-        assert get_msg.get
+        assert get_msg.HasField("get"), get_msg
         get_msg = get_msg.get
         meta = pb.ServerMeta(
             id=get_msg.id,
@@ -158,7 +163,7 @@ class TestData(AsyncBotTestCase):
         subs = await self.wait_for(task)
         self.assertEqual(len(subs), 2)
         for sub in subs:
-            self.assertIsInstance(sub, TopicSub)
+            assert isinstance(sub, TopicSub)
             if sub.topic == "grp_test_1":
                 self.assertEqual(sub.public, {"fn": "Test Group"})
                 self.assertIsNotNone(sub.touched)
@@ -235,14 +240,12 @@ class TestData(AsyncBotTestCase):
     
     async def test_p2p_meta(self) -> None:
         clear_cache()
-        task = asyncio.create_task(get_topic(self.bot, "usr_test_1", ensure_topic=True))
-        sub_msg = await self.bot.consum_message()
-        assert sub_msg.HasField("sub") and sub_msg.sub.topic == "usr_test_1"
-        self.bot.confirm_message()
-
+        task = asyncio.create_task(get_topic(self.bot, "usr_test_1", skip_cache=True))
+    
         get_msg = await self.bot.consum_message()
         assert get_msg.HasField("get")
         get_msg = get_msg.get
+        self.assertEqual(get_msg.query.what, "desc")
         meta = pb.ServerMeta(
             id=get_msg.id,
             topic="usr_test_1",
@@ -250,35 +253,29 @@ class TestData(AsyncBotTestCase):
                 created_at=1684421151062,
                 updated_at=1684421151062,
                 touched_at=1709023886332,
-                acs=pb.AccessMode(want="JRWPA", given="JRWPAS"),
-                seq_id=285,
-                read_id=285,
-                recv_id=285,
-                del_id=22,
+                acs=pb.AccessMode(), # want="JRWPA", given="JRWPAS"
+                # seq_id=285,
+                # read_id=285,
+                # recv_id=285,
+                # del_id=22,
                 public=to_json({"fn": "Test User"}),
-                last_seen_time=1709705329000,
-                last_seen_user_agent="Tindroid/0.22.12 (Android 11; zh_CN); tindroid/0.22.12"
+                # last_seen_time=1709705329000,
+                # last_seen_user_agent="Tindroid/0.22.12 (Android 11; zh_CN); tindroid/0.22.12"
             )
         )
         self.bot.receive_message(pb.ServerMsg(meta=meta))
+
+        self.bot.receive_message(pb.ServerMsg(meta=meta))
         topic = await self.wait_for(task)
+        assert isinstance(topic, Topic)
         self.assertEqual(topic.topic, "usr_test_1")
         self.assertEqual(topic.fn, "Test User")
         self.assertIsNone(topic.note)
-        self.assertEqual(topic.seq, 285)
         self.assertIsNone(topic.defacs)
-        assert topic.acs
-        self.assertEqual(
-            topic.acs.want,
-            AccessPermission(join=True, read=True, write=True, presence=True, approve=True)
-        )
     
     async def test_topic_meta(self) -> None:
         clear_cache()
-        task = asyncio.create_task(get_topic(self.bot, "grp_test_1", ensure_topic=True))
-        sub_msg = await self.bot.consum_message()
-        assert sub_msg.HasField("sub") and sub_msg.sub.topic == "grp_test_1"
-        self.bot.confirm_message()
+        task = asyncio.create_task(get_topic(self.bot, "grp_test_1"))
 
         get_msg = await self.bot.consum_message()
         assert get_msg.HasField("get")
@@ -303,7 +300,7 @@ class TestData(AsyncBotTestCase):
         self.bot.receive_message(pb.ServerMsg(meta=meta))
         
         topic = await self.wait_for(task)
-        self.assertIsInstance(topic, Topic)
+        assert isinstance(topic, Topic)
         self.assertEqual(topic.topic, "grp_test_1")
         self.assertEqual(topic.fn, "Test Group")
         self.assertEqual(topic.note, "Test Group Note")

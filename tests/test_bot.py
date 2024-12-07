@@ -102,6 +102,7 @@ class TestBot(AsyncBotTestCase):
             self.assertEqual(e.client_message, login_msg_inner)
             self.assertIsNotNone(e.response_message)
 
+        sub_task = asyncio.create_task(bot.subscribe("me"))
         sub_msg = await bot.consum_message()
         sub_msg_inner = sub_msg.sub
         self.assertIsInstance(sub_msg_inner, pb.ClientSub)

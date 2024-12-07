@@ -4,7 +4,7 @@ from io import StringIO
 from tinode_grpc import pb
 
 from karuha import BaseSession, MessageSession, add_bot, remove_bot, on_rule
-from karuha.bot import AgentBot
+from karuha.bot import ProxyBot
 from karuha.event.bot import BotReadyEvent
 from ..utils import AsyncBotClientTestCase
 
@@ -34,7 +34,16 @@ class TestBotClient(AsyncBotClientTestCase):
         uid = params["user"]
         await self.bot.delete("user", user_id=uid, hard=True)
     
-    async def test_on_behalf_of(self) -> None:
+    async def test_anonymous_account(self) -> None:
+        _, params = await self.bot.account(
+            "newkr_anon_test",
+            "anonymous",
+            do_login=False,
+        )
+        uid = params["user"]
+        await self.bot.delete("user", user_id=uid)
+    
+    async def test_proxy_bot(self) -> None:
         _, params = await self.bot.account(
             "newkr_test",
             "basic",
@@ -44,7 +53,7 @@ class TestBotClient(AsyncBotClientTestCase):
         )
         uid = params["user"]
         try:
-            agent_bot = AgentBot.from_bot(self.bot, on_behalf_of=uid)
+            agent_bot = ProxyBot.from_bot(self.bot, on_behalf_of=uid)
             add_bot(agent_bot)
             self.addCleanup(partial(remove_bot, agent_bot))
             

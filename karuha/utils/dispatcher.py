@@ -9,7 +9,7 @@ from .context import _ContextHelper
 T = TypeVar("T")
 
 
-class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
+class AbstractDispatcher(_ContextHelper, Generic[T]):
     __slots__ = ["once"]
 
     dispatchers: ClassVar[Set[Self]] = set()

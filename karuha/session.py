@@ -152,6 +152,7 @@ class BaseSession(object):
 
     send_file = partialmethod(send_attachment, attachment_cls_name="File")
     send_image = partialmethod(send_attachment, attachment_cls_name="Image")
+    send_audio = partialmethod(send_attachment, attachment_cls_name="Audio")
 
     async def wait_reply(
             self,

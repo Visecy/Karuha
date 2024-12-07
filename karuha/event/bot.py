@@ -37,32 +37,8 @@ class BotInitEvent(BotEvent):
     __slots__ = []
 
     async def __default_handler__(self) -> None:
-        bot = self.bot
-        try:
-            await bot.hello()
-        except Exception:
-            bot.logger.error("failed to connect to server, restarting")
-            bot.restart()
-            return
-        
-        if not bot.config.auto_login:
-            bot.logger.info("auto login is disabled, skipping")
-            return
-        
-        retry = bot.server.retry if bot.server is not None else 0
-        for i in range(retry):
-            try:
-                await bot.login()
-            except (asyncio.TimeoutError, KaruhaBotError):
-                bot.logger.warning(f"login failed, retrying {i+1} times")
-            else:
-                break
-        else:
-            try:
-                await bot.login()
-            except (asyncio.TimeoutError, KaruhaBotError):
-                bot.logger.error("login failed, cancel the bot")
-                bot.cancel()
+        prepare_task = asyncio.create_task(self.bot._prepare_account())
+        prepare_task.add_done_callback(lambda _:BotReadyEvent.new(self.bot))
 
 
 class BotReadyEvent(BotEvent):
@@ -374,6 +350,11 @@ class PresEvent(ServerEvent, on_field="pres"):
     async def __default_handler__(self) -> None:
         msg = self.server_message
         if msg.topic != "me":
+            if msg.what == pb.ServerPres.ACS:
+                topic = msg.topic
+                _, meta = await self.bot.get(topic, "desc")
+                if meta:
+                    await self.bot.set(topic, sub=pb.SetSub(mode=meta.desc.acs.given))
             return
         if msg.what == pb.ServerPres.ON:
             await self.bot.subscribe(msg.src, get="desc sub")
@@ -505,11 +486,6 @@ class LoginEvent(ClientEvent, on_field="login"):
             if code < 200 or code >= 400 and code != 409:
                 # login failed
                 return
-        await self.bot.subscribe(
-            "me",
-            get="sub desc tags cred"
-        )
-        BotReadyEvent.new(self.bot)
 
 
 class PublishEvent(ClientEvent, on_field="pub"):

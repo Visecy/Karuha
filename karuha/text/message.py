@@ -146,6 +146,8 @@ class _HeadDependency(HandlerInvokerDependency):
 
     @classmethod
     def resolve_dependency(cls, invoker: Message, param: Parameter, **kwds: Any) -> Any:
+        if not isinstance(invoker, Message):
+            raise KaruhaHandlerInvokerError(f"cannot resolve head dependency for {param.name!r}")
         return invoker.head.get(param.name)
 
 
