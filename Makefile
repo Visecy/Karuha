@@ -13,7 +13,7 @@ build:
 	python setup.py build
 
 build_dist: test
-	python setup.py sdist bdist_wheel
+	python -m build
 
 install:
 	pip install .

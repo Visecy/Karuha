@@ -6,11 +6,11 @@
 ![PyPI - Downloads](https://img.shields.io/pypi/dw/KaruhaBot)
 ![Python Version](https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg)
 
-A simple Tinode chatbot framework.
+A simple Tinode chat bot framework
 
 **Language: English/[中文](README_cn.md)**
 
-The name of the library `Karuha` comes from the character Karuha Ramukone (カルハ・ラムコネ) in the game 星空鉄道とシロの旅.
+The name of the library `Karuha` comes from the character Karuha Ramkone (カルハ・ラムコネ) in the game Starry Sky Train and White's Journey.
 
 <div align="center">
 
@@ -22,11 +22,11 @@ The name of the library `Karuha` comes from the character Karuha Ramukone (カ�
 
 ## Installation
 
-From pip:
+Install from Pypi:
 
     pip install KaruhaBot
 
-From source code:
+Install from Pypi:
 
     git clone https://github.com/Visecy/Karuha.git
     cd Karuha
@@ -34,16 +34,17 @@ From source code:
 
 ## Quick Start
 
-Before starting, you need to make sure you have the Tinode service running locally with its gRPC port set to the default value of 16060.
+Before you begin, you need to ensure that the Tinode service is running locally with the default gRPC port 16060.
 
-> If your service is not local or the gRPC port has been changed, you may need to modify or add additional server configuration items in the following code.
+> If your service is not local or the gRPC port has changed, you may need to modify or add server configuration items in the following code.
 
-Create a new file config.json and write the configuration in it:
+Create a new file `config.json` and write the following content as the configuration file:
 
 ```json
 {
     "server": {
-        "host": "localhost:16060"
+        "host": "localhost:16060",
+        "web_host": "http://localhost:6060"
     },
     "bots": [
         {
@@ -55,107 +56,146 @@ Create a new file config.json and write the configuration in it:
 }
 ```
 
-> Replace `{chatbot_login_name}` and `{chatebot_login_passwd}` with the chatbot’s login account name and password in the Tinode server.
+> Replace `{chatbot_login_name}` and `{chatebot_login_passwd}` with the login account name and password of the chatbot on the Tinode server.
 
 Use the following command to start the chatbot:
 
     python -m Karuha ./config.json
 
-Now you can view the messages others have sent to the chatbot from the command line.
+You can now view messages sent to the chatbot from others in the command line.
 
 ## User Interaction
 
-Of course, only receiving messages is not enough, we need some interaction with users. Karuha provides a powerful command system. With the command system, we can conveniently receive user-issued information and make appropriate responses.
+Receiving messages alone is certainly not enough; we need to interact with users. Karuha provides a powerful command system. With the command system, we can easily receive messages from users and respond accordingly.
 
 ### Simple Command Example
-Let's start with a very simple command. We want to implement a hi command, which replies Hello! when the chatbot receives this command.
 
-Create a new file hi.py and write the following:
+Let's start with the simplest command. We want to implement a `hi` command that replies `Hello!` when the bot receives this command.
+
+Create a new `hi.py` and write the following content in it:
 
 ```python
 from karuha import on_command, MessageSession
+
 
 @on_command
 async def hi(session: MessageSession) -> None:
     await session.send("Hello!")
 ```
 
-The above code involves some Python knowledge, which I will briefly introduce one by one. If you already understand these concepts, you can skip this part.
+The above code involves some Python knowledge, and I will briefly introduce each one. If you are already familiar with this knowledge, you can skip this part.
 
-The first line imports the `on_command` decorator and the `MessageSession` class from the karuha module. Decorators are objects that can be used to decorate functions or classes. Here, its usage is shown on line 4, decorating the function with `@on_command` before the function definition. The decorated function will be registered as a command and called when the corresponding message is received.
+In the first line of the code, we import the `on_command` decorator and the `MessageSession` class from the `karuha` module. A decorator is an object that can be used to modify functions or classes. Here, its usage is shown in the fourth line, where it decorates the function by using `@on_command` before the function definition. The decorated function will be registered as a command and will be called when the corresponding message is received.
 
-Next is the definition of the hi function. Here we use `async def` to define the command function. Unlike functions defined using `def`, functions defined with `async def` are asynchronous functions. Asynchrony is a complex topic. If you don't understand it, that's fine - we will only use some simple syntax here similar to normal functions.
+Next is the definition of the `hi` function. Here we use `async def` to define the command function. Unlike regular functions defined with `def`, functions defined with `async def` are asynchronous functions. Asynchronous programming is a relatively complex topic, and it's okay if you don't understand it; here we will only use some simple syntax similar to normal functions.
 
-You may be unfamiliar with line `(session: MessageSession) -> None`. This is a type annotation to indicate the parameter type and return value type of the function. Here we declare the type of session to be `MessageSession`, and the return type to be `None`, meaning no return value. Type annotations are optional in Python but recommended for Karuha commands to help parse message data.
+You might be a bit unfamiliar with the line `(session: MessageSession) -> None`. This is a type annotation that specifies the parameter type and return type of the function. Here we declare the type of `session` as `MessageSession`, and the return type as `None`, meaning there is no return value. In Python, type annotations are optional, but for commands in Karuha, they are used for parsing message data. While not mandatory, it is recommended to add type annotations when writing commands to help Karuha better understand your code.
 
-Then comes the function body, which is very short with only one line. `session` is a session object that encapsulates many APIs for receiving and sending messages. Here we use the `send` method to send a message. `send` is an asynchronous method, so we need to use await when calling it.
+Next is the content of the function, which is very short, only one line. `session` is a session object that encapsulates many APIs for receiving and sending messages. Here, we use the `send` method to send messages. `send` is an asynchronous method, so it needs to be preceded by `await` when called.
 
-After writing the command, we can run the chatbot to test it. Use the following command:
+After completing the command writing, we can run the robot to test it. Use the following command to run the robot:
 
 ```sh
 python -m karuha ./config.json -m hi
 ```
 
-Then in the conversation with the bot, enter the following:
+Then, in the conversation with the robot, enter the following content:
 
-     /hi
+    /hi
 
+> By default, karuha will only process text messages starting with `/` as commands. This behavior can be set before defining all commands using the `set_prefix` function.
 
-> By default, karuha will only process text messages starting with `/` as commands. This behavior can be set through the `set_prefix` function before defining all commands.
+If all goes well, you should see the robot reply with `Hello!`.
 
-If everything goes well, you should see the `Hello!` reply from the bot.
+### Example Extension
 
-### Getting User Input
+In the above example, we did not directly use the user's input. What should I do if I want to get the user's input?
 
-In the above example, we did not directly use the user's input. What if I want to get the user's input content?
+One method is to use the message log in `session`. The complete user input is contained in `session.last_message`. But this is not very elegant.
 
-One way is to use the message record in the `session`. `session.last_message` contains the complete user input. But this is not very elegant.
-
-A more convenient method is to directly modify the function signature, such as:
+A more convenient method is to directly modify the function signature, for example: 
 
 ```python
-async def hi(session: MessageSession, text: str) -> None:
+from typing import List
+
+@on_command
+async def hi(session: MessageSession, argv: List[str]) -> None:
     ...
 ```
 
-We add a text parameter of type str to represent the user's input content. Let's modify the contents of the hi function a bit to allow it to:
-
+We added an `argv` parameter, of type `List[str]`, which represents the user input. Let's slightly modify the content of the `hi` function: 
 
 ```python
 @on_command
-async def hi(session: MessageSession, text: str) -> None:
-    total = text.split(' ', 1)
-    if len(total) == 1:
+async def hi(session: MessageSession, argv: List[str]) -> None:
+    if nor argv:
         await session.send("Hello!")
         return
-    name = total[1]
+    name = argv[0]
     await session.send(f"Hello {name}!")
 ```
 
-The code above builds on the previous logic by adding the name to greet in the command's response. This involves some string processing operations that are not explained here for now.
+In the above code, we added the name to greet in the command's reply content based on the previous logic.
 
-Run the chatbot and send it:
+Let's run the bot and try sending it the following: 
 
     /hi world
 
-You should receive the chatbot's response of `Hello world!`.
+You will receive `Hello world!` returned by the bot.
 
 ## About More
-Of course, Karuha provides more APIs than just these. If you are interested in learning more, please refer to the source code of the library.
 
-### Development Goals
-Features that may be added in the future include:
+Of course, the API provided by Karuha is not limited to these; if you are interested in more content, you can refer to the library's source code.
 
-- [x] APIs related to user information getting and setting
-- [x] Match rule for command
-- [ ] Automatic argument parsing in argparse format for commands
+### Features and Support
+
+The functionalities that have been implemented so far are as follows: 
+
+- [X] Command system
+- [X] Rich text (Drafty) parsing
+- [X] Rule-based chat message processing
+- [X] User and topic information reading✨
+- [X] Proxy sending bot✨
+- [X] Tinode plugin server✨
+- [X] Client low-level API encapsulation
+  - [X] `hi` message
+  - [X] `acc` message
+  - [X] `login` message
+  - [X] `sub` message
+  - [X] `leave` message
+  - [X] `pub` message
+  - [X] `get` message
+  - [X] `set` message
+  - [X] `del` message
+  - [X] `note` message
+- [X] Server-side low-level API handling
+  - [X] `data` message
+  - [X] `ctrl` message
+  - [X] `meta` message
+  - [X] `pres` message
+  - [X] `info` message
+- [X] Large file upload and download ✨
+
+> Items marked with ✨ are experimental features, and their functionality may have issues that require further experimentation and feedback. The interfaces for these features may also undergo breaking changes in the future.
+
+Possible features to be added next include:
+
+- [ ] User and topic information modification
+- [ ] Audio attachment upload support
+- [ ] Video attachment upload support
+- [ ] The underlying API encapsulation based on http and websocket
+- [ ] Automatic parsing of command parameters in argparse format
+- [ ] Refactor the store module using sqlalchemy
 
 ### Module Development
-Currently, Karuha's support for module development is relatively simple. There are no dedicated APIs for defining chatbot modules, but predefined commands can still be supported.
 
-The way to define commands in external modules is similar to the normal definition. But to avoid affecting the user's related command settings, we need to create a new CommandCollection. The method to establish a command collection and define commands in it is as follows:
+Currently, karuha's support for module development is relatively simple. There is no dedicated API for defining chatbot modules, but it can support presetting some commands.
+
+The way to define commands in external modules is similar to the normal definition method. However, to avoid affecting the user's related command settings, we need to create a new command collection (CommandCollection). The method to create a command collection and define commands within it is as follows:
 
 ```python
+from typing import List
+
 from karuha import MessageSession
 from karuha.command import new_collection, add_sub_collection
 
@@ -165,38 +205,42 @@ add_sub_collection(collection)
 
 
 @collection.on_command
-async def hi(session: MessageSession, text: str) -> None:
+async def hi(session: MessageSession, argv: List[str]) -> None:
     ...
 ```
 
-> Note that to make the command collection take effect, the add_sub_collection function needs to be called to add the command collection to the sub-command collection.
+> Note: In order for the command collection to take effect, you need to call the `add_sub_collection` function to add the command collection to the sub-command collection.
 
-### Architecture Overview
+### Architecture Description
+
 The overall architecture of Karuha is as follows:
 
-| Layer | Provided Module | Function |
-| --- | --- | --- |
-| Upper layer | karuha.command | Command registration and processing |
-| Middle layer | karuha.event | Async event-driven system |
-| Lower layer | karuha.bot | Tinode API basic encapsulation |
+| Interface Level | Provided Module  | Function               |
+| -------- | -------------- | ------------------ |
+| Upper Level     | karuha.command    | Command Registration and Processing     |
+| Middle Level    | karuha.event      | Asynchronous Event-Driven System   |
+| Lower Level     | karuha.bot        | Basic Encapsulation of Tinode API |
 
-In addition, there are some relatively independent modules:
+In addition, there are also some relatively independent modules:
 
-| Module | Function |
-| --- | --- |
-| karuha.text | Text processing module |
-| karuha.config | Configuration file parsing module |
-| karuha.plugin_server | Plugin module for Tinode server, not enabled by default |
+| Module                 | Function                                   |
+| -------------------- | -------------------------------------- |
+| karuha.text          | Text processing module                     |
+| karuha.config        | Configuration file parsing module         |
+| karuha.plugin_server | Plugin module used by the Tinode server, not enabled by default |
 
-### Message Handling
-Karuha internally provides two complementary message handling systems: the asynchronous event message system (event) and the message dispatcher system (dispatcher).
+### Message Processing
 
-The asynchronous event message is used to receive and parallelly process messages. By registering message event handlers, the related information of the message can be quickly collected. Message handlers are parallel and non-interfering with each other.
+Karuha provides two complementary message processing systems, namely the asynchronous message event system (event) and the message dispatcher system (dispatcher).
 
-The message dispatcher is downstream of the asynchronous event message system. It is used to determine the final message handler. This system is used to handle the connection between the middle layer event system and the upper command system. If you want to provide feedback to users according to message content and avoid interference from other message processing modules, you should use this system.
+The asynchronous message event is used to receive and process messages in parallel. By registering message event handlers, relevant information about messages can be quickly collected. Different message handlers operate in parallel and do not interfere with each other.
 
-## About Documentation
-This project does not have documentation plans. Documentation will not be provided for the foreseeable future. If you want to provide documentation for this project, I will greatly appreciate it.
+The message dispatcher is located downstream of the asynchronous message event system, used to determine the final message handler. This system is used to bridge the middle-layer event system and the upper-layer command system. If you wish to provide feedback to users based on message content and avoid interference from other message processing modules, you should use this system.
 
-## About Contribution
-Welcome to post your questions and suggestions in issues. If you are interested in developing Tinode chatbots, welcome to contribute.
+## About the Documentation
+
+There are no plans for comprehensive documentation for this project. There will be no documentation for this project in the foreseeable future. If you wish to provide documentation for this project, I would be very grateful.
+
+## About Contributions
+
+You are welcome to raise your questions and suggestions in the issues. If you are interested in contributing to the development of the Tinode chatbot, you are welcome to participate.

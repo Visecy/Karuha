@@ -60,6 +60,7 @@ setup(
         "puremagic>=1.20"
     ],
     extras_require={
+        "lint": ["flake8>=6.1"],
         "image": ["pillow>=10.0"],
         "data": ["greenback"],
         "all": ["pillow>=10.0", "greenback"],

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "KaruhaBot"
+description = "A simple Tinode chatbot framework."
+readme = "README.md"
+license = {text = "Apache 2.0"}
+authors = [
+    {name = "Visecy", email = "Visecy@visecy.org"},
+]
+maintainers = [
+    {name = "Ovizro", email = "Ovizro@visecy.org"},
+]
+urls = {repository = "https://github.com/Visecy/Karuha"}
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Communications :: Chat",
+]
+
+dependencies = [
+    "typing_extensions>=4.9",
+    "grpcio>=1.40.0",
+    "tinode-grpc>=0.20.0b3",
+    "pydantic>=2.9",
+    "aiohttp>=3.7",
+    "aiofiles>=23.1",
+    "puremagic>=1.20"
+]
+requires-python = ">=3.8"
+dynamic = ["version"]
+
+[project.optional-dependencies]
+lint = ["flake8>=6.1"]
+image = ["pillow>=10.0"]
+data = ["greenback"]
+all = ["pillow>=10.0", "greenback"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["karuha*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "karuha.version.__version__"}

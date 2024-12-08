@@ -82,27 +82,31 @@ def cancel_all_bots() -> bool:
 
 
 @contextlib.asynccontextmanager
-async def run_bot(bot: Bot) -> AsyncGenerator[Bot, None]:
+async def run_bot(bot: Bot, *, ensure_state: bool = True) -> AsyncGenerator[Bot, None]:
     """run bot temporarily
 
     :param bot: bot to run
     :type bot: Bot
+    :param ensure_state: ensure bot is ready before yield, defaults to True
+    :type ensure_state: bool, optional
     :yield: the bot
     :rtype: Generator[Bot, None, None]
     """
     add_bot(bot)
-    with EventCatcher(BotReadyEvent) as catcher:
-        ev = await catcher.catch_event()
-        while ev.bot is not bot:
+    if ensure_state:
+        with EventCatcher(BotReadyEvent) as catcher:
             ev = await catcher.catch_event()
+            while ev.bot is not bot:
+                ev = await catcher.catch_event()
     try:
         yield bot
     finally:
         remove_bot(bot)
-        with EventCatcher(BotFinishEvent) as catcher:
-            ev = await catcher.catch_event()
-            while ev.bot is not bot:
+        if ensure_state:
+            with EventCatcher(BotFinishEvent) as catcher:
                 ev = await catcher.catch_event()
+                while ev.bot is not bot:
+                    ev = await catcher.catch_event()
 
 
 def _get_running_loop() -> asyncio.AbstractEventLoop:

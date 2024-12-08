@@ -1,4 +1,5 @@
-from typing import Any, Iterable, Mapping, Optional, Tuple, Union
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, Iterable, Mapping, Optional, Tuple, Union
 
 from pydantic_core import to_json
 from tinode_grpc import pb
@@ -33,6 +34,7 @@ class UserService(BaseService):
         cred: Iterable[ClientCredType],
         state: UserStateType = "ok",
         use_proxy: bool = False,
+        start_run: bool = True,
     ) -> Bot:
         secret = f"{uname}:{password}"
         _, params = await self.bot.account(
@@ -51,7 +53,8 @@ class UserService(BaseService):
             bot = Bot(name, schema="basic", secret=secret, server=self.bot.server)
         else:
             bot = ProxyBot.from_bot(self.bot, user_id, name)
-        add_bot(bot)
+        if start_run:
+            add_bot(bot)
         return bot
 
     async def new_user(
@@ -61,7 +64,7 @@ class UserService(BaseService):
         *,
         tags: Iterable[str] = (),
         cred: Iterable[ClientCredType] = (),
-        state: UserStateType = "ok"
+        state: Optional[UserStateType] = None
     ) -> Tuple[str, str]:
         secret = f"{uname}:{password}"
         _, params = await self.bot.account(
@@ -89,7 +92,7 @@ class UserService(BaseService):
             return await get_user(
                 self.bot, user_id, skip_cache=skip_cache, skip_sub_check=skip_sub_check
             )
-        async with run_bot(ProxyBot.from_bot(self.bot, user_id)) as bot:
+        async with self._ensure_run_as_me(user_id) as bot:
             return await get_user(bot, skip_cache=skip_cache, skip_sub_check=True)
 
     async def get_user_fn(self, user: Union[str, BaseUser]) -> Optional[str]:
@@ -124,6 +127,8 @@ class UserService(BaseService):
         public: Optional[Mapping[str, Any]] = None,
         trusted: Optional[Mapping[str, Any]] = None,
         private: Optional[Mapping[str, Any]] = None,
+        attachments: Optional[Iterable[str]] = None,
+        use_proxy: bool = False,
     ) -> None:
         if isinstance(user, str):
             user_id = user
@@ -135,11 +140,52 @@ class UserService(BaseService):
             trusted=to_json(trusted) if trusted else None,
             private=to_json(private) if private else None,
         )
+        async with self._ensure_run_as_me(user_id, use_proxy=use_proxy) as bot:
+            await bot.set(
+                "me",
+                desc=set_desc,
+                extra=pb.ClientExtra(attachments=attachments) if attachments else None,
+            )
+    
+    async def set_user_public(self, user: Union[str, BaseUser], **kwds: Any) -> None:
+        user = await self._ensure_user(user)
+        public = user.public or {}
+        public.update(**kwds)
+        await self.set_user_meta(user, public=public, use_proxy=True)
+    
+    async def set_user_trusted(self, user: Union[str, BaseUser], **kwds: Any) -> None:
+        user = await self._ensure_user(user)
+        trusted = user.trusted or {}
+        trusted.update(**kwds)
+        await self.set_user_meta(user, trusted=trusted, use_proxy=True)
+    
+    async def set_user_private(self, user: Union[str, BaseUser], **kwds: Any) -> None:
+        user = await self._ensure_user(user)
+        private = user.private or {}
+        private.update(**kwds)
+        await self.set_user_meta(user, private=private, use_proxy=False)
+
+    async def set_user_fn(self, user: Union[str, BaseUser], fn: str) -> None:
+        await self.set_user_public(user, fn=fn)
+    
+    async def set_user_note(self, user: Union[str, BaseUser], note: str) -> None:
+        await self.set_user_public(user, note=note)
+
+    async def set_user_comment(self, user: Union[str, BaseUser], comment: str) -> None:
+        await self.set_user_private(user, comment=comment)
+
+    async def _ensure_user(self, user: Union[str, BaseUser]) -> BaseUser:
+        if isinstance(user, str):
+            return await self.get_user(user)
+        else:
+            return user
+
+    @asynccontextmanager
+    async def _ensure_run_as_me(self, user_id: str, *, use_proxy: bool = True) -> AsyncGenerator[Bot, None]:
         if user_id == self.bot.user_id:
             user_id = "me"
-        if user_id == "me":
-            await self.bot.set("me", desc=set_desc)
+        if user_id == "me" or not use_proxy:
+            yield self.bot
         else:
-            proxy = ProxyBot.from_bot(self.bot, user_id)
-            async with run_bot(proxy):
-                await proxy.set("me", desc=set_desc)
+            async with run_bot(ProxyBot.from_bot(self.bot, user_id)) as proxy:
+                yield proxy

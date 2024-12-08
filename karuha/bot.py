@@ -8,9 +8,10 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
-from io import IOBase, TextIOBase
-from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
-                    Iterable, List, Literal, Optional, Tuple, Union, overload)
+from io import IOBase
+from typing import (Any, AsyncGenerator, BinaryIO, Callable, Coroutine, Dict,
+                    Generator, Iterable, List, Literal, Optional, Tuple, Union,
+                    overload)
 from weakref import WeakSet, ref
 
 import grpc
@@ -119,7 +120,7 @@ class Bot(object):
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
-        elif schema is None or secret is None:
+        elif schema is None or secret is None:  # pragma: no cover
             raise ValueError("authentication scheme not defined")
         else:
             self.config = BotConfig(name=name, schema=schema, secret=secret)
@@ -180,7 +181,7 @@ class Bot(object):
             scheme: Optional[str] = None,
             secret: Optional[bytes] = None,
             *,
-            state: str = "ok",
+            state: Optional[str] = None,
             do_login: bool = True,
             desc: Optional[pb.SetDesc] = None,
             tags: Iterable[str] = (),
@@ -394,11 +395,6 @@ class Bot(object):
         if ctrl.code < 200 or ctrl.code >= 400:
             err_text = f"fail to leave topic {topic}: {ctrl.text}"
             self.logger.error(err_text)
-            if topic == "me":  # pragma: no cover
-                if ctrl.code == 502:
-                    self.restart()
-                else:
-                    self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         else:
             self.logger.info(f"leave topic {topic}")
@@ -443,7 +439,7 @@ class Bot(object):
             extra=extra
         )
         assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code < 200 or ctrl.code >= 400:
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
             err_text = f"fail to publish message to {topic}: {ctrl.text}"
             self.logger.error(err_text)
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
@@ -635,7 +631,7 @@ class Bot(object):
             elif data is not None:
                 assert desc is None and sub is None
                 what = "data"
-            else:
+            else:  # pragma: no cover
                 raise ValueError("what must be specified")
         meta = await self.send_message(
             tid,
@@ -999,7 +995,7 @@ class Bot(object):
 
     async def upload(
             self,
-            path: Union[str, os.PathLike, IOBase]
+            path: Union[str, os.PathLike, BinaryIO]
     ) -> Tuple[str, Dict[str, Any]]:
         """
         upload a file
@@ -1019,7 +1015,7 @@ class Bot(object):
                     url = "/v0/file/u/"
                     data = FormData()
                     data.add_field("id", tid)
-                    if isinstance(path, IOBase):
+                    if isinstance(path, (BinaryIO, IOBase)):
                         path.seek(0)
                         cm = nullcontext(path)
                         _path = None
@@ -1056,7 +1052,7 @@ class Bot(object):
     async def download(
             self,
             url: str,
-            path: Union[str, os.PathLike, IOBase]
+            path: Union[str, os.PathLike, BinaryIO]
     ) -> None:
         """
         download a file
@@ -1068,7 +1064,7 @@ class Bot(object):
         :raises KaruhaBotError: fail to download file
         """
         tid = self._get_tid()
-        if isinstance(path, IOBase):
+        if isinstance(path, (BinaryIO, IOBase)):
             path.seek(0)
             cm = nullcontext(path)
         else:
@@ -1083,8 +1079,6 @@ class Bot(object):
                         size += len(chunk)
                         if isinstance(f, AsyncBufferedIOBase):
                             await f.write(chunk)
-                        elif isinstance(f, TextIOBase):
-                            f.write(chunk.decode())
                         else:
                             f.write(chunk)
             self.logger.debug(f"download length: {size}")

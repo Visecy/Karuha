@@ -43,7 +43,8 @@
 ```json
 {
     "server": {
-        "host": "localhost:16060"
+        "host": "localhost:16060",
+        "web_host": "http://localhost:6060"
     },
     "bots": [
         {
@@ -182,7 +183,7 @@ async def hi(session: MessageSession, argv: List[str]) -> None:
 - [ ] 用户及话题信息修改
 - [ ] 音频附件上传支持
 - [ ] 视频附件上传支持
-- [ ] 
+- [ ] 基于http及websocket的底层API封装
 - [ ] argparse格式的命令参数自动解析
 - [ ] 使用sqlalchemy重构store模块
 

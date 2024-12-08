@@ -1,11 +1,10 @@
-from functools import partial
-from io import StringIO
+from io import BytesIO
 
 from tinode_grpc import pb
 
-from karuha import BaseSession, MessageSession, add_bot, remove_bot, on_rule
+from karuha import BaseSession, MessageSession, on_rule
 from karuha.bot import ProxyBot
-from karuha.event.bot import BotReadyEvent
+from karuha.runner import run_bot
 from ..utils import AsyncBotClientTestCase
 
 
@@ -15,13 +14,13 @@ class TestBotClient(AsyncBotClientTestCase):
         await self.bot.hello(lang="CN")
 
     async def test_upload(self) -> None:
-        f = StringIO("Hello world!")
+        f = BytesIO(b"Hello world!")
         _, params = await self.bot.upload(f)
         self.assertTrue("url" in params)
 
-        f = StringIO()
+        f = BytesIO()
         await self.bot.download(params["url"], f)
-        self.assertEqual(f.getvalue(), "Hello world!")
+        self.assertEqual(f.getvalue(), b"Hello world!")
 
     async def test_account(self) -> None:
         _, params = await self.bot.account(
@@ -45,34 +44,28 @@ class TestBotClient(AsyncBotClientTestCase):
     
     async def test_proxy_bot(self) -> None:
         _, params = await self.bot.account(
-            "newkr_test",
+            "new",
             "basic",
             b"test:test123456",
+            state="ok",
             cred=[pb.ClientCred(method="email", value="test@example.com")],
             do_login=False,
         )
         uid = params["user"]
         try:
-            agent_bot = ProxyBot.from_bot(self.bot, on_behalf_of=uid)
-            add_bot(agent_bot)
-            self.addCleanup(partial(remove_bot, agent_bot))
-            
-            with self.catchEvent(BotReadyEvent) as catcher:
-                ev = await catcher.catch_event()
-                self.assertIs(ev.bot, agent_bot)
-            self.assertEqual(agent_bot.user_id, uid)
-            self.assertEqual(agent_bot.login_user_id, self.bot.user_id)
+            async with run_bot(ProxyBot.from_bot(self.bot, on_behalf_of=uid)) as agent_bot:
+                assert isinstance(agent_bot, ProxyBot)
+                self.assertEqual(agent_bot.user_id, uid)
+                self.assertEqual(agent_bot.login_user_id, self.bot.user_id)
 
-            @on_rule(user_id=uid, bot=self.bot)
-            async def _handler(session: MessageSession, text: str) -> None:
-                self.assertEqual(text, "test")
-                await session.send("test_reply")
-            
-            self.addCleanup(_handler.deactivate)
-            
-            async with BaseSession(agent_bot, self.bot.user_id) as session:
-                await session.send("test")
-                reply = await session.wait_reply()
-                self.assertEqual(reply.plain_text, "test_reply")
+                @on_rule(user_id=uid, bot=self.bot, once=True)
+                async def _handler(session: MessageSession, text: str) -> None:
+                    self.assertEqual(text, "test")
+                    await session.send("test_reply")
+                
+                async with BaseSession(agent_bot, self.bot.user_id) as session:
+                    await session.send("test")
+                    reply = await session.wait_reply()
+                    self.assertEqual(reply.plain_text, "test_reply")
         finally:
             await self.bot.delete("user", user_id=uid, hard=True)
