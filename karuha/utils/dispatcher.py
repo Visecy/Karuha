@@ -1,5 +1,5 @@
 import asyncio
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any, Callable, ClassVar, Generic, Optional, Set, TypeVar
 from typing_extensions import Self
 
@@ -9,7 +9,7 @@ from .context import _ContextHelper
 T = TypeVar("T")
 
 
-class AbstractDispatcher(ABC, _ContextHelper, Generic[T]):
+class AbstractDispatcher(_ContextHelper, Generic[T]):
     __slots__ = ["once"]
 
     dispatchers: ClassVar[Set[Self]] = set()

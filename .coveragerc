@@ -3,8 +3,6 @@
 branch = True
 omit =
     __main__.py
-    karuha/plugin_server.py
-    karuha/utils/locks.py
 
 [report]
 # Regexes for lines to exclude from consideration

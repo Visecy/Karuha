@@ -1,19 +1,19 @@
 from pathlib import Path
 from typing import Iterable, Literal, Optional, Tuple, Union
-from pydantic import AnyUrl, BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator
-from typing_extensions import Annotated
+from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator
 
+from . import CONFIG_PATH
 from .logger import logger, Level
 
 
 class Server(BaseModel):
-    host: Annotated[str, AnyUrl] = "localhost:16060"
-    web_host: Annotated[str, HttpUrl] = "http://localhost:6060"
+    host: str = "localhost:16060"
+    web_host: HttpUrl = HttpUrl("http://localhost:6060")
     api_key: str = "AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K"
     ssl: bool = False
     ssl_host: Optional[str] = None
     enable_plugin: bool = False
-    listen: Annotated[str, AnyUrl] = "0.0.0.0:40051"
+    listen: str = "0.0.0.0:40051"
     timeout: float = 5
     retry: int = 5
 
@@ -66,7 +66,7 @@ def get_config() -> Config:
 
 
 def load_config(
-    path: Union[str, Path] = "config.json",
+    path: Union[str, Path] = CONFIG_PATH,
     *,
     encoding: str = "utf-8",
     auto_create: bool = True

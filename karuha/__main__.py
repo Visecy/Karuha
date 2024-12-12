@@ -20,7 +20,7 @@ from argparse import ArgumentParser
 from importlib import import_module
 from pathlib import Path
 
-from . import load_config, run
+from . import load_config, run, CONFIG_PATH
 from .version import APP_VERSION, LIB_VERSION
 
 
@@ -34,7 +34,7 @@ version_info = ' '.join((
     f"gRPC-python/{LIB_VERSION}"
 ))
 
-default_config = os.environ.get("KARUHA_CONFIG", "config.json")
+default_config = CONFIG_PATH
 default_modules = os.environ.get("KARUHA_MODULES", "").split(os.pathsep)
 
 parser = ArgumentParser("Karuha", description=description)

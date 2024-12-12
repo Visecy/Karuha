@@ -1,18 +1,15 @@
 from datetime import datetime
-from typing import List, Literal, Optional, overload
+from typing import List, Optional
 
 from ..bot import Bot
-from .cache import get_sub, get_topic_sub, get_user_desc, try_get_sub, try_get_user_desc
-from .meta import Access, DefaultAccess, Subscription, UserDesc
-from .topic import BaseInfo
+from ..utils.decode import load_json, msg2dict
+from .cache import get_sub, get_user_desc, try_get_sub, try_get_topic_sub, try_get_user_desc
+from .meta import Access, DefaultAccess, UserDesc
+from .model import BaseInfo
 
 
 class BaseUser(BaseInfo, frozen=True):
     user_id: str
-
-    @property
-    def topic_id(self) -> str:
-        return self.user_id
 
     @property
     def staff(self) -> bool:
@@ -69,17 +66,12 @@ def try_get_user(bot: Bot, /, user_id: str = "me") -> Optional[BaseUser]:
         )
 
 
-@overload
-async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: Literal[True]) -> User: ...
-@overload
-async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: bool = False) -> BaseUser: ...
-
-
-async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: bool = False) -> BaseUser:
+async def get_user(bot: Bot, /, user_id: str = "me", *, skip_cache: bool = False, skip_sub_check: bool = False) -> BaseUser:
     if user_id == bot.uid:
         user_id = "me"
-    desc = await get_user_desc(bot, user_id, ensure_meta=ensure_user and user_id == "me")
-    if user_id == "me":
+    desc = await get_user_desc(bot, user_id, skip_cache=skip_cache)
+    sub = await get_sub(bot, user_id, skip_sub_check=skip_sub_check)
+    if sub is None:
         if isinstance(desc, UserDesc):
             return User(
                 user_id=bot.uid,
@@ -98,7 +90,6 @@ async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: bool = Fals
                 public=desc.public,
                 trusted=desc.trusted,
             )
-    sub = await get_sub(bot, user_id, ensure_meta=False)
     if isinstance(desc, UserDesc):
         return User(
             user_id=user_id,
@@ -122,38 +113,33 @@ async def get_user(bot: Bot, /, user_id: str = "me", *, ensure_user: bool = Fals
         )
 
 
-@overload
-async def get_user_list(bot: Bot, /, topic: str, *, ensure_user_sub: Literal[True]) -> List[UserSub]: ...
-@overload
-async def get_user_list(bot: Bot, /, topic: str, *, ensure_user_sub: bool = False) -> List[BaseUser]: ...
+def try_get_user_list(bot: Bot, /, topic: str) -> List[BaseUser]:
+    if subs := try_get_topic_sub(bot, topic):
+        return list(filter(None, (try_get_user(bot, user_id) for user_id, _ in subs)))
+    return []
 
 
-async def get_user_list(bot: Bot, /, topic: str, *, ensure_user_sub: bool = False) -> List[BaseUser]:  # type: ignore[misc]
-    assert topic != "me", "cannot get user list of myself, use `get_topic_list()` instead"
-    subs = await get_topic_sub(bot, topic, ensure_meta=ensure_user_sub)
-    user_list = []
-    for user_id, sub in subs:
-        user_desc = await get_user_desc(bot, user_id, ensure_meta=False)
-        if isinstance(sub, Subscription):
-            user_sub = UserSub(
-                user_id=user_id,
-                public=user_desc.public,
-                trusted=user_desc.trusted,
-                private=sub.private,
-                updated=sub.updated,
-                deleted=sub.deleted,
-                touched=sub.touched,
-                read=sub.read,
-                recv=sub.recv,
-                clear=sub.clear,
-                acs=sub.acs
-            )
-        else:
-            user_sub = BaseUser(
-                user_id=user_id,
-                public=user_desc.public,
-                trusted=user_desc.trusted,
-                private=sub.private,
-            )
-        user_list.append(user_sub)
-    return user_list
+async def get_user_list(bot: Bot, /, topic: str, *, ensure_all: bool = True) -> List[BaseUser]:
+    if topic == "me":
+        raise ValueError("cannot get user list for 'me', use get_topic_list() instead")
+    if not ensure_all:
+        if subs := try_get_user_list(bot, topic):
+            return subs
+    _, sub_meta = await bot.get(topic, "sub")
+    assert sub_meta is not None
+    return [
+        UserSub(
+            user_id=sub.user_id,
+            public=load_json(sub.public),
+            trusted=load_json(sub.trusted),
+            private=load_json(sub.private),
+            updated=sub.updated_at,  # type: ignore
+            touched=sub.touched_at,  # type: ignore
+            deleted=sub.deleted_at,  # type: ignore
+            read=sub.read_id,
+            recv=sub.recv_id,
+            clear=sub.del_id,
+            acs=msg2dict(sub.acs),  # type: ignore
+        )
+        for sub in sub_meta.sub
+    ]

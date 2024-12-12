@@ -1,7 +1,10 @@
 import asyncio
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
-from . import bot
+if TYPE_CHECKING:
+    from .bot import Bot
+    from .command.collection import CommandCollection
+    from .command.command import AbstractCommand
 
 
 class KaruhaException(Exception):
@@ -18,7 +21,7 @@ class KaruhaBotError(KaruhaException):
     """unspecified chatbot run-time error"""
     __slots__ = ["bot", "code"]
 
-    def __init__(self, *args: object, bot: Optional["bot.Bot"] = None, code: Optional[int] = None) -> None:
+    def __init__(self, *args: object, bot: Optional["Bot"] = None, code: Optional[int] = None) -> None:
         super().__init__(*args)
         self.bot = bot
         self.code = code
@@ -37,8 +40,8 @@ class KaruhaCommandError(KaruhaException):
             self,
             *args: object,
             name: str,
-            collection: Any = None,
-            command: Any = None
+            collection: Optional["CommandCollection"] = None,
+            command: Optional["AbstractCommand"] = None
     ) -> None:
         super().__init__(*args)
         self.name = name

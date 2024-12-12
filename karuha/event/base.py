@@ -29,7 +29,7 @@ class Event(HandlerInvoker):
     __slots__ = []
 
     __handlers__: ClassVar[List[Callable[..., Any]]] = []
-    __event_lock__: ClassVar[Lock] = Lock()
+    __event_lock__: ClassVar[Lock]
     
     @classmethod
     def add_handler(cls, handler: Callable[..., Any]) -> None:

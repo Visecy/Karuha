@@ -50,7 +50,7 @@ class AbstractHandlerInvoker(ABC):
 
         # resolve dependency class & instance
         for param in missing:
-            param_type = get_origin(param.annotation)
+            param_type = get_origin(param.annotation) or param.annotation
             if param_type is Annotated:
                 for i in get_args(param.annotation):
                     if isinstance(i, HandlerInvokerDependency) or isclass(i) and issubclass(i, HandlerInvokerDependency):

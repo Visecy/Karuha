@@ -4,12 +4,14 @@ import os
 import re
 import weakref
 from functools import partialmethod
-from typing import (Any, Dict, Iterable, List, NoReturn, Optional, Union,
-                    overload)
+from io import IOBase
+from typing import (Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional,
+                    Union, overload)
 
+from aiofiles import open as aio_open
 from aiofiles.ospath import getsize
 from tinode_grpc import pb
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 import karuha
 
@@ -152,6 +154,19 @@ class BaseSession(object):
 
     send_file = partialmethod(send_attachment, attachment_cls_name="File")
     send_image = partialmethod(send_attachment, attachment_cls_name="Image")
+    send_audio = partialmethod(send_attachment, attachment_cls_name="Audio")
+
+    async def download_attachment(self, attachment: "textchain._Attachment", path: Union[str, os.PathLike, BinaryIO]) -> None:
+        if attachment.raw_val is not None:
+            if isinstance(path, (BinaryIO, IOBase)):
+                path.write(attachment.raw_val)
+            else:
+                async with aio_open(path, "wb") as f:
+                    await f.write(attachment.raw_val)
+        elif attachment.ref is not None:
+            await self.bot.download(attachment.ref, path)
+        else:
+            raise ValueError("attachment has no data")
 
     async def wait_reply(
             self,
@@ -300,7 +315,8 @@ class BaseSession(object):
         if karuha.data.has_sub(self.bot, topic) or force:
             await self.bot.leave(topic, **kwds)
 
-    async def get_user(self, user_id: str, *, ensure_user: bool = False) -> "karuha.data.BaseUser":
+    @deprecated("use `UserService` instead")
+    async def get_user(self, user_id: str, *, skip_cache: bool = False) -> "karuha.data.BaseUser":
         """Get the user data from the specified user ID.
         
         :param user_id: the user ID to get the data from
@@ -311,9 +327,9 @@ class BaseSession(object):
         :rtype: "karuha.data.BaseUser"
         """
         self._ensure_status()
-        return await karuha.data.get_user(self.bot, user_id, ensure_user=ensure_user)
+        return await karuha.data.get_user(self.bot, user_id, skip_cache=skip_cache)
 
-    async def get_topic(self, topic: Optional[str] = None, *, ensure_topic: bool = False) -> "karuha.data.BaseTopic":
+    async def get_topic(self, topic: Optional[str] = None, *, skip_cache: bool = False) -> "karuha.data.BaseTopic":
         """Get the topic data from the specified topic ID.
         
         :param topic: the topic ID to get the data from, defaults to None
@@ -324,7 +340,7 @@ class BaseSession(object):
         :rtype: "karuha.data.BaseTopic"
         """
         self._ensure_status()
-        return await karuha.data.get_topic(self.bot, topic or self.topic, ensure_topic=ensure_topic)
+        return await karuha.data.get_topic(self.bot, topic or self.topic, skip_cache=skip_cache)
 
     @overload
     async def get_data(

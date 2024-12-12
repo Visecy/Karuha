@@ -24,7 +24,7 @@ from karuha.utils.argparse import ArgumentParser
 
 @on_command("eval")
 async def eval_(session: MessageSession, name: str, user_id: str, text: str) -> None:
-    user = await session.get_user(user_id, ensure_user=True)
+    user = await session.get_user(user_id, skip_cache=True)
     if not user.staff:
         await session.finish("Permission denied")
     text = text[text.index(name) + len(name):]

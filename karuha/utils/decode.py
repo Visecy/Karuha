@@ -1,7 +1,7 @@
 from typing import Any, Dict, Mapping, Union
 
-from google.protobuf.internal import containers
 from google.protobuf.message import Message
+from google.protobuf.json_format import MessageToDict
 from pydantic_core import from_json, to_json
 
 
@@ -20,14 +20,4 @@ def decode_mapping(data: Mapping[str, bytes]) -> Dict[str, Any]:
 
 
 def msg2dict(msg: Message) -> Dict[str, Any]:
-    return _msg2obj(msg)
-
-
-def _msg2obj(msg: Any) -> Any:
-    if isinstance(msg, Message):
-        return {k.name: _msg2obj(v) for k, v in msg.ListFields()}
-    elif isinstance(msg, containers.ScalarMap):
-        return dict(msg)
-    elif isinstance(msg, containers.BaseContainer):
-        return list(msg)
-    return msg
+    return MessageToDict(msg)

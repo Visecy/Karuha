@@ -1,6 +1,5 @@
 import asyncio
 import base64
-from io import IOBase, TextIOBase
 import os
 import platform
 import sys
@@ -9,13 +8,16 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
-from typing import (Any, AsyncGenerator, Callable, Coroutine, Dict, Generator,
-                    Iterable, List, Literal, Optional, Tuple, Union, overload)
+from io import IOBase
+from typing import (Any, AsyncGenerator, BinaryIO, Callable, Coroutine, Dict,
+                    Generator, Iterable, List, Literal, Optional, Tuple, Union,
+                    overload)
 from weakref import WeakSet, ref
 
 import grpc
 from aiofiles import open as aio_open
-from aiohttp import ClientError, ClientSession, FormData
+from aiofiles.threadpool.binary import AsyncBufferedIOBase
+from aiohttp import ClientError, ClientSession, ClientTimeout, FormData
 from google.protobuf.message import Message
 from grpc import aio as grpc_aio
 from pydantic import GetCoreSchemaHandler, TypeAdapter
@@ -28,6 +30,7 @@ from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
+from .utils.context import nullcontext
 from .utils.decode import decode_mapping, encode_mapping
 from .version import APP_VERSION, LIB_VERSION
 
@@ -117,7 +120,7 @@ class Bot(object):
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
-        elif schema is None or secret is None:
+        elif schema is None or secret is None:  # pragma: no cover
             raise ValueError("authentication scheme not defined")
         else:
             self.config = BotConfig(name=name, schema=schema, secret=secret)
@@ -178,7 +181,7 @@ class Bot(object):
             scheme: Optional[str] = None,
             secret: Optional[bytes] = None,
             *,
-            state: str = "ok",
+            state: Optional[str] = None,
             do_login: bool = True,
             desc: Optional[pb.SetDesc] = None,
             tags: Iterable[str] = (),
@@ -362,7 +365,14 @@ class Bot(object):
             self.logger.info(f"subscribe topic {topic}")
         return tid, decode_mapping(ctrl.params)
 
-    async def leave(self, /, topic: str, *, extra: Optional[pb.ClientExtra] = None) -> Tuple[str, Dict[str, Any]]:
+    async def leave(
+        self,
+        /,
+        topic: str,
+        *,
+        unsub: bool = False,
+        extra: Optional[pb.ClientExtra] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         This is a counterpart to {sub} message. It also serves two functions:
 
@@ -384,7 +394,8 @@ class Bot(object):
             tid,
             leave=pb.ClientLeave(
                 id=tid,
-                topic=topic
+                topic=topic,
+                unsub=unsub,
             ),
             extra=extra
         )
@@ -392,11 +403,6 @@ class Bot(object):
         if ctrl.code < 200 or ctrl.code >= 400:
             err_text = f"fail to leave topic {topic}: {ctrl.text}"
             self.logger.error(err_text)
-            if topic == "me":  # pragma: no cover
-                if ctrl.code == 502:
-                    self.restart()
-                else:
-                    self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
         else:
             self.logger.info(f"leave topic {topic}")
@@ -441,7 +447,7 @@ class Bot(object):
             extra=extra
         )
         assert isinstance(ctrl, pb.ServerCtrl)
-        if ctrl.code < 200 or ctrl.code >= 400:
+        if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
             err_text = f"fail to publish message to {topic}: {ctrl.text}"
             self.logger.error(err_text)
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
@@ -575,7 +581,7 @@ class Bot(object):
         :return: tid and meta
         :rtype: Tuple[str, Optional[pb.ServerMeta]]
         """
-    
+
     @overload
     async def get(
             self,
@@ -633,7 +639,7 @@ class Bot(object):
             elif data is not None:
                 assert desc is None and sub is None
                 what = "data"
-            else:
+            else:  # pragma: no cover
                 raise ValueError("what must be specified")
         meta = await self.send_message(
             tid,
@@ -997,7 +1003,7 @@ class Bot(object):
 
     async def upload(
             self,
-            path: Union[str, os.PathLike, IOBase]
+            path: Union[str, os.PathLike, BinaryIO]
     ) -> Tuple[str, Dict[str, Any]]:
         """
         upload a file
@@ -1017,13 +1023,14 @@ class Bot(object):
                     url = "/v0/file/u/"
                     data = FormData()
                     data.add_field("id", tid)
-                    if isinstance(path, IOBase):
-                        f = path
+                    if isinstance(path, (BinaryIO, IOBase)):
+                        path.seek(0)
+                        cm = nullcontext(path)
                         _path = None
                     else:
-                        f = open(path, "rb")
+                        cm = open(path, "rb")
                         _path = os.path.basename(path)
-                    with f:
+                    with cm as f:
                         data.add_field("file", f, filename=_path)
                         async with session.post(url, data=data) as resp:
                             ret = await resp.text()
@@ -1053,7 +1060,7 @@ class Bot(object):
     async def download(
             self,
             url: str,
-            path: Union[str, os.PathLike, IOBase]
+            path: Union[str, os.PathLike, BinaryIO]
     ) -> None:
         """
         download a file
@@ -1065,26 +1072,23 @@ class Bot(object):
         :raises KaruhaBotError: fail to download file
         """
         tid = self._get_tid()
+        if isinstance(path, (BinaryIO, IOBase)):
+            path.seek(0)
+            cm = nullcontext(path)
+        else:
+            cm = aio_open(path, "wb")
         try:
-            async with await self._get_http_session() as session:
+            async with await self._get_http_session() as session, cm as f:
                 self.logger.debug(f"download request: {tid=} {path=} {session.headers=}")
                 size = 0
-                if isinstance(path, IOBase):
-                    async with session.get(url, params={"id": tid}) as resp:
-                        resp.raise_for_status()
-                        async for chunk in resp.content.iter_any():
-                            if isinstance(path, TextIOBase):
-                                path.write(chunk.decode())
-                            else:
-                                path.write(chunk)
-                            size += len(chunk)
-                else:
-                    async with aio_open(path, "wb") as f:
-                        async with session.get(url, params={"id": tid}) as resp:
-                            resp.raise_for_status()
-                            async for chunk in resp.content.iter_any():
-                                await f.write(chunk)
-                        size = await f.tell()
+                async with session.get(url, params={"id": tid}) as resp:
+                    resp.raise_for_status()
+                    async for chunk in resp.content.iter_any():
+                        size += len(chunk)
+                        if isinstance(f, AsyncBufferedIOBase):
+                            await f.write(chunk)
+                        else:
+                            f.write(chunk)
             self.logger.debug(f"download length: {size}")
         except OSError as e:
             raise KaruhaBotError(f"fail to write file {path}", bot=self) from e
@@ -1268,7 +1272,7 @@ class Bot(object):
             "X-Tinode-Auth": f"{schema.title()} {secret}",
             "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}",
         }
-        return ClientSession(web_host, headers=headers)
+        return ClientSession(str(web_host), headers=headers, timeout=ClientTimeout(self.server.timeout))
 
     @contextmanager
     def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
@@ -1292,6 +1296,38 @@ class Bot(object):
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
+
+    async def _prepare_account(self) -> None:
+        try:
+            await self.hello()
+        except Exception:
+            self.logger.error("failed to connect to server, restarting")
+            self.restart()
+            return
+
+        if not self.config.auto_login:
+            self.logger.info("auto login is disabled, skipping")
+            return
+
+        retry = self.server.retry if self.server is not None else 0
+        for i in range(retry):
+            try:
+                await self.login()
+            except (asyncio.TimeoutError, KaruhaBotError):
+                self.logger.warning(f"login failed, retrying {i+1} times")
+            else:
+                break
+        else:
+            try:
+                await self.login()
+            except (asyncio.TimeoutError, KaruhaBotError):
+                self.logger.error("login failed, cancel the bot")
+                self.cancel()
+
+        await self.subscribe(
+            "me",
+            get="sub desc tags cred"
+        )
 
     def _prepare_loop_task(self) -> None:
         if self.state == BotState.running:
@@ -1325,10 +1361,7 @@ class Bot(object):
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
             await asyncio.sleep(0.5)
         except asyncio.CancelledError:
-            if self.state == BotState.restarting:
-                # uncancel from Bot.restart()
-                self.state = BotState.running
-            elif self.state == BotState.running:
+            if self.state == BotState.running:
                 self.cancel(cancel_loop=False)
                 raise
         except:  # noqa: E722
@@ -1342,7 +1375,13 @@ class Bot(object):
                 self.logger.exception("error while finalizing event callback", exc_info=True)
             except asyncio.CancelledError:
                 pass
-            self.state = BotState.stopped
+
+            if self.state == BotState.restarting:
+                # uncancel from Bot.restart()
+                self.state = BotState.running
+            elif self.state == BotState.cancelling:
+                # shutdown from Bot.cancel()
+                self.state = BotState.stopped
             self.server = old_server_config
 
             # clean up for restarting
@@ -1383,9 +1422,9 @@ class Bot(object):
         return f"<bot {self.name} ({uid}) {state} on host {host}>"
 
 
-class AgentBot(Bot):
+class ProxyBot(Bot):
     """
-    the bot that runs on the `extra.on_behalf_of` agent
+    the bot that runs on the `extra.on_behalf_of` proxy
     """
     __slots__ = ["on_behalf_of", "login_user_id"]
 
@@ -1397,7 +1436,7 @@ class AgentBot(Bot):
     def from_bot(cls, bot: Bot, /, on_behalf_of: str, name: Optional[str] = None) -> Self:
         config = bot.config.model_copy()
         if name is None:
-            config.name = f"{config.name}_agent_{on_behalf_of}"
+            config.name = f"{config.name}_proxy_{on_behalf_of}"
         else:
             config.name = name
         return cls(config, bot.server, bot.logger.level, on_behalf_of=on_behalf_of)

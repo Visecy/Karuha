@@ -3,9 +3,11 @@ A simple Tinode chatbot framework
 """
 import os
 from pathlib import Path
+from typing import Final
 
 
-WORKDIR = Path(os.environ.get("KARUHA_HOME", ".bot"))  # dir to storage bot data
+WORKDIR: Final[Path] = Path(os.environ.get("KARUHA_HOME", ".bot"))  # dir to storage bot data
+CONFIG_PATH: Final[Path] = Path(os.environ.get("KARUHA_CONFIG", "config.json"))
 
 
 from .version import __version__

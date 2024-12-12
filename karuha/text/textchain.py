@@ -1,13 +1,15 @@
 import mimetypes
-import os
 import operator as op
+import os
 from abc import abstractmethod
 from base64 import b64decode, b64encode
-from typing import (Any, ClassVar, Dict, Final, Generator, Iterable, List, Literal,
-                    MutableMapping, Optional, Sequence, SupportsIndex, Type,
-                    Union, overload)
+from io import BytesIO
+from typing import (Any, BinaryIO, ClassVar, Dict, Final, Generator, Iterable,
+                    List, Literal, MutableMapping, Optional, Sequence,
+                    SupportsIndex, Type, Union, overload)
 
 from aiofiles import open as aio_open
+from puremagic import from_stream
 from pydantic import AnyHttpUrl, BaseModel, model_validator
 from typing_extensions import Self
 
@@ -510,6 +512,15 @@ class _Attachment(_ExtensionText):
                 **kwds
             )
     
+    @classmethod
+    def analyze_bytes(cls, data: bytes, *, name: Optional[str] = None) -> Dict[str, Any]:
+        return cls.analyze_file(BytesIO(data), name=name)
+
+    @classmethod
+    def analyze_file(cls, fp: BinaryIO, *, name: Optional[str] = None) -> Dict[str, Any]:
+        mime = from_stream(fp, True, name)
+        return {"mime": mime}
+    
     async def save(self, path: Union[str, os.PathLike, None] = None) -> None:
         path = path or self.name
         if path is None:
@@ -569,6 +580,10 @@ class Image(_Attachment):
     mime: str = "image/png"
     width: int
     height: int
+
+    @classmethod
+    def analyze_file(cls, fp: BinaryIO) -> Dict[str, Any]:
+        return super().analyze_file(fp)
 
     @classmethod
     async def from_file(
