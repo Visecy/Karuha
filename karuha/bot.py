@@ -365,7 +365,14 @@ class Bot(object):
             self.logger.info(f"subscribe topic {topic}")
         return tid, decode_mapping(ctrl.params)
 
-    async def leave(self, /, topic: str, *, extra: Optional[pb.ClientExtra] = None) -> Tuple[str, Dict[str, Any]]:
+    async def leave(
+        self,
+        /,
+        topic: str,
+        *,
+        unsub: bool = False,
+        extra: Optional[pb.ClientExtra] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         This is a counterpart to {sub} message. It also serves two functions:
 
@@ -387,7 +394,8 @@ class Bot(object):
             tid,
             leave=pb.ClientLeave(
                 id=tid,
-                topic=topic
+                topic=topic,
+                unsub=unsub,
             ),
             extra=extra
         )
@@ -573,7 +581,7 @@ class Bot(object):
         :return: tid and meta
         :rtype: Tuple[str, Optional[pb.ServerMeta]]
         """
-    
+
     @overload
     async def get(
             self,
@@ -1288,7 +1296,7 @@ class Bot(object):
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
-    
+
     async def _prepare_account(self) -> None:
         try:
             await self.hello()
@@ -1296,11 +1304,11 @@ class Bot(object):
             self.logger.error("failed to connect to server, restarting")
             self.restart()
             return
-        
+
         if not self.config.auto_login:
             self.logger.info("auto login is disabled, skipping")
             return
-        
+
         retry = self.server.retry if self.server is not None else 0
         for i in range(retry):
             try:
@@ -1315,7 +1323,7 @@ class Bot(object):
             except (asyncio.TimeoutError, KaruhaBotError):
                 self.logger.error("login failed, cancel the bot")
                 self.cancel()
-        
+
         await self.subscribe(
             "me",
             get="sub desc tags cred"
@@ -1353,10 +1361,7 @@ class Bot(object):
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
             await asyncio.sleep(0.5)
         except asyncio.CancelledError:
-            if self.state == BotState.restarting:
-                # uncancel from Bot.restart()
-                self.state = BotState.running
-            elif self.state == BotState.running:
+            if self.state == BotState.running:
                 self.cancel(cancel_loop=False)
                 raise
         except:  # noqa: E722
@@ -1370,7 +1375,13 @@ class Bot(object):
                 self.logger.exception("error while finalizing event callback", exc_info=True)
             except asyncio.CancelledError:
                 pass
-            self.state = BotState.stopped
+
+            if self.state == BotState.restarting:
+                # uncancel from Bot.restart()
+                self.state = BotState.running
+            elif self.state == BotState.cancelling:
+                # shutdown from Bot.cancel()
+                self.state = BotState.stopped
             self.server = old_server_config
 
             # clean up for restarting

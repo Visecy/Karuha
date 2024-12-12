@@ -1,4 +1,3 @@
-import asyncio
 from functools import partial
 from typing import Any, Awaitable, Callable, Coroutine, Mapping, Optional, TypeVar
 from typing_extensions import Self
@@ -36,7 +35,7 @@ class BotInitEvent(BotEvent):
     __slots__ = []
 
     async def __default_handler__(self) -> None:
-        prepare_task = asyncio.create_task(self.bot._prepare_account())
+        prepare_task = self.bot._create_task(self.bot._prepare_account())
         prepare_task.add_done_callback(lambda _: BotReadyEvent.new(self.bot))
 
 

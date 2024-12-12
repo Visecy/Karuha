@@ -31,6 +31,7 @@ class TestBotClient(AsyncBotClientTestCase):
             do_login=False,
         )
         uid = params["user"]
+        await self.bot.delete("topic", topic=uid, hard=True)
         await self.bot.delete("user", user_id=uid, hard=True)
     
     async def test_anonymous_account(self) -> None:
@@ -40,7 +41,8 @@ class TestBotClient(AsyncBotClientTestCase):
             do_login=False,
         )
         uid = params["user"]
-        await self.bot.delete("user", user_id=uid)
+        await self.bot.delete("topic", topic=uid, hard=True)
+        await self.bot.delete("user", user_id=uid, hard=True)
     
     async def test_proxy_bot(self) -> None:
         _, params = await self.bot.account(
@@ -68,4 +70,5 @@ class TestBotClient(AsyncBotClientTestCase):
                     reply = await session.wait_reply()
                     self.assertEqual(reply.plain_text, "test_reply")
         finally:
+            await self.bot.delete("topic", topic=uid, hard=True)
             await self.bot.delete("user", user_id=uid, hard=True)
