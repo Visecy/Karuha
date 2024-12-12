@@ -128,6 +128,7 @@ class UserService(BaseService):
         trusted: Optional[Mapping[str, Any]] = None,
         private: Optional[Mapping[str, Any]] = None,
         attachments: Optional[Iterable[str]] = None,
+        as_root: bool = False,
         use_proxy: bool = False,
     ) -> None:
         if isinstance(user, str):
@@ -144,7 +145,7 @@ class UserService(BaseService):
             await bot.set(
                 "me",
                 desc=set_desc,
-                extra=pb.ClientExtra(attachments=attachments) if attachments else None,
+                extra=pb.ClientExtra(attachments=attachments, auth_level=pb.ROOT if as_root else None),
             )
     
     async def set_user_public(self, user: Union[str, BaseUser], **kwds: Any) -> None:
@@ -157,7 +158,7 @@ class UserService(BaseService):
         user = await self._ensure_user(user)
         trusted = user.trusted or {}
         trusted.update(**kwds)
-        await self.set_user_meta(user, trusted=trusted, use_proxy=True)
+        await self.set_user_meta(user, trusted=trusted, as_root=True, use_proxy=True)
     
     async def set_user_private(self, user: Union[str, BaseUser], **kwds: Any) -> None:
         user = await self._ensure_user(user)

@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Dict, List, Optional
 from .config import get_config, reset_config
 from .bot import Bot, BotState
 from .event.sys import SystemStartEvent, SystemStopEvent
-from .event.bot import BotFinishEvent, BotReadyEvent
+from .event.bot import BotReadyEvent
 from .logger import logger
 from .utils.gathering import DynamicGatheringFuture
 from .utils.event_catcher import EventCatcher
@@ -102,11 +102,6 @@ async def run_bot(bot: Bot, *, ensure_state: bool = True) -> AsyncGenerator[Bot,
         yield bot
     finally:
         remove_bot(bot)
-        if ensure_state:
-            with EventCatcher(BotFinishEvent) as catcher:
-                ev = await catcher.catch_event()
-                while ev.bot is not bot:
-                    ev = await catcher.catch_event()
 
 
 def _get_running_loop() -> asyncio.AbstractEventLoop:
