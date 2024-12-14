@@ -1,4 +1,4 @@
-import mimetypes
+import asyncio
 import operator as op
 import os
 from abc import abstractmethod
@@ -6,10 +6,10 @@ from base64 import b64decode, b64encode
 from io import BytesIO
 from typing import (Any, BinaryIO, ClassVar, Dict, Final, Generator, Iterable,
                     List, Literal, MutableMapping, Optional, Sequence,
-                    SupportsIndex, Type, Union, overload)
+                    SupportsIndex, Tuple, Type, Union, overload)
 
 from aiofiles import open as aio_open
-from puremagic import from_stream
+from puremagic import from_stream, from_file
 from pydantic import AnyHttpUrl, BaseModel, model_validator
 from typing_extensions import Self
 
@@ -503,7 +503,9 @@ class _Attachment(_ExtensionText):
             ref: Optional[str] = None,
             **kwds: Any
     ) -> Self:
-        mime = mime or mimetypes.guess_type(path)[0]
+        if mime is None:
+            loop = asyncio.get_running_loop()
+            mime = await loop.run_in_executor(None, from_file, path, True)
         async with aio_open(path, "rb") as f:
             return cls.from_bytes(
                 await f.read(),
@@ -513,12 +515,13 @@ class _Attachment(_ExtensionText):
             )
     
     @classmethod
-    def analyze_bytes(cls, data: bytes, *, name: Optional[str] = None) -> Dict[str, Any]:
-        return cls.analyze_file(BytesIO(data), name=name)
+    async def analyze_bytes(cls, data: bytes, *, name: Optional[str] = None) -> Dict[str, Any]:
+        return await cls.analyze_file(BytesIO(data), name=name)
 
     @classmethod
-    def analyze_file(cls, fp: BinaryIO, *, name: Optional[str] = None) -> Dict[str, Any]:
-        mime = from_stream(fp, True, name)
+    async def analyze_file(cls, fp: BinaryIO, *, name: Optional[str] = None) -> Dict[str, Any]:
+        loop = asyncio.get_running_loop()
+        mime = await loop.run_in_executor(None, from_stream, fp, True, name)
         return {"mime": mime}
     
     async def save(self, path: Union[str, os.PathLike, None] = None) -> None:
@@ -582,48 +585,72 @@ class Image(_Attachment):
     height: int
 
     @classmethod
-    def analyze_file(cls, fp: BinaryIO) -> Dict[str, Any]:
-        return super().analyze_file(fp)
-
-    @classmethod
-    async def from_file(
-            cls,
-            path: Union[str, os.PathLike],
-            *,
-            mime: Optional[str] = None,
-            name: Optional[str] = None,
-            ref: Optional[str] = None,
-            width: Optional[int] = None,
-            height: Optional[int] = None,
-            **kwds: Any
-    ) -> Self:
-        if width and height:
-            return await super().from_file(
-                path, mime=mime, name=name, ref=ref,
-                **kwds
-            )
-        from io import BytesIO
-
+    async def analyze_file(cls, fp: BinaryIO, *, name: Optional[str] = None) -> Dict[str, Any]:
+        data = await super().analyze_file(fp, name=name)
+        loop = asyncio.get_running_loop()
+        size = await loop.run_in_executor(None, cls._get_image_size, fp)
+        data.update(width=size[0], height=size[1])
+        return data
+    
+    @staticmethod
+    def _get_image_size(fp: Union[str, os.PathLike, BinaryIO]) -> Tuple[int, int]:
         from PIL.Image import open as img_open
-        mime = mime or mimetypes.guess_type(path)[0]
-        async with aio_open(path, "rb") as f:
-            content = await f.read()
-        img = img_open(BytesIO(content))
-        return cls.from_bytes(
-            content,
-            mime=mime, name=name or os.path.basename(path),
-            ref=ref,
-            width=img.width, height=img.height,
-            **kwds
-        )
+        return img_open(fp).size
 
 
 class Audio(_Attachment):
     type: Final[ExtendType] = "AU"
 
     mime: str = "audio/aac"
-    duration: int
-    preview: str
+    duration: int   # duration of the record in milliseconds
+    preview: str    # base64-encoded array of bytes to generate a visual preview
+
+    VISUALIZATION_BARS: ClassVar = 96
+    MAX_SAMPLES_PER_BAR: ClassVar = 10
+
+    @classmethod
+    async def analyze_file(cls, fp: BinaryIO, *, name: Optional[str] = None) -> Dict[str, Any]:
+        data = await super().analyze_file(fp, name=name)
+        loop = asyncio.get_running_loop()
+        duration , preview = await loop.run_in_executor(None, cls._get_audio_duration_and_preview, fp)
+        data.update(duration=duration, preview=preview)
+        return data
+
+    @classmethod
+    def _get_audio_duration_and_preview(
+        cls, fp: Union[str, os.PathLike, BinaryIO]
+    ) -> Tuple[int, str]:
+        import soundfile as sf
+        import numpy as np
+
+        data, sample_rate = sf.read(fp)
+        if len(data.shape) > 1:
+            data = data[:, 0]
+
+        total_samples = len(data)
+        view_length = min(total_samples, cls.VISUALIZATION_BARS)
+        total_spb = total_samples // view_length
+        sampling_rate = max(1, total_spb // cls.MAX_SAMPLES_PER_BAR)
+
+        buffer = np.zeros(view_length)
+
+        for i in range(view_length):
+            start_index = i * total_spb
+            end_index = start_index + total_spb
+            indices = np.arange(start_index, end_index, sampling_rate)
+            valid_indices = indices[indices < total_samples]  # 确保索引不越界
+
+            if valid_indices.size > 0:
+                amplitudes = data[valid_indices] ** 2
+                buffer[i] = np.sqrt(np.mean(amplitudes))
+
+        max_val = np.max(buffer)
+        if max_val > 0:
+            buffer = 100 * buffer / max_val
+        return (
+            data.shape[0] * 1000 // sample_rate,  # type: ignore
+            b64encode(buffer.tobytes()).decode("ascii")
+        )
 
 
 class Video(_Attachment):
