@@ -45,6 +45,7 @@ lint = ["flake8>=6.1"]
 image = ["pillow>=10.0"]
 data = ["greenback"]
 all = ["pillow>=10.0", "greenback"]
+dev = ["pillow>=10.0", "greenback", "flake8>=6.1", "pytest", "pytest-asyncio", "coverage"]
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -1,0 +1,33 @@
+version: "3.7"
+
+networks:
+  tinode-net:
+    external: true
+
+services:
+  tinode-srv:
+    image: tinode/tinode-postgres:latest
+    container_name: tinode-srv
+    ports:
+      - "6060:6060"
+      - "16060:16060"
+    environment:
+      POSTGRES_DSN: 'postgresql://postgres:postgres@postgres:5432/tinode'
+    networks:
+      - tinode-net
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: "postgres"
+    networks:
+      - tinode-net
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro

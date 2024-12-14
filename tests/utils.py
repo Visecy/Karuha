@@ -249,7 +249,7 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
         return await asyncio.wait_for(future, timeout)
 
 
-class AsyncBotClientTestCase(IsolatedAsyncioTestCase):
+class AsyncBotOnlineTestCase(IsolatedAsyncioTestCase):
     config_path = "config.json"
     bot_name = "chatbot"
     auto_login: ClassVar[bool] = True

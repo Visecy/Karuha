@@ -1,0 +1,32 @@
+name: test
+
+on:
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  online-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+      - name: Set up docker
+        uses: docker/setup-buildx-action@v3
+      - name: Set up tinode
+        run: |
+          docker-compose -f tests/online/docker-compose.yaml up -d
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip
+      - name: Install package
+        run: pip install .[dev]
+      - name: Configure tinode
+        run: |
+          docker exec tinode-srv ./init-db --add_root root:tinode_root -config working.config
+          cp tests/online/online_test.json ./config.json
+      - name: Run online test
+        run: make test_online

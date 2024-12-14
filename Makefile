@@ -22,13 +22,16 @@ install_all:
 	pip install .[all]
 
 develop:
-	pip install -e .[all]
+	pip install -e .[dev]
 
 lint:
 	flake8 ${MODULE}/ tests/ --exclude __init__.py --count --max-line-length=127 --extend-ignore=W293,E402
 
 test:
-	python -m unittest
+	pytest
+
+test_online:
+	pytest tests/online/
 
 coverage:
 	coverage run --source ${MODULE} --parallel-mode -m unittest

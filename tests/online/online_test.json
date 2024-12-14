@@ -1,0 +1,15 @@
+{
+    "log_level": "DEBUG",
+    "server": {
+        "host": "localhost:16060",
+        "web_host": "http://localhost:6060",
+        "ssl": false
+    },
+    "bots": [
+        {
+            "name": "chatbot",
+            "schema": "basic",
+            "secret": "root:tinode_root"
+        }
+    ]
+}
