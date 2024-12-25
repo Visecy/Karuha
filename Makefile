@@ -28,7 +28,7 @@ lint:
 	flake8 ${MODULE}/ tests/ --exclude __init__.py --count --max-line-length=127 --extend-ignore=W293,E402
 
 test:
-	pytest
+	pytest --ignore=tests/online/
 
 test_online:
 	pytest tests/online/

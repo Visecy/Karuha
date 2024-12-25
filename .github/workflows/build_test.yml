@@ -31,4 +31,4 @@ jobs:
         python -m pip install setuptools wheel build
     - name: Build dist and test with unittest
       run: |
-        make build develop test build_dist
+        make develop test build_dist

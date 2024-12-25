@@ -15,10 +15,10 @@ jobs:
         with:
           python-version: "3.10"
       - name: Set up docker
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-docker-action@v4
       - name: Set up tinode
         run: |
-          docker-compose -f tests/online/docker-compose.yaml up -d
+          docker compose -f tests/online/docker-compose.yaml up -d
       - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip
