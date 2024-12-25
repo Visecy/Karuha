@@ -187,4 +187,3 @@ class BaseInfo(BaseModel, frozen=True):
     def comment(self) -> Optional[str]:
         if self.private:
             return self.private.get("comment")
-

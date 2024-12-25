@@ -5,10 +5,9 @@ from tinode_grpc import pb
 from ..data.model import ClientDesc, DefaultAccess
 
 from .info import _BaseInfoService
-from ..runner import add_bot
 from ..data.user import BaseUser, get_user
 from ..data.types import ClientDescType, ClientCredType, UserStateType
-from ..bot import Bot, ProxyBot
+from ..bot import Bot
 from ..utils.decode import dict2msg
 
 

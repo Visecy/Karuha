@@ -1,10 +1,9 @@
 import asyncio
-import mimetypes
 import os
 import re
 import weakref
 from functools import partialmethod
-from io import BytesIO, IOBase
+from io import IOBase
 from typing import (Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional,
                     Union, overload)
 

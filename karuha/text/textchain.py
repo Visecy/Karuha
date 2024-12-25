@@ -612,7 +612,7 @@ class Audio(_Attachment):
     async def analyze_file(cls, fp: BinaryIO, *, name: Optional[str] = None) -> Dict[str, Any]:
         data = await super().analyze_file(fp, name=name)
         loop = asyncio.get_running_loop()
-        duration , preview = await loop.run_in_executor(None, cls._get_audio_duration_and_preview, fp)
+        duration, preview = await loop.run_in_executor(None, cls._get_audio_duration_and_preview, fp)
         data.update(duration=duration, preview=preview)
         return data
 
