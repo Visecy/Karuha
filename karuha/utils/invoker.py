@@ -1,16 +1,18 @@
 from abc import ABC, abstractmethod
 from dataclasses import is_dataclass
-from inspect import Parameter, Signature, isclass
+from inspect import Parameter, Signature
 from types import new_class
 from typing import Any, Callable, ClassVar, Dict, Optional, Tuple, Type, TypeVar
 from typing_extensions import Annotated, Self, get_args, get_origin, is_typeddict
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler, TypeAdapter
+from pydantic_core import core_schema
 
 from ..exception import KaruhaHandlerInvokerError
 
 
 T = TypeVar("T")
+EMPTY = Parameter.empty
 
 
 def _type_has_config(type_: Any) -> bool:
@@ -33,8 +35,16 @@ class AbstractHandlerInvoker(ABC):
         if param.annotation is param.empty:
             return val
         ann = param.annotation
-        context = {"name": param.name, "param": param, "annotation": param.annotation, **kwds}
-        config: Optional[ConfigDict] = None if _type_has_config(ann) else {"arbitrary_types_allowed": True}
+        context = {
+            "name": param.name,
+            "param": param,
+            "annotation": param.annotation,
+            "invoker": self,
+            **kwds,
+        }
+        config: Optional[ConfigDict] = (
+            None if _type_has_config(ann) else {"arbitrary_types_allowed": True}
+        )
         try:
             return TypeAdapter(ann, config=config).validate_python(val, context=context)
         except Exception as e:
@@ -49,24 +59,13 @@ class AbstractHandlerInvoker(ABC):
         still_missing = {}
 
         # resolve dependency class & instance
-        for param in missing:
-            param_type = get_origin(param.annotation) or param.annotation
-            if param_type is Annotated:
-                for i in get_args(param.annotation):
-                    if isinstance(i, HandlerInvokerDependency) or isclass(i) and issubclass(i, HandlerInvokerDependency):
-                        param_type = i
-                        break
-                else:  # pragma: no cover
-                    still_missing[param] = missing[param]
-                    continue
+        for param, err in missing.items():
             try:
-                if isclass(param_type) and issubclass(param_type, HandlerInvokerDependency):
-                    ret = param_type.resolve_dependency(self, param, **kwds)
-                elif isinstance(param_type, HandlerInvokerDependency):
-                    ret = param_type.resolve_dependency(self, param, dependency_instance=i, **kwds)
+                ret = self.validate_dependency(param, EMPTY, **kwds)
+                if ret is not EMPTY:
+                    result[param.name] = ret
                 else:
-                    raise missing[param]
-                result[param.name] = self.validate_dependency(param, ret, **kwds)
+                    still_missing[param] = err
             except KaruhaHandlerInvokerError as e:
                 still_missing[param] = e
             except Exception as e:  # pragma: no cover
@@ -128,8 +127,19 @@ class HandlerInvokerDependency(ABC):
 
     @classmethod
     @abstractmethod
-    def resolve_dependency(cls, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
+    def resolve_dependency(cls, /, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
         raise NotImplementedError
+    
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        def _validate_dependency(val: Any, info: core_schema.ValidationInfo) -> Any:
+            if val is not EMPTY:
+                return val
+            return cls.resolve_dependency(**(info.context or {}))
+        
+        if source is cls or get_origin(source) is cls:
+            return core_schema.with_info_plain_validator_function(_validate_dependency)
+        return core_schema.with_info_before_validator_function(_validate_dependency, handler(source))
 
 
 class HandlerInvokerModel(AbstractHandlerInvoker, BaseModel):

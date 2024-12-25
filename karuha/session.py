@@ -109,6 +109,7 @@ class BaseSession(object):
             file: Union[str, os.PathLike, BinaryIO],
             /, *,
             name: Optional[str] = None,
+            mime: Optional[str] = None,
             attachment_cls_name: str = "File",
             force_upload: bool = False,
             **kwds: Any
@@ -119,6 +120,8 @@ class BaseSession(object):
         :type path: Union[str, os.PathLike]
         :param name: the name of the file, defaults to None
         :type name: Optional[str], optional
+        :param mime: the MIME type of the file, defaults to None
+        :type mime: Optional[str], optional
         :param attachment_cls_name: the name of the attachment class to use, defaults to "File"
         :type attachment_cls_name: str, optional
         :param force_upload: force upload even if the file size is below the threshold, defaults to False
@@ -141,6 +144,8 @@ class BaseSession(object):
             with open(file, "rb") as f:
                 extra_data = await attachment_cls.analyze_file(f, name=name)
             size = await getsize(file)
+        if mime is not None:
+            extra_data["mime"] = mime
         if force_upload or size < self.bot.config.file_size_threshold:
             if isinstance(file, (BinaryIO, IOBase)):
                 attachment = attachment_cls.from_bytes(file.read(), name=name, **extra_data)

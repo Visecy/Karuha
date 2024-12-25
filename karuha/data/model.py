@@ -1,5 +1,50 @@
-from typing import Any, Dict, Mapping, Optional
+import base64
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional, Type, TypeVar
+from typing_extensions import Annotated
+
+from pydantic.annotated_handlers import GetCoreSchemaHandler
+from pydantic_core import core_schema, to_json
 from pydantic import BaseModel, model_validator, model_serializer
+
+
+T = TypeVar("T")
+
+
+if TYPE_CHECKING:
+    # Json[list[str]] will be recognized by type checkers as list[str]
+    JsonSerialize = Annotated[T, ...]
+else:
+    class JsonSerialize:
+        """A special type wrapper which is used to serialize a type to JSON.
+
+        You can use it to convert a type to JSON bytes in the model serialization.
+        """
+        @classmethod
+        def __class_getitem__(cls, item: Type[T]) -> Type[T]:
+            return Annotated[item, cls()]  # type: ignore
+
+        @classmethod
+        def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+            ser = core_schema.plain_serializer_function_ser_schema(
+                lambda v: base64.encodebytes(to_json(v)),
+                is_field_serializer=False,
+                info_arg=False
+            )
+            if cls is source:
+                return core_schema.any_schema(serialization=ser)
+            schema = handler(source)
+            schema["serialization"] = ser
+            return schema
+        
+        def __repr__(self) -> str:
+            return 'JsonSerialize'
+
+        def __hash__(self) -> int:
+            return hash(type(self))
+
+        def __eq__(self, other: Any) -> bool:
+            return type(other) is type(self)
 
 
 class AccessPermission(BaseModel):
@@ -36,7 +81,7 @@ class AccessPermission(BaseModel):
     owner: bool = False
 
     @model_validator(mode="before")
-    def validate(cls, value: Any) -> Any:
+    def validate_permission(cls, value: Any) -> Any:
         if not isinstance(value, str):
             return value
         value = value.upper()
@@ -65,7 +110,7 @@ class AccessPermission(BaseModel):
         return result
 
     @model_serializer(mode="plain")
-    def serialize(self) -> str:
+    def serialize_permission(self) -> str:
         result = ""
         if self.join:
             result += "J"
@@ -104,10 +149,29 @@ class Access(BaseModel):
     given: AccessPermission
 
 
+class ClientDesc(BaseModel):
+    default_acs: Optional[DefaultAccess] = None
+    public: JsonSerialize[Optional[Dict[str, Any]]] = None
+    trusted: JsonSerialize[Optional[Dict[str, Any]]] = None
+    private: JsonSerialize[Optional[Dict[str, Any]]] = None
+
+
+class ClientCred(BaseModel):
+    method: str
+    value: str
+    response: Optional[str] = None
+    params: Optional[Mapping[str, bytes]] = None
+
+
 class BaseInfo(BaseModel, frozen=True):
     public: Optional[Dict[str, Any]] = None
     trusted: Optional[Dict[str, Any]] = None
     private: Optional[Dict[str, Any]] = None
+
+    @property
+    @abstractmethod
+    def id(self) -> str:
+        raise NotImplementedError
 
     @property
     def fn(self) -> Optional[str]:
@@ -124,13 +188,3 @@ class BaseInfo(BaseModel, frozen=True):
         if self.private:
             return self.private.get("comment")
 
-    @property
-    def verified(self) -> bool:
-        return False if self.trusted is None else self.trusted.get("verified", False)
-
-
-class ClientCred(BaseModel):
-    method: str
-    value: str
-    response: Optional[str] = None
-    params: Optional[Mapping[str, bytes]] = None

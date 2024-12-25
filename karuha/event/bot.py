@@ -687,6 +687,7 @@ class SubscribeEvent(ClientEvent, on_field="sub"):
     __slots__ = []
 
     client_message: pb.ClientSub
+    response_message: Optional[pb.ServerCtrl]
 
     id: ProxyPropertyType[str] = ClientMessageProperty()
     topic: ProxyPropertyType[str] = ClientMessageProperty()
@@ -716,6 +717,7 @@ class LeaveEvent(ClientEvent, on_field="leave"):
     __slots__ = []
 
     client_message: pb.ClientLeave
+    response_message: Optional[pb.ServerCtrl]
 
     id: ProxyPropertyType[str] = ClientMessageProperty()
     topic: ProxyPropertyType[str] = ClientMessageProperty()

@@ -43,7 +43,7 @@ class NoopChannel(grpc_aio.Channel):
     async def close(self, grace: Optional[float] = None) -> None:
         return
     
-    async def get_state(self, try_to_connect: bool = False) -> ChannelConnectivity:
+    def get_state(self, try_to_connect: bool = False) -> ChannelConnectivity:
         raise NotImplementedError
     
     async def wait_for_state_change(self, last_observed_state: ChannelConnectivity) -> None:

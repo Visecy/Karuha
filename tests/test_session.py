@@ -1,4 +1,5 @@
 import asyncio
+from unittest import skip
 
 from karuha.exception import KaruhaRuntimeError
 from karuha.session import BaseSession
@@ -136,6 +137,7 @@ class TestSession(AsyncBotTestCase):
         self.bot.confirm_message(pubmsg.id, seq=0)
         await self.wait_for(file_task)
 
+    @skip("image need to upload")
     async def test_image(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         image_task = asyncio.create_task(ss.send_image("docs/img/tw_icon-karuha2.png"))

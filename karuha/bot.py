@@ -1200,6 +1200,8 @@ class Bot(object):
     def cancel(self, cancel_loop: bool = True) -> None:
         if self.state in [BotState.stopped, BotState.cancelling, BotState.disabled]:
             return
+        elif self.state != BotState.running:
+            raise KaruhaBotError("the bot is not running", bot=self)
         self.state = BotState.cancelling
         self.logger.info(f"canceling the bot {self.name}")
         loop_task = self._loop_task_ref()
