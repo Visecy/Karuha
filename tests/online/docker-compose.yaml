@@ -13,6 +13,7 @@ services:
       - "16060:16060"
     environment:
       POSTGRES_DSN: 'postgresql://postgres:postgres@postgres:5432/tinode'
+    restart: on-failure
     networks:
       - tinode-net
     volumes:
@@ -26,6 +27,7 @@ services:
     container_name: postgres
     environment:
       POSTGRES_PASSWORD: "postgres"
+    restart: always
     networks:
       - tinode-net
     volumes:

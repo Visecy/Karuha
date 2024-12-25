@@ -26,6 +26,7 @@ jobs:
         run: pip install .[dev]
       - name: Configure tinode
         run: |
+          docker logs tinode-srv -n 100
           docker exec tinode-srv ./init-db --add_root root:tinode_root -config working.config
           cp tests/online/online_test.json ./config.json
       - name: Run online test
