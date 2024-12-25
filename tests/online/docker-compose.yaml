@@ -13,6 +13,7 @@ services:
       - "16060:16060"
     environment:
       POSTGRES_DSN: 'postgresql://postgres:postgres@postgres:5432/tinode'
+      WAIT_FOR: "postgres:5432"
     restart: on-failure
     networks:
       - tinode-net
