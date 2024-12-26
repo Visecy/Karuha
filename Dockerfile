@@ -9,12 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Install pip requirements
+RUN python -m pip install --upgrade pip
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir --upgrade -r requirements.txt
 
 WORKDIR /opt/karuha
 COPY . .
 
-RUN pip install .[all] -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install .[all]
 
 CMD [ "python" , "-m" , "karuha" ]
