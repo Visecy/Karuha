@@ -27,9 +27,7 @@ jobs:
       - name: Get tinode logs
         run: |
           docker logs tinode-srv -n 100
-      - name: Configure tinode
-        run: |
-          docker exec tinode-srv ./init-db -add_root root:tinode_root -config working.config
-          cp tests/online/online_test.json ./config.json
       - name: Run online test
-        run: make test_online
+        run: |
+          cp tests/online/online_test.json ./config.json
+          make test_online

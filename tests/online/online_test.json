@@ -9,7 +9,7 @@
         {
             "name": "chatbot",
             "schema": "basic",
-            "secret": "root:tinode_root"
+            "secret": "xena:xena123"
         }
     ]
 }
