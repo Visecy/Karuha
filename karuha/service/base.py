@@ -8,6 +8,9 @@ from ..utils.invoker import HandlerInvokerDependency, KaruhaHandlerInvokerError
 
 
 class BaseService(HandlerInvokerDependency):
+    """
+    Base class for all services.
+    """
     __slots__ = ["bot"]
 
     def __init__(self, bot: Bot, /) -> None:

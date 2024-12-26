@@ -5,10 +5,10 @@ from tinode_grpc import pb
 from karuha import BaseSession, MessageSession, on_rule
 from karuha.bot import ProxyBot
 from karuha.runner import run_bot
-from ..utils import AsyncBotClientTestCase
+from ..utils import AsyncBotOnlineTestCase
 
 
-class TestBotClient(AsyncBotClientTestCase):
+class TestBotClient(AsyncBotOnlineTestCase):
     async def test_hi(self) -> None:
         await self.bot.hello()
         await self.bot.hello(lang="CN")

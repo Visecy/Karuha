@@ -12,6 +12,14 @@ class BaseUser(BaseInfo, frozen=True):
     user_id: str
 
     @property
+    def id(self) -> str:
+        return self.user_id
+
+    @property
+    def verified(self) -> bool:
+        return False if self.trusted is None else self.trusted.get("verified", False)
+
+    @property
     def staff(self) -> bool:
         if self.trusted is None:
             return False

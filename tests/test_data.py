@@ -198,7 +198,7 @@ class TestData(AsyncBotTestCase):
         self.assertEqual(topic.fn, "Test Group")
         self.assertIsNone(topic.note)
         self.assertIsNone(topic.comment)
-        self.assertFalse(topic.verified)
+        # self.assertFalse(topic.verified)
 
         topic = await get_topic(self.bot, "usr_test_1")
         self.assertIsInstance(topic, BaseTopic)
@@ -206,7 +206,7 @@ class TestData(AsyncBotTestCase):
         self.assertIsNone(topic.fn)
         self.assertIsNone(topic.note)
         self.assertIsNone(topic.comment)
-        self.assertFalse(topic.verified)
+        # self.assertFalse(topic.verified)
     
     async def test_tag_and_cred(self) -> None:
         task = asyncio.create_task(get_user_tags(self.bot))

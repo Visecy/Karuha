@@ -18,9 +18,11 @@ class BaseTopic(BaseInfo, frozen=True):
     topic: str
 
     @property
-    def topic_id(self) -> str:
+    def id(self) -> str:
         return self.topic
 
+    topic_id = id
+    
 
 class Topic(BaseTopic, frozen=True):
     created: datetime

@@ -59,12 +59,6 @@ setup(
         "aiofiles>=23.1",
         "puremagic>=1.20"
     ],
-    extras_require={
-        "lint": ["flake8>=6.1"],
-        "image": ["pillow>=10.0"],
-        "data": ["greenback"],
-        "all": ["pillow>=10.0", "greenback"],
-    },
 
     classifiers=[
         "Development Status :: 5 - Production/Stable",

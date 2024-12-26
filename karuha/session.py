@@ -1,5 +1,4 @@
 import asyncio
-import mimetypes
 import os
 import re
 import weakref
@@ -106,7 +105,7 @@ class BaseSession(object):
 
     async def send_attachment(
             self,
-            path: Union[str, os.PathLike],
+            file: Union[str, os.PathLike, BinaryIO],
             /, *,
             name: Optional[str] = None,
             mime: Optional[str] = None,
@@ -135,19 +134,27 @@ class BaseSession(object):
             raise KaruhaRuntimeError("unknown attachment type name")
         elif not issubclass(attachment_cls, _Attachment):
             raise KaruhaRuntimeError("unknown attachment type")
-        size = await getsize(path)
+        if isinstance(file, (BinaryIO, IOBase)):
+            extra_data = await attachment_cls.analyze_file(file, name=name)
+            size = file.seek(0, os.SEEK_END)
+            file.seek(0)
+        else:
+            name = name or os.path.basename(file)
+            with open(file, "rb") as f:
+                extra_data = await attachment_cls.analyze_file(f, name=name)
+            size = await getsize(file)
+        if mime is not None:
+            extra_data["mime"] = mime
         if force_upload or size < self.bot.config.file_size_threshold:
-            return await self.send(
-                await attachment_cls.from_file(
-                    path, name=name, mime=mime
-                ),
-                **kwds
-            )
-        _, upload_params = await self.bot.upload(path)
+            if isinstance(file, (BinaryIO, IOBase)):
+                attachment = attachment_cls.from_bytes(file.read(), name=name, **extra_data)
+            else:
+                attachment = await attachment_cls.from_file(file, name=name, **extra_data)
+            return await self.send(attachment, **kwds)
+        _, upload_params = await self.bot.upload(file)
         url = upload_params["url"]
-        mime = mime or mimetypes.guess_type(path)[0]
         return await self.send(
-            attachment_cls.from_url(url, name=name, mime=mime),
+            attachment_cls.from_url(url, name=name, **extra_data),
             attachments=[url],
             **kwds
         )

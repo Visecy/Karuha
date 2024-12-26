@@ -12,12 +12,12 @@ from weakref import WeakKeyDictionary, WeakSet
 from aiofiles import open as aio_open
 from aiofiles import os as aio_os
 from aiofiles import ospath as aio_ospath
-from pydantic import (BaseModel, Field, GetCoreSchemaHandler, StrictInt,
-                      StrictStr, TypeAdapter, model_validator)
-from pydantic_core import CoreSchema, core_schema
+from pydantic import (BaseModel, Field, StrictInt, StrictStr, TypeAdapter,
+                      model_validator)
 from typing_extensions import Annotated, Self, get_args, get_origin
 
 import karuha
+
 from .utils.invoker import AbstractHandlerInvoker, HandlerInvokerDependency
 
 try:
@@ -144,7 +144,7 @@ class AbstractDataStore(HandlerInvokerDependency, Generic[T_Data]):
         self._data_type = data_type
 
     @classmethod
-    def resolve_dependency(cls, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
+    def resolve_dependency(cls, /, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
         identifier = kwds.get("identifier", None)
         name = (
             f"dependency-{param.name}"
@@ -249,12 +249,6 @@ class AbstractDataStore(HandlerInvokerDependency, Generic[T_Data]):
 
     def __len__(self) -> int:
         return len(tuple(self.get_all()))
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: GetCoreSchemaHandler
-    ) -> CoreSchema:
-        return core_schema.is_instance_schema(cls)
 
     def __init_subclass__(
         cls, *, store_type: Optional[str] = None, **kwds: Any

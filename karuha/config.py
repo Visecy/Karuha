@@ -24,7 +24,7 @@ class Bot(BaseModel):
     secret: str
     auto_login: bool = True
     auto_subscribe_new_user: bool = False
-    file_size_threshold: int = 1024 * 1024
+    file_size_threshold: int = 8192
 
 
 class Config(BaseModel):
