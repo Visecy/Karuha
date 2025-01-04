@@ -33,6 +33,7 @@ jobs:
       with:
         name: coverage-data-${{ runner.os }}-py${{ matrix.python-version }}
         path: .coverage*
+        include-hidden-files: true
 
   online-test:
     name: Test with Tinode Server
@@ -65,14 +66,16 @@ jobs:
         with:
           name: chatbot-logs
           path: .bot/logs/*
+          include-hidden-files: true
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
         with:
           name: coverage-data-online-py3.10
           path: .coverage*
+          include-hidden-files: true
     
   upload-coverage:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: [test, online-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
