@@ -65,8 +65,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chatbot-logs
-          path: .bot/logs/*
-          include-hidden-files: true
+          path: .bot/log/*
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +81,7 @@ jobs:
         with:
           path: ./artifacts
           pattern: 'coverage-data-*'
+          merge-multiple: true
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
