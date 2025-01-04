@@ -79,9 +79,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: ./artifacts
+          path: artifacts
           pattern: 'coverage-data-*'
           merge-multiple: true
+      - name: Display structure of downloaded files
+        run: |
+          ls -alR artifacts
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -92,7 +95,7 @@ jobs:
           pip install setuptools wheel coverage
       - name: Combine coverage data
         run: |
-          coverage combine ./artifacts/*.coverage*
+          coverage combine artifacts/*
           coverage xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
