@@ -30,8 +30,14 @@ lint:
 test:
 	pytest --ignore=tests/online/
 
+test_with_coverage:
+	coverage run --source ${MODULE} --parallel-mode -m pytest --ignore=tests/online/
+
 test_online:
 	pytest tests/online/
+
+test_online_with_coverage:
+	coverage run --source ${MODULE} --parallel-mode -m pytest tests/online/
 
 coverage:
 	coverage run --source ${MODULE} --parallel-mode -m unittest

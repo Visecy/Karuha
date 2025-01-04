@@ -1,0 +1,96 @@
+name: test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Build and Test with Multiple Python Versions
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, "3.10", "3.11", "3.12"]
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install setuptools wheel
+    - name: Run tests with coverage
+      run: make develop test_with_coverage
+    - name: Upload coverage data
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-data-${{ runner.os }}-py${{ matrix.python-version }}
+        path: .coverage*
+
+  online-test:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Set up docker
+        uses: docker/setup-docker-action@v4
+      - name: Set up tinode
+        run: |
+          docker compose -f tests/online/docker-compose.yaml up -d
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+      - name: Get tinode logs
+        run: |
+          docker logs tinode-srv -n 100
+      - name: Run online test
+        run: |
+          cp tests/online/online_test.json ./config.json
+          make develop test_online_with_coverage
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatbot-logs
+          path: .bot/logs/*
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-online-py3.10
+          path: .coverage*
+    
+  upload-coverage:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: 'coverage-data-*'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel coverage
+      - name: Combine coverage data
+        run: |
+          coverage combine ./artifacts/*.coverage*
+          coverage xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
