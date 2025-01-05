@@ -3,7 +3,8 @@
     "server": {
         "host": "localhost:16060",
         "web_host": "http://localhost:6060",
-        "ssl": false
+        "ssl": false,
+        "enable_plugin": true
     },
     "bots": [
         {

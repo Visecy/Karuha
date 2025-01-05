@@ -37,7 +37,7 @@ jobs:
 
   online-test:
     name: Test with Tinode Server
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    # if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,15 +57,16 @@ jobs:
       - name: Get tinode logs
         run: |
           docker logs tinode-srv -n 100
-      - name: Run online test
+      - name: Run online test with coverage
         run: |
           cp tests/online/online_test.json ./config.json
           make develop test_online_with_coverage
-      - name: Upload logs
+      - name: Upload chatbot logs
         uses: actions/upload-artifact@v4
         with:
           name: chatbot-logs
           path: .bot/log/*
+          retention-days: 14
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
         with:
@@ -74,11 +75,13 @@ jobs:
           include-hidden-files: true
     
   upload-coverage:
+    name: Upload coverage to Codecov
     needs: [test, online-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
           pattern: 'coverage-data-*'
@@ -90,7 +93,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools wheel coverage
+          pip install coverage
       - name: Combine coverage data
         run: |
           coverage combine artifacts

@@ -35,15 +35,14 @@ def reset_sub(bot: Bot) -> None:
 
 @on(SubscribeEvent)
 def handle_sub(event: SubscribeEvent) -> None:
-    if event.extra is not None and event.extra.on_behalf_of:
+    if event.topic.startswith("new") or event.topic.startswith("nch"):
+        # new channel or new group, ignore
         return
     _sub_topic(event.bot, event.topic)
 
 
 @on(LeaveEvent)
 def handle_leave(event: LeaveEvent) -> None:
-    if event.extra is not None and event.extra.on_behalf_of:
-        return
     _leave_topic(event.bot, event.topic)
 
 
