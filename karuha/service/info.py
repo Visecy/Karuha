@@ -63,7 +63,6 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
         trusted = await self.get_trusted(info, skip_cache=skip_cache)
         return bool(trusted and trusted.get("verified"))
 
-
     async def set_desc(
         self,
         info: Union[str, T_Info],
@@ -159,6 +158,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
 
     async def set_comment(self, info: Union[str, T_Info], /, comment: str, **kwds: Any) -> None:
         return await self.set_private(info, {"comment": comment}, update=True, **kwds)
+    
     @asynccontextmanager
     async def _run_proxy_bot(self, use_proxy: bool, proxy_bot: Union[str, Bot, None]) -> AsyncGenerator[Bot, None]:
         if not use_proxy or proxy_bot is None:

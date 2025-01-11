@@ -20,8 +20,9 @@ class TestService(AsyncBotOnlineTestCase):
             self.assertEqual(await svc.get_fn(uid), "Test2")
             await svc.set_trusted(uid, {"staff": True})
             self.assertTrue(await svc.is_staff(uid))
+            await self.bot.subscribe(uid)
             await svc.set_comment(uid, "Test User")
-            self.assertEqual(await svc.get_comment(uid), "Test User")
+            self.assertEqual(await svc.get_comment(uid, skip_cache=True), "Test User")
         finally:
             await svc.del_user(uid, hard=True)
     
@@ -38,4 +39,3 @@ class TestService(AsyncBotOnlineTestCase):
         self.assertEqual(await svc.is_staff("me", skip_cache=True), not is_staff)
         await svc.set_trusted("me", {"staff": is_staff}, update=True)
         self.assertEqual(await svc.is_staff("me", skip_cache=True), is_staff)
-    

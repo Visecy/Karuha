@@ -232,15 +232,18 @@ async def get_sub(
     sub = subscription_cache.get((topic_id, bot.uid))
     if sub is not None and not skip_cache:
         return sub.sub
-    if not skip_sub_check and not has_sub(bot, topic_id):
-        return
+    if skip_sub_check or has_sub(bot, topic_id):
+        _, sub_meta = await bot.get(topic_id, "sub")
+        if sub_meta is not None:
+            for i in sub_meta.sub:
+                if i.user_id == bot.user_id:
+                    return Subscription.from_meta(i)
     _, sub_meta = await bot.get("me", "sub")
     if sub_meta is None:
         return
     for i in sub_meta.sub:
-        if not i.user_id or i.user_id == bot.uid:
+        if not i.topic or i.topic == bot.user_id:
             return Subscription.from_meta(i)
-    raise ValueError(f"cannot find sub for {topic_id}")
 
 
 def try_get_topic_sub(bot: Bot, /, topic_id: str) -> List[Tuple[str, BaseSubscription]]:
