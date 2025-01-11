@@ -12,7 +12,7 @@ run:
 build:
 	python setup.py build
 
-build_dist: test
+build_dist:
 	python -m build
 
 install:

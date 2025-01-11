@@ -187,3 +187,13 @@ class BaseInfo(BaseModel, frozen=True):
     def comment(self) -> Optional[str]:
         if self.private:
             return self.private.get("comment")
+
+    @property
+    def verified(self) -> bool:
+        return False if self.trusted is None else self.trusted.get("verified", False)
+
+    @property
+    def staff(self) -> bool:
+        if self.trusted is None:
+            return False
+        return self.trusted.get("staff", False)

@@ -16,44 +16,52 @@ T_Info = TypeVar("T_Info", bound=BaseInfo)
 class _BaseInfoService(BaseService, Generic[T_Info]):
     __slots__ = []
 
-    async def get_public(self, info: Union[str, T_Info], /) -> Optional[Mapping[str, Any]]:
+    async def get_public(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> Optional[Mapping[str, Any]]:
         if isinstance(info, BaseInfo):
             return info.public
-        if info.startswith("usr"):
-            desc = await get_user_desc(self.bot, info)
+        if info.startswith("usr") or info == "me":
+            desc = await get_user_desc(self.bot, info, skip_cache=skip_cache)
         else:
-            desc = await get_group_desc(self.bot, info)
+            desc = await get_group_desc(self.bot, info, skip_cache=skip_cache)
         return desc.public
 
-    async def get_trusted(self, info: Union[str, T_Info], /) -> Optional[Mapping[str, Any]]:
+    async def get_trusted(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> Optional[Mapping[str, Any]]:
         if isinstance(info, BaseInfo):
             return info.trusted
-        if info.startswith("usr"):
-            desc = await get_user_desc(self.bot, info)
+        if info.startswith("usr") or info == "me":
+            desc = await get_user_desc(self.bot, info, skip_cache=skip_cache)
         else:
-            desc = await get_group_desc(self.bot, info)
+            desc = await get_group_desc(self.bot, info, skip_cache=skip_cache)
         return desc.trusted
 
-    async def get_private(self, info: Union[str, T_Info], /) -> Optional[Mapping[str, Any]]:
+    async def get_private(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> Optional[Mapping[str, Any]]:
         if isinstance(info, BaseInfo):
             return info.private
-        sub = await get_sub(self.bot, info)
+        sub = await get_sub(self.bot, info, skip_cache=skip_cache)
         return sub and sub.private
 
-    async def get_fn(self, info: Union[str, T_Info], /) -> Optional[str]:
-        public = await self.get_public(info)
+    async def get_fn(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> Optional[str]:
+        public = await self.get_public(info, skip_cache=skip_cache)
         if public:
             return public.get("fn")
 
-    async def get_note(self, info: Union[str, T_Info], /) -> Optional[str]:
-        public = await self.get_public(info)
+    async def get_note(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> Optional[str]:
+        public = await self.get_public(info, skip_cache=skip_cache)
         if public:
             return public.get("note")
 
-    async def get_comment(self, info: Union[str, T_Info], /) -> Optional[str]:
-        private = await self.get_private(info)
+    async def get_comment(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> Optional[str]:
+        private = await self.get_private(info, skip_cache=skip_cache)
         if private:
             return private.get("comment")
+
+    async def is_staff(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> bool:
+        trusted = await self.get_trusted(info, skip_cache=skip_cache)
+        return bool(trusted and trusted.get("staff"))
+
+    async def is_verified(self, info: Union[str, T_Info], /, skip_cache: bool = False) -> bool:
+        trusted = await self.get_trusted(info, skip_cache=skip_cache)
+        return bool(trusted and trusted.get("verified"))
 
     async def set_desc(
         self,
@@ -77,7 +85,9 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
             await bot.set(
                 id,
                 desc=set_desc,
-                extra=pb.ClientExtra(attachments=attachments, auth_level=pb.ROOT if as_root else None),
+                extra=pb.ClientExtra(
+                    attachments=attachments, auth_level=pb.ROOT if as_root else None
+                ),
             )
 
     async def set_public(
@@ -139,16 +149,16 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
         return await self.set_desc(
             info, private=private, as_root=as_root, **kwds
         )
-    
-    async def set_fn(self, info: Union[str, T_Info], /, fn: str, **kwds: Any) -> None:
-        return await self.set_public(info, fn=fn, update=True, **kwds)
-    
-    async def set_note(self, info: Union[str, T_Info], /, note: str, **kwds: Any) -> None:
-        return await self.set_public(info, note=note, update=True, **kwds)
-    
-    async def set_comment(self, info: Union[str, T_Info], /, comment: str, **kwds: Any) -> None:
-        return await self.set_private(info, comment=comment, update=True, **kwds)
 
+    async def set_fn(self, info: Union[str, T_Info], /, fn: str, **kwds: Any) -> None:
+        return await self.set_public(info, {"fn": fn}, update=True, **kwds)
+
+    async def set_note(self, info: Union[str, T_Info], /, note: str, **kwds: Any) -> None:
+        return await self.set_public(info, {"note": note}, update=True, **kwds)
+
+    async def set_comment(self, info: Union[str, T_Info], /, comment: str, **kwds: Any) -> None:
+        return await self.set_private(info, {"comment": comment}, update=True, **kwds)
+    
     @asynccontextmanager
     async def _run_proxy_bot(self, use_proxy: bool, proxy_bot: Union[str, Bot, None]) -> AsyncGenerator[Bot, None]:
         if not use_proxy or proxy_bot is None:

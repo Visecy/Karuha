@@ -12,6 +12,9 @@ from ..utils.decode import dict2msg
 
 
 class UserService(_BaseInfoService[BaseUser]):
+    """
+    Service for user management.
+    """
     __slots__ = []
 
     async def new_user(
@@ -28,7 +31,7 @@ class UserService(_BaseInfoService[BaseUser]):
         tags: Iterable[str] = (),
         cred: Iterable[ClientCredType] = (),
         state: Optional[UserStateType] = None
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, Optional[str]]:
         secret = f"{uname}:{password}"
         if any((fn, default_acs, public, trusted, private)):
             if desc is not None:
@@ -54,7 +57,7 @@ class UserService(_BaseInfoService[BaseUser]):
             cred=(dict2msg(c, pb.ClientCred) for c in cred),
         )
         user_id = params["user"]
-        token = params["token"]
+        token = params.get("token")
         return user_id, token
 
     async def get_user(
@@ -71,14 +74,6 @@ class UserService(_BaseInfoService[BaseUser]):
             )
         async with self._run_proxy_bot(use_proxy=use_proxy, proxy_bot=user_id) as bot:
             return await get_user(bot, skip_cache=skip_cache, skip_sub_check=True)
-
-    async def is_staff(self, user: Union[str, BaseUser]) -> bool:
-        trusted = await self.get_trusted(user)
-        return bool(trusted and trusted.get("staff"))
-
-    async def is_verified(self, user: Union[str, BaseUser]) -> bool:
-        trusted = await self.get_trusted(user)
-        return bool(trusted and trusted.get("verified"))
 
     async def set_desc(
         self,

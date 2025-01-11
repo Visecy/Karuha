@@ -265,7 +265,29 @@ class TestData(AsyncBotTestCase):
         )
         self.bot.receive_message(pb.ServerMsg(meta=meta))
 
+        get_msg = await self.bot.consum_message()
+        assert get_msg.HasField("get")
+        get_msg = get_msg.get
+        self.assertEqual(get_msg.query.what, "sub")
+        self.assertEqual(get_msg.topic, "me")
+        meta = pb.ServerMeta(
+            id=get_msg.id,
+            topic="me",
+            sub=[
+                pb.TopicSub(
+                    updated_at=1708326544978,
+                    public=to_json({"fn": "Test User1"}),
+                    topic="usr_test_2"
+                ),
+                # pb.TopicSub(
+                #     updated_at=1708326544978,
+                #     public=to_json({"fn": "Test User"}),
+                #     topic="usr_test_1",
+                # )
+            ]
+        )
         self.bot.receive_message(pb.ServerMsg(meta=meta))
+
         topic = await self.wait_for(task)
         assert isinstance(topic, Topic)
         self.assertEqual(topic.topic, "usr_test_1")

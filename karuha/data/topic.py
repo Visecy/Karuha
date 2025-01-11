@@ -50,7 +50,7 @@ class TopicSub(BaseTopic, frozen=True):
     acs: Optional[Access] = None
 
 
-@deprecated("Use `UserService.set_info` instead")
+@deprecated("Use `UserService.set_desc` instead")
 async def set_info(
     bot: Bot,
     /,

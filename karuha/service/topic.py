@@ -15,6 +15,9 @@ from .info import _BaseInfoService
 
 
 class TopicService(_BaseInfoService[BaseTopic]):
+    """
+    Service for managing topics.
+    """
     __slots__ = []
 
     async def new_topic(
@@ -48,6 +51,7 @@ class TopicService(_BaseInfoService[BaseTopic]):
         with EventCatcher(SubscribeEvent) as catcher:
             tid, _ = await self.bot.subscribe(
                 "nch" if is_chan else "new",
+                get="desc sub",
                 set=pb.SetQuery(
                     desc=dict2msg(desc, pb.SetDesc) if desc is not None else desc,
                     tags=tags
