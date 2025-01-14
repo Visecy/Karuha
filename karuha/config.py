@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Iterable, Literal, Optional, Tuple, Union
-from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator
+from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator, PositiveInt
 
 from . import CONFIG_PATH
 from .logger import logger, Level
@@ -14,8 +14,9 @@ class Server(BaseModel):
     ssl_host: Optional[str] = None
     enable_plugin: bool = False
     listen: str = "0.0.0.0:40051"
+    connect_mode: Literal["grpc", "websocket"] = "grpc"
     timeout: float = 5
-    retry: int = 5
+    retry: PositiveInt = 5
 
 
 class Bot(BaseModel):
