@@ -22,7 +22,7 @@ class TestBot(AsyncBotTestCase):
             BotConfig(name="test_bot", schema="basic", secret="123456")
         )
         self.assertEqual(
-            self.bot.server,
+            self.bot._server_config,
             Server()
         )
         self.assertTrue(self.bot.queue.empty())

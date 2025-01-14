@@ -1,32 +1,19 @@
 import base64
-from io import IOBase
 import os
+from io import IOBase
 from typing import BinaryIO, Optional, Tuple, Union
 
 from aiofiles import open as aio_open
 from aiofiles.threadpool.binary import AsyncBufferedIOBase
 from aiohttp import ClientSession, ClientTimeout, FormData
+from google.protobuf import json_format
 from pydantic_core import from_json
 from tinode_grpc import pb
-from google.protobuf import json_format
 
-from ..exception import KaruhaServerError
 from ..config import Server as ServerConfig
-from ..version import APP_VERSION, LIB_VERSION
+from ..exception import KaruhaServerError
 from ..utils.context import nullcontext
-
-
-async def read_auth_cookie(cookie_file_name: Union[str, bytes, os.PathLike]) -> Tuple[str, Union[str, bytes]]:
-    """Read authentication token from a file"""
-    async with aio_open(cookie_file_name, 'r') as cookie:
-        params = from_json(await cookie.read())
-    schema = params.get("schema")
-    secret = params.get('secret')
-    if schema is None or secret is None:
-        raise ValueError("invalid cookie file")
-    if schema == 'token':
-        secret = base64.b64decode(secret)
-    return schema, secret
+from ..version import APP_VERSION, LIB_VERSION
 
 
 def get_session(config: ServerConfig, auth: Optional[str] = None) -> ClientSession:
@@ -66,7 +53,7 @@ async def upload_file(
             resp.raise_for_status()
             ret = await resp.text()
     ctrl = json_format.Parse(ret, pb.ServerCtrl())
-    if ctrl.id != tid:
+    if tid is not None and ctrl.id != tid:
         raise KaruhaServerError("tid mismatch")
     return ctrl
 

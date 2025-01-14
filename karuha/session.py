@@ -145,7 +145,7 @@ class BaseSession(object):
             size = await getsize(file)
         if mime is not None:
             extra_data["mime"] = mime
-        if force_upload or size < self.bot.config.file_size_threshold:
+        if force_upload or size < self.bot.server_config.file_size_threshold:
             if isinstance(file, (BinaryIO, IOBase)):
                 attachment = attachment_cls.from_bytes(file.read(), name=name, **extra_data)
             else:

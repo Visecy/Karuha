@@ -5,12 +5,11 @@ from types import coroutine
 from typing import Any, Awaitable, ClassVar, Dict, Generator, Optional, TypeVar
 from unittest import IsolatedAsyncioTestCase, SkipTest
 
-from grpc import ChannelConnectivity
-from grpc import aio as grpc_aio
 from tinode_grpc import pb
 from typing_extensions import Self
 
 from karuha import Config, async_run, get_bot, try_add_bot, cancel_all_bots, reset
+from karuha.server import BaseServer
 from karuha.bot import Bot, BotState
 from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
@@ -27,66 +26,28 @@ TEST_TIMEOUT = 3
 T = TypeVar("T")
 
 
-@coroutine
-def run_forever() -> Generator[None, None, None]:
-    while True:
-        yield
-
-
-class NoopChannel(grpc_aio.Channel):
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        pass
-
-    async def close(self, grace: Optional[float] = None) -> None:
-        return
+class MockServer(BaseServer):
+    async def start(self) -> None:
+        if self._running:
+            return await super().start()
+        self.send_queue = asyncio.Queue()
+        self.recv_queue = asyncio.Queue()
+        return await super().start()
     
-    def get_state(self, try_to_connect: bool = False) -> ChannelConnectivity:
-        raise NotImplementedError
+    async def put_received(self, message: pb.ServerMsg, /) -> None:
+        await self.recv_queue.put(message)
     
-    async def wait_for_state_change(self, last_observed_state: ChannelConnectivity) -> None:
-        raise NotImplementedError
+    async def get_sent(self) -> pb.ClientMsg:
+        return await self.send_queue.get()
     
-    async def channel_ready(self) -> None:
-        return
+    async def send(self, msg: pb.ClientMsg) -> None:
+        await self.send_queue.put(msg)
     
-    def unary_unary(
-        self,
-        method: str,
-        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
-        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
-    ) -> grpc_aio.UnaryUnaryMultiCallable:
-        raise NotImplementedError
-    
-    def unary_stream(
-        self,
-        method: str,
-        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
-        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
-    ) -> grpc_aio.UnaryStreamMultiCallable:
-        raise NotImplementedError
-    
-    def stream_unary(
-        self,
-        method: str,
-        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
-        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
-    ) -> grpc_aio.StreamUnaryMultiCallable:
-        raise NotImplementedError
-    
-    def stream_stream(
-        self,
-        method: str,
-        request_serializer: Optional[grpc_aio._typing.SerializingFunction] = None,
-        response_deserializer: Optional[grpc_aio._typing.DeserializingFunction] = None
-    ) -> grpc_aio.StreamStreamMultiCallable:
-        raise NotImplementedError
+    async def __anext__(self) -> pb.ServerMsg:
+        return await self.recv_queue.get()
 
 
 class BotMock(Bot):
-    user_id = "usr"
     
     def receive_message(self, message: pb.ServerMsg, /) -> None:
         self.logger.debug(f"in: {message}")
@@ -117,10 +78,6 @@ class BotMock(Bot):
     
     async def consum_message(self) -> pb.ClientMsg:
         return await asyncio.wait_for(self.queue.get(), TEST_TIMEOUT)
-    
-    def clear_message(self) -> None:
-        while not self.queue.empty():
-            self.queue.get_nowait()
     
     def assert_message_nowait(self, message: pb.ClientMsg, /) -> None:
         assert self.queue.get_nowait() == message
@@ -171,20 +128,6 @@ class BotMock(Bot):
         )
         return tid
     
-    async def async_run(self, server_config: Optional[ServerConfig] = None) -> None:
-        server = server_config or self.server
-        if server is None:
-            raise ValueError("server not specified")
-        
-        self._prepare_loop_task()
-        while self.state == BotState.running:
-            self.logger.info(f"starting the bot {self.name}")
-            async with self._run_context(server):
-                await run_forever()
-    
-    def _get_channel(self, server_config: ServerConfig) -> grpc_aio.Channel:
-        return NoopChannel()
-
 
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
 

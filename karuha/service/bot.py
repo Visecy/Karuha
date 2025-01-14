@@ -27,7 +27,7 @@ class BotService(BaseService):
         if bot_name is None:
             bot_name = f"chatbot_{user_id}"
         if not use_proxy:
-            bot = Bot(bot_name, schema="basic", secret=secret, server=self.bot.server)
+            bot = Bot(bot_name, schema="basic", secret=secret, server=self.bot._server_config)
         else:
             bot = ProxyBot.from_bot(self.bot, user_id, bot_name)
         if not start_run:
@@ -53,7 +53,7 @@ class BotService(BaseService):
     ) -> Bot:
         if bot_name is None:
             bot_name = f"chatbot_attach_{self.random_string()}"
-        bot = Bot(bot_name, schema=schema, secret=secret, server=self.bot.server)
+        bot = Bot(bot_name, schema=schema, secret=secret, server=self.bot._server_config)
         if not start_run:
             return bot
         add_bot(bot)
