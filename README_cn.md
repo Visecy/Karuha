@@ -49,7 +49,7 @@
     "bots": [
         {
             "name": "chatbot",
-            "schema": "basic",
+            "scheme": "basic",
             "secret": "{chatbot_login_name}:{chatebot_login_passwd}"
         }
     ]

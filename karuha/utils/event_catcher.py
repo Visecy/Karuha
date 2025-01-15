@@ -1,5 +1,5 @@
 import asyncio
-from typing import Generic, Optional, Type, TypeVar
+from typing import Callable, Generic, Optional, Type, TypeVar
 
 from ..event import Event
 from .context import _ContextHelper
@@ -15,28 +15,38 @@ class EventCatcher(Generic[T_Event], _ContextHelper):
         self.event_type = event_type
         self.events = []
         self.future = None
-    
+
     def catch_event_nowait(self) -> T_Event:
         return self.events.pop()
-    
-    async def catch_event(self, timeout: Optional[float] = None) -> T_Event:
-        if self.events:
-            return self.catch_event_nowait()
-        assert self.future is None, "catcher is already waited"
-        loop = asyncio.get_running_loop()
-        self.future = loop.create_future()
-        try:
-            return await asyncio.wait_for(self.future, timeout)
-        finally:
-            self.future = None
-    
+
+    async def catch_event(
+        self,
+        timeout: Optional[float] = None,
+        *,
+        pred: Callable[[T_Event], bool] = lambda _: True,
+    ) -> T_Event:
+        while True:
+            if self.events:
+                ev = self.events.pop()
+            else:
+                assert self.future is None, "catcher is already waited"
+                loop = asyncio.get_running_loop()
+                self.future = loop.create_future()
+                try:
+                    ev = await asyncio.wait_for(self.future, timeout)
+                finally:
+                    self.future = None
+
+            if pred(ev):
+                return ev
+
     @property
     def caught(self) -> bool:
         return bool(self.events)
 
     def activate(self) -> None:
         self.event_type.add_handler(self)
-    
+
     def deactivate(self) -> None:
         self.event_type.remove_handler(self)
 

@@ -49,7 +49,7 @@ Create a new file `config.json` and write the following content as the configura
     "bots": [
         {
             "name": "chatbot",
-            "schema": "basic",
+            "scheme": "basic",
             "secret": "{chatbot_login_name}:{chatebot_login_passwd}"
         }
     ]

@@ -18,7 +18,7 @@ from .meta import (BaseDesc, BaseSubscription, CommonDesc,
                    GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
                    UserDesc)
 from .model import Cred
-from .sub import ensure_sub, has_sub
+from .sub import has_sub
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -279,7 +279,7 @@ async def get_my_sub(
     sub = [(c.topic, c.sub) for c in subscription_cache.values() if c.user_id == bot.uid]
     if sub and not ensure_all:
         return sub
-    await ensure_sub(bot, "me")
+    # await ensure_sub(bot, "me")
     _, sub_meta = await bot.get("me", "sub")
     assert sub_meta is not None
     return [(s.topic, Subscription.from_meta(s)) for s in sub_meta.sub]
@@ -289,7 +289,7 @@ async def get_user_tags(bot: Bot) -> List[str]:
     cache = user_cache.get(bot.uid)
     if cache is not None and cache.tags is not None:
         return cache.tags.copy()
-    await ensure_sub(bot, "me")
+    # await ensure_sub(bot, "me")
     _, tag_meta = await bot.get("me", "tags")
     assert tag_meta is not None
     return list(tag_meta.tags)
@@ -299,7 +299,7 @@ async def get_user_cred(bot: Bot) -> List[Cred]:
     cache = user_cache.get(bot.uid)
     if cache is not None and cache.cred is not None:
         return cache.cred.copy()
-    await ensure_sub(bot, "me")
+    # await ensure_sub(bot, "me")
     _, cred_meta = await bot.get("me", "cred")
     assert cred_meta is not None
     return [Cred(method=c.method, value=c.value, done=c.done) for c in cred_meta.cred]

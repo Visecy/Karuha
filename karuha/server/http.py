@@ -1,13 +1,11 @@
-import base64
 import os
 from io import IOBase
-from typing import BinaryIO, Optional, Tuple, Union
+from typing import BinaryIO, Optional, Union
 
 from aiofiles import open as aio_open
 from aiofiles.threadpool.binary import AsyncBufferedIOBase
 from aiohttp import ClientSession, ClientTimeout, FormData
 from google.protobuf import json_format
-from pydantic_core import from_json
 from tinode_grpc import pb
 
 from ..config import Server as ServerConfig

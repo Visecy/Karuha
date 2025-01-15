@@ -7,14 +7,12 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
-from io import IOBase
 from typing import (Any, AsyncGenerator, BinaryIO, Callable, Coroutine, Dict,
                     Generator, Iterable, List, Literal, Optional, Tuple, Union,
                     overload)
 from weakref import WeakSet, ref
 
 from aiofiles import open as aio_open
-from aiohttp import ClientError, ClientSession, ClientTimeout, FormData
 from google.protobuf.message import Message
 from pydantic import GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import CoreSchema, core_schema, from_json, to_json
@@ -27,7 +25,6 @@ from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
 from .server import BaseServer, get_server_type
-from .utils.context import nullcontext
 from .utils.decode import decode_mapping, encode_mapping
 from .version import APP_VERSION, LIB_VERSION
 from .exception import KaruhaBotError, KaruhaServerError, KaruhaTimeoutError
@@ -47,6 +44,7 @@ class Bot(object):
 
     Provides many low-level API interfaces.
     """
+    
     __slots__ = [
         "state", "logger", "config", "server", "server_info", "account_info",
         "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref", "_server_config"
@@ -1065,6 +1063,7 @@ class Bot(object):
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds, extra=extra)  # type: ignore
+        self.logger.debug(f"out: {client_msg}")
         ret = None
         if wait_tid is None:
             await self.server.send(client_msg)
@@ -1092,11 +1091,17 @@ class Bot(object):
         if server is None:
             raise ValueError("server not specified")
 
-        self._prepare_loop_task()
+        if self.state == BotState.running:
+            raise KaruhaBotError(f"rerun bot {self.name}", bot=self)
+        elif self.state != BotState.stopped:
+            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
+        self.state = BotState.running
+        self._loop_task_ref = ref(asyncio.current_task())
+        
         while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
             async with self._run_context(server) as client:
-                await self._loop(client)
+                await self._recv_loop(client)
 
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
@@ -1187,8 +1192,7 @@ class Bot(object):
 
     @property
     def server_config(self) -> ServerConfig:
-        server = getattr(self, "server", None)
-        if server:
+        if server := getattr(self, "server", None):
             return server.config
         if self._server_config is None:
             raise AttributeError("server not specified")
@@ -1272,14 +1276,6 @@ class Bot(object):
             get="sub desc tags cred"
         )
 
-    def _prepare_loop_task(self) -> None:
-        if self.state == BotState.running:
-            raise KaruhaBotError(f"rerun bot {self.name}", bot=self)
-        elif self.state != BotState.stopped:
-            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
-        self.state = BotState.running
-        self._loop_task_ref = ref(asyncio.current_task())
-
     @asynccontextmanager
     async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[BaseServer, None]:  # pragma: no cover
         server_type = get_server_type(self.config.connect_mode or server_config.connect_mode)
@@ -1318,8 +1314,7 @@ class Bot(object):
             for t in self._tasks:
                 t.cancel()
 
-    async def _loop(self, server: BaseServer) -> None:  # pragma: no cover
-        message: pb.ServerMsg
+    async def _recv_loop(self, server: BaseServer) -> None:
         async for message in server:
             self.logger.debug(f"in: {message}")
 
@@ -1338,8 +1333,7 @@ class Bot(object):
     def __repr__(self) -> str:
         state = self.state.name
         uid = getattr(self, "user_id", 'unknown uid')
-        host = self._server_config.host if self._server_config else 'unknown'
-        return f"<bot {self.name} ({uid}) {state} on host {host}>"
+        return f"<bot {self.name} ({uid}) {state}>"
 
 
 class ProxyBot(Bot):

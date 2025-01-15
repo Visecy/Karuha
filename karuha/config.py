@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional, Tuple, Union
-from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator, NonNegativeInt, model_validator
+from pydantic import BaseModel, HttpUrl, PrivateAttr, ValidationError, field_validator, NonNegativeInt, model_validator
 
 from . import CONFIG_PATH
 from .logger import logger, Level

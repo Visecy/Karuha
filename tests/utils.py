@@ -1,12 +1,10 @@
 import asyncio
 import json
 from time import time
-from types import coroutine
-from typing import Any, Awaitable, ClassVar, Dict, Generator, Optional, TypeVar
+from typing import Any, Awaitable, Callable, ClassVar, Dict, Optional, TypeVar
 from unittest import IsolatedAsyncioTestCase, SkipTest
 
 from tinode_grpc import pb
-from typing_extensions import Self
 
 from karuha import Config, async_run, get_bot, try_add_bot, cancel_all_bots, reset
 from karuha.server import BaseServer
@@ -22,11 +20,13 @@ from karuha.utils.event_catcher import EventCatcher as _EventCatcher
 
 
 TEST_TIMEOUT = 3
+TEST_UID = "usr_test"
+TEST_TOPIC = "grp_test"
 
 T = TypeVar("T")
 
 
-class MockServer(BaseServer):
+class MockServer(BaseServer, type="mock"):
     async def start(self) -> None:
         if self._running:
             return await super().start()
@@ -48,47 +48,10 @@ class MockServer(BaseServer):
 
 
 class BotMock(Bot):
-    
-    def receive_message(self, message: pb.ServerMsg, /) -> None:
-        self.logger.debug(f"in: {message}")
-        for desc, msg in message.ListFields():
-            for e in self.server_event_callbacks[desc.name]:
-                e(self, msg)
-    
-    def receive_content(
-            self,
-            content: bytes,
-            *,
-            topic: str = "test",
-            from_user_id: str = "user",
-            seq_id: int = 0,
-            head: Dict[str, bytes] = {"auto": b"true"}
-    ) -> None:
-        self.receive_message(
-            pb.ServerMsg(
-                data=pb.ServerData(
-                    topic=topic,
-                    from_user_id=from_user_id,
-                    seq_id=seq_id,
-                    head=head.copy(),
-                    content=content,
-                )
-            )
-        )
-    
-    async def consum_message(self) -> pb.ClientMsg:
-        return await asyncio.wait_for(self.queue.get(), TEST_TIMEOUT)
-    
-    def assert_message_nowait(self, message: pb.ClientMsg, /) -> None:
-        assert self.queue.get_nowait() == message
-    
-    async def assert_message(self, message: pb.ClientMsg, /) -> None:
-        assert await self.consum_message() == message
-    
-    async def assert_note_read(self, topic: str, seq_id: int, /) -> None:
-        assert await self.consum_message() == pb.ClientMsg(
-            note_read=pb.ClientNote(topic=topic, seq_id=seq_id, what=pb.READ)
-        )
+    server: MockServer
+
+    server_info = {}
+    account_info = {"user": TEST_UID}
 
     async def wait_state(self, state: BotState, /, timeout: float = TEST_TIMEOUT) -> None:
         start = time()
@@ -98,45 +61,28 @@ class BotMock(Bot):
                 raise TimeoutError(f"bot state has not changed to {state}")
 
     async def wait_init(self) -> None:
-        await self.wait_state(BotState.running)
-        hi_msg = await self.consum_message()
-        assert hi_msg.hi
-        self.confirm_message(hi_msg.hi.id, ver="0.22", build="mysql:v0.22.11")
-        login_msg = await self.consum_message()
-        assert login_msg.login
-        self.confirm_message(login_msg.login.id, user="usr")
-        sub_msg = await self.consum_message()
-        assert sub_msg.sub and sub_msg.sub.topic == "me"
-        self.confirm_message(sub_msg.sub.id)
+        with EventCatcher(BotReadyEvent) as catcher:
+            await catcher.catch_event(pred=lambda ev: ev.bot is self)
     
-    def get_latest_tid(self) -> str:
-        assert len(self._wait_list) == 1
-        return tuple(self._wait_list.keys())[0]
-    
-    def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
-        if tid is None:
-            tid = self.get_latest_tid()
-        text = "test error" if code < 200 or code >= 400 else "OK"
-        self._wait_list[tid].set_result(
-            pb.ServerCtrl(
-                id=tid,
-                topic="test",
-                code=code,
-                text=text,
-                params={k: json.dumps(v).encode() for k, v in params.items()}
-            )
-        )
-        return tid
+    async def _prepare_account(self) -> None:
+        self.server_info = {}
+        self.account_info = {"user": TEST_UID}
     
 
+bot_mock_server = ServerConfig(connect_mode="mock")
 bot_mock = BotMock("test", "basic", "123456", log_level="DEBUG")
 
 
 class EventCatcher(_EventCatcher[T_Event]):
     __slots__ = []
 
-    async def catch_event(self, timeout: float = TEST_TIMEOUT) -> T_Event:
-        return await super().catch_event(timeout)
+    async def catch_event(
+        self,
+        timeout: Optional[float] = TEST_TIMEOUT,
+        *,
+        pred: Callable[[T_Event], bool] = lambda _: True,
+    ) -> T_Event:
+        return await super().catch_event(timeout, pred=pred)
 
 
 class AsyncBotTestCase(IsolatedAsyncioTestCase):
@@ -146,7 +92,7 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         reset()
-        cls.config = init_config(log_level="DEBUG")
+        cls.config = init_config(log_level="DEBUG", server=bot_mock_server)
 
     async def asyncSetUp(self) -> None:
         self.assertEqual(self.bot.state, BotState.stopped)
@@ -164,29 +110,87 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
     
     catchEvent = EventCatcher
 
-    async def assertBotMessage(self, message: pb.ClientMsg, /) -> None:
-        await self.bot.assert_message(message)
+    async def get_bot_sent(self) -> pb.ClientMsg:
+        return await self.wait_for(self.bot.server.get_sent())
     
-    def assertBotMessageNowait(self, message: pb.ClientMsg, /) -> None:
-        self.bot.assert_message_nowait(message)
+    async def put_bot_received(self, message: pb.ServerMsg, /) -> None:
+        await self.bot.server.put_received(message)
     
-    async def get_bot_pub(self) -> pb.ClientPub:
-        msg = await self.bot.consum_message()
+    def get_latest_tid(self) -> str:
+        assert len(self.bot._wait_list) == 1
+        return tuple(self.bot._wait_list.keys())[0]
+    
+    def confirm_message(self, tid: Optional[str] = None, code: int = 200, **params: Any) -> str:
+        if tid is None:
+            tid = self.get_latest_tid()
+        text = "test error" if code < 200 or code >= 400 else "OK"
+        self.bot._wait_list[tid].set_result(
+            pb.ServerCtrl(
+                id=tid,
+                topic="test",
+                code=code,
+                text=text,
+                params={k: json.dumps(v).encode() for k, v in params.items()}
+            )
+        )
+        return tid
+    
+    async def assert_bot_message(self, message: pb.ClientMsg, /) -> None:
+        sent = await self.get_bot_sent()
+        self.assertEqual(sent, message)
+    
+    async def get_bot_pub(self, seq: int = 0) -> pb.ClientPub:
+        msg = await self.get_bot_sent()
+        if msg.HasField("note"):
+            # from DataEvent handler
+            msg = await self.get_bot_sent()
         if msg.HasField("sub"):
-            self.bot.confirm_message(msg.sub.id)
-            msg = await self.bot.consum_message()
-        self.assertTrue(msg.HasField("pub"))
+            # from session.send
+            self.confirm_message(msg.sub.id)
+            msg = await self.get_bot_sent()
+        self.assertTrue(msg.HasField("pub"), f"{msg} is not pub")
+        self.confirm_message(msg.pub.id, seq=seq)
         return msg.pub
     
-    async def reply_bot_sub(self) -> None:
-        msg = await self.bot.consum_message()
-        assert msg.HasField("sub"), f"{msg} is not sub"
-        self.bot.confirm_message(msg.sub.id)
+    async def put_bot_content(
+            self,
+            content: bytes,
+            *,
+            topic: str = TEST_TOPIC,
+            from_user_id: str = TEST_UID,
+            seq_id: int = 0,
+            head: Dict[str, bytes] = {"auto": b"true"}
+    ) -> None:
+        await self.put_bot_received(
+            pb.ServerMsg(
+                data=pb.ServerData(
+                    topic=topic,
+                    from_user_id=from_user_id,
+                    seq_id=seq_id,
+                    head=head.copy(),
+                    content=content,
+                )
+            )
+        )
     
-    async def reply_bot_leave(self) -> None:
-        msg = await self.bot.consum_message()
-        assert msg.HasField("leave"), f"{msg} is not leave"
-        self.bot.confirm_message(msg.leave.id)
+    async def assert_bot_sub(self, topic: Optional[str] = None) -> None:
+        msg = await self.get_bot_sent()
+        self.assertTrue(msg.HasField("sub"), f"{msg} is not sub")
+        if topic is not None:
+            self.assertEqual(msg.sub.topic, topic)
+        self.confirm_message(msg.sub.id)
+    
+    async def assert_bot_leave(self, topic: Optional[str] = None) -> None:
+        msg = await self.get_bot_sent()
+        self.assertTrue(msg.HasField("leave"), f"{msg} is not leave")
+        if topic is not None:
+            self.assertEqual(msg.leave.topic, topic)
+        self.confirm_message(msg.leave.id)
+    
+    async def assert_note_read(self, topic: str, seq_id: int, /) -> None:
+        assert await self.get_bot_sent() == pb.ClientMsg(
+            note_read=pb.ClientNote(topic=topic, seq_id=seq_id, what=pb.READ)
+        )
     
     async def wait_for(self, future: Awaitable[T], /, timeout: Optional[float] = TEST_TIMEOUT) -> T:
         return await asyncio.wait_for(future, timeout)
@@ -233,9 +237,9 @@ class AsyncBotOnlineTestCase(IsolatedAsyncioTestCase):
         return await asyncio.wait_for(future, timeout)
     
 
-def new_test_message(content: bytes = b"\"test\"") -> Message:
+def new_test_message(content: bytes = b"\"test\"", *, topic: str = TEST_TOPIC, user_id: str = TEST_UID) -> Message:
     return Message.new(
-        bot_mock, "test", "user", 1, {}, content
+        bot_mock, topic, user_id, 1, {}, content
     )
 
 
