@@ -1,23 +1,29 @@
 import asyncio
 import json
+import os
+from io import IOBase
+import random
+import string
 from time import time
-from typing import Any, Awaitable, Callable, ClassVar, Dict, Optional, TypeVar
+from typing import (Any, Awaitable, BinaryIO, Callable, ClassVar, Dict,
+                    Optional, TypeVar, Union)
 from unittest import IsolatedAsyncioTestCase, SkipTest
 
 from tinode_grpc import pb
+from aiofiles import open as aio_open
 
-from karuha import Config, async_run, get_bot, try_add_bot, cancel_all_bots, reset
-from karuha.server import BaseServer
+from karuha import (Config, async_run, cancel_all_bots, get_bot, reset,
+                    try_add_bot)
 from karuha.bot import Bot, BotState
 from karuha.command.collection import new_collection
 from karuha.command.command import CommandMessage, FunctionCommand
 from karuha.config import Server as ServerConfig
 from karuha.config import init_config, load_config
 from karuha.event.bot import BotReadyEvent
+from karuha.server import BaseServer
 from karuha.text.message import Message
-from karuha.utils.event_catcher import T_Event
 from karuha.utils.event_catcher import EventCatcher as _EventCatcher
-
+from karuha.utils.event_catcher import T_Event
 
 TEST_TIMEOUT = 3
 TEST_UID = "usr_test"
@@ -27,11 +33,14 @@ T = TypeVar("T")
 
 
 class MockServer(BaseServer, type="mock"):
+    __slots__ = ["send_queue", "recv_queue", "upload_data"]
+
     async def start(self) -> None:
         if self._running:
             return await super().start()
         self.send_queue = asyncio.Queue()
         self.recv_queue = asyncio.Queue()
+        self.upload_data = {}
         return await super().start()
     
     async def put_received(self, message: pb.ServerMsg, /) -> None:
@@ -45,6 +54,40 @@ class MockServer(BaseServer, type="mock"):
     
     async def __anext__(self) -> pb.ServerMsg:
         return await self.recv_queue.get()
+    
+    async def upload(
+        self,
+        path: Union[str, os.PathLike, BinaryIO],
+        auth: str,
+        **kwds: Any
+    ) -> Dict[str, Any]:
+        if isinstance(path, (BinaryIO, IOBase)):
+            path.seek(0)
+            data = path.read()
+        else:
+            async with aio_open(path, "rb") as f:
+                data = await f.read()
+        uri = ''.join(random.choice(string.ascii_letters) for _ in range(32))
+        url = f"/v0/file/s/{uri}"
+        self.upload_data[url] = data
+        return {"url": url}
+    
+    async def download(
+        self,
+        url: str,
+        path: Union[str, os.PathLike, BinaryIO],
+        auth: str,
+        *,
+        tid: Optional[str] = None
+    ) -> int:
+        data = self.upload_data[url]
+        if isinstance(path, (BinaryIO, IOBase)):
+            path.seek(0)
+            path.write(data)
+        else:
+            async with aio_open(path, "wb") as f:
+                await f.write(data)
+        return len(data)
 
 
 class BotMock(Bot):
@@ -221,7 +264,7 @@ class AsyncBotOnlineTestCase(IsolatedAsyncioTestCase):
         try_add_bot(self.bot)
         self._main_task = asyncio.create_task(async_run())
         with EventCatcher(BotReadyEvent) as catcher:
-            await catcher.catch_event()
+            await catcher.catch_event(pred=lambda ev: ev.bot is self.bot)
     
     async def asyncTearDown(self) -> None:
         self.assertEqual(self.bot.state, BotState.running)

@@ -5,12 +5,12 @@ from typing import BinaryIO, Optional, Union
 from aiofiles import open as aio_open
 from aiofiles.threadpool.binary import AsyncBufferedIOBase
 from aiohttp import ClientSession, ClientTimeout, FormData
-from google.protobuf import json_format
 from tinode_grpc import pb
 
 from ..config import Server as ServerConfig
 from ..exception import KaruhaServerError
 from ..utils.context import nullcontext
+from ..utils.decode import dict2msg, load_json
 from ..version import APP_VERSION, LIB_VERSION
 
 
@@ -50,7 +50,8 @@ async def upload_file(
         async with session.post(url, data=data) as resp:
             resp.raise_for_status()
             ret = await resp.text()
-    ctrl = json_format.Parse(ret, pb.ServerCtrl())
+    msg = dict2msg(load_json(ret), pb.ServerMsg, ignore_unknown_fields=True)
+    ctrl = msg.ctrl
     if tid is not None and ctrl.id != tid:
         raise KaruhaServerError("tid mismatch")
     return ctrl

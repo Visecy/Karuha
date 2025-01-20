@@ -148,7 +148,7 @@ class Bot(object):
         user_agent = ' '.join((
             f"KaruhaBot/{APP_VERSION}",
             f"({platform.system()}/{platform.release()});",
-            f"gRPC-python/{LIB_VERSION}"
+            f"{self.server.type}-python/{LIB_VERSION}"
         ))
         ctrl = await self.send_message(
             tid,
@@ -1178,15 +1178,18 @@ class Bot(object):
     
     @property
     def authlvl(self) -> Optional[str]:
-        return self.account_info.get("authlvl")
+        acc_info = getattr(self, "account_info", None)
+        return acc_info and acc_info.get("authlvl")
 
     @property
     def token(self) -> Optional[str]:
-        return self.account_info.get("token")
+        acc_info = getattr(self, "account_info", None)
+        return acc_info and acc_info.get("token")
 
     @property
     def token_expires(self) -> Optional[datetime]:
-        return self.account_info.get("expires")
+        acc_info = getattr(self, "account_info", None)
+        return acc_info and acc_info.get("expires")
 
     uid = user_id
 
@@ -1340,7 +1343,7 @@ class ProxyBot(Bot):
     """
     the bot that runs on the `extra.on_behalf_of` proxy
     """
-    __slots__ = ["on_behalf_of", "login_user_id"]
+    __slots__ = ["on_behalf_of"]
 
     def __init__(self, *args: Any, on_behalf_of: str, **kwds: Any) -> None:
         super().__init__(*args, **kwds)
@@ -1407,10 +1410,12 @@ class ProxyBot(Bot):
     @property
     def user_id(self) -> str:
         return self.on_behalf_of
+    
+    uid = user_id
 
-    @user_id.setter
-    def user_id(self, val: str) -> None:
-        self.login_user_id = val
+    @property
+    def login_user_id(self) -> str:
+        return super().user_id
 
 
 async def read_auth_cookie(cookie_file_name: Union[str, bytes, os.PathLike]) -> Tuple[str, Union[str, bytes]]:

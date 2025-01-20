@@ -1,8 +1,9 @@
-from google.protobuf import json_format
 from tinode_grpc import pb
+from pydantic_core import to_json, from_json
 
 from .base import BaseServer
 from .http import get_session
+from ..utils.decode import dict2msg, msg2dict
 
 
 class WebsocketServer(BaseServer, type="websocket"):
@@ -25,8 +26,9 @@ class WebsocketServer(BaseServer, type="websocket"):
         await self.session.close()
     
     async def send(self, msg: pb.ClientMsg) -> None:
-        await self.request.send_str(json_format.MessageToJson(msg))
+        data = msg2dict(msg)
+        await self.request.send_bytes(to_json(data))
     
     async def __anext__(self) -> pb.ServerMsg:
         msg = await self.request.receive_bytes()
-        return json_format.Parse(msg, pb.ServerMsg())
+        return dict2msg(from_json(msg), pb.ServerMsg)

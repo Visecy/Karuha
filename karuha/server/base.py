@@ -67,12 +67,13 @@ class BaseServer(ABC):
                 try:
                     ctrl = await upload_file(session, url, path, tid=tid, filename=filename)
                     self.logger.info(f"uploaded {path} to {url}")
+                    self.logger.debug(f"uploaded response: {ctrl}")
                     return decode_mapping(ctrl.params)
                 except ClientConnectionError as e:
                     err_text = f"fail to upload file {path}: {e} ({retry=})"
                     self.logger.error(err_text, exc_info=True)
                     if retry <= 0:
-                        raise
+                        raise KaruhaServerError(err_text) from e
                 except ClientError as e:
                     err_text = f"fail to upload file {path}: {e}"
                     self.logger.error(err_text, exc_info=True)
@@ -98,7 +99,7 @@ class BaseServer(ABC):
                     err_text = f"fail to download file {url}: {e} ({retry=})"
                     self.logger.error(err_text, exc_info=True)
                     if retry <= 0:
-                        raise
+                        raise KaruhaServerError(err_text) from e
                 except ClientError as e:
                     err_text = f"fail to download file {url}: {e}"
                     self.logger.error(err_text, exc_info=True)

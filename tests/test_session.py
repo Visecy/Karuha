@@ -1,5 +1,4 @@
 import asyncio
-from unittest import skip
 
 from karuha.exception import KaruhaRuntimeError
 from karuha.session import BaseSession
@@ -115,7 +114,6 @@ class TestSession(AsyncBotTestCase):
         self.assertIsNotNone(ft.val)
         await self.wait_for(file_task)
 
-    @skip("image need to upload")
     async def test_image(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
         image_task = asyncio.create_task(ss.send_image("docs/img/tw_icon-karuha2.png"))
@@ -125,8 +123,7 @@ class TestSession(AsyncBotTestCase):
         ft = drafty2text(df)
         assert isinstance(ft, Image)
         self.assertEqual(ft.name, 'tw_icon-karuha2.png')
-        self.assertIsNotNone(ft.val)
-        self.confirm_message(pubmsg.id, seq=0)
+        self.assertIsNotNone(ft.ref or ft.val)
         await self.wait_for(image_task)
 
     async def test_get_data(self) -> None:
