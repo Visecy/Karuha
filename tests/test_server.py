@@ -20,15 +20,14 @@ class TestServer(AsyncBotTestCase):
 
     async def test_run(self) -> None:
         server = self.bot.server
-        self.assertTrue(server._running)
-        await server.start()
-        self.assertTrue(server._running)
+        self.assertTrue(server.running)
+        async with server:
+            self.assertTrue(server.running)
+        self.assertFalse(server.running)
         await server.stop()
-        self.assertFalse(server._running)
-        await server.stop()
-        self.assertFalse(server._running)
+        self.assertFalse(server.running)
         await server.start()
-        self.assertTrue(server._running)
+        self.assertTrue(server.running)
     
     async def test_mock_upload(self) -> None:
         content = b"test"

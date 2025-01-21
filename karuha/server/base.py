@@ -18,7 +18,7 @@ _server_types: Dict[str, Type["BaseServer"]] = {}
 
 
 def get_server_type(type: str) -> Type["BaseServer"]:
-    if type not in _server_types:
+    if type not in _server_types:  # pragma: no cover
         raise ValueError(f"unknown server type {type}")
     return _server_types[type]
 
@@ -74,7 +74,7 @@ class BaseServer(ABC):
                     self.logger.error(err_text, exc_info=True)
                     if retry <= 0:
                         raise KaruhaServerError(err_text) from e
-                except ClientError as e:
+                except ClientError as e:  # pragma: no cover
                     err_text = f"fail to upload file {path}: {e}"
                     self.logger.error(err_text, exc_info=True)
                     raise KaruhaServerError(err_text) from e
@@ -100,11 +100,15 @@ class BaseServer(ABC):
                     self.logger.error(err_text, exc_info=True)
                     if retry <= 0:
                         raise KaruhaServerError(err_text) from e
-                except ClientError as e:
+                except ClientError as e:  # pragma: no cover
                     err_text = f"fail to download file {url}: {e}"
                     self.logger.error(err_text, exc_info=True)
                     raise KaruhaServerError(err_text) from e
                 retry -= 1
+    
+    @property
+    def running(self) -> bool:
+        return self._running
     
     async def __aenter__(self) -> Self:
         await self.start()

@@ -52,7 +52,7 @@ async def upload_file(
             ret = await resp.text()
     msg = dict2msg(load_json(ret), pb.ServerMsg, ignore_unknown_fields=True)
     ctrl = msg.ctrl
-    if tid is not None and ctrl.id != tid:
+    if tid is not None and ctrl.id != tid:  # pragma: no cover
         raise KaruhaServerError("tid mismatch")
     return ctrl
 

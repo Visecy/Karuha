@@ -30,5 +30,5 @@ class WebsocketServer(BaseServer, type="websocket"):
         await self.request.send_bytes(to_json(data))
     
     async def __anext__(self) -> pb.ServerMsg:
-        msg = await self.request.receive_bytes()
-        return dict2msg(from_json(msg), pb.ServerMsg)
+        msg = await self.request.receive_str()
+        return dict2msg(from_json(msg), pb.ServerMsg, ignore_unknown_fields=True)
