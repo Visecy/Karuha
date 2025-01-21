@@ -12,19 +12,24 @@ class KaruhaException(Exception):
     __slots__ = []
 
 
-class KaruhaRuntimeError(KaruhaException):
-    """unspecified run-time error"""
+class KaruhaServerError(KaruhaException):
+    """unspecified server error"""
     __slots__ = []
 
 
 class KaruhaBotError(KaruhaException):
-    """unspecified chatbot run-time error"""
+    """unspecified chatbot error"""
     __slots__ = ["bot", "code"]
 
     def __init__(self, *args: object, bot: Optional["Bot"] = None, code: Optional[int] = None) -> None:
         super().__init__(*args)
         self.bot = bot
         self.code = code
+
+
+class KaruhaRuntimeError(KaruhaException):
+    """unspecified run-time error"""
+    __slots__ = []
 
 
 class KaruhaTimeoutError(KaruhaRuntimeError, asyncio.TimeoutError):

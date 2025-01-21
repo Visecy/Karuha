@@ -66,13 +66,13 @@ if __name__ == "__main__":
     
     namespace = parser.parse_args()
     if namespace.login_basic:
-        login_schema = "basic"
+        login_scheme = "basic"
         login_secret = namespace.login_basic
     elif namespace.login_token:
-        login_schema = "token"
+        login_scheme = "token"
         login_secret = namespace.login_token
     elif namespace.login_cookie:
-        login_schema = "cookie"
+        login_scheme = "cookie"
         login_secret = namespace.login_cookie
     else:
         raise ValueError("No login method specified")
@@ -88,7 +88,7 @@ if __name__ == "__main__":
         bots=[
             karuha.BotConfig(  # type: ignore
                 name="chatbot",
-                schema=login_schema,
+                scheme=login_scheme,
                 secret=login_secret
             )
         ]

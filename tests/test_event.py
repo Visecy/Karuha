@@ -145,7 +145,7 @@ class TestEvent(AsyncBotTestCase):
 
         self.addCleanup(lambda: DataEvent.remove_handler(assert_hello))
         
-        self.bot.receive_content(
+        await self.put_bot_content(
             b"\"hello\"",
             topic="usr_test",
         )

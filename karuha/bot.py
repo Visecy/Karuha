@@ -3,23 +3,17 @@ import base64
 import os
 import platform
 import sys
-from asyncio.queues import Queue
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
-from io import IOBase
 from typing import (Any, AsyncGenerator, BinaryIO, Callable, Coroutine, Dict,
                     Generator, Iterable, List, Literal, Optional, Tuple, Union,
                     overload)
 from weakref import WeakSet, ref
 
-import grpc
 from aiofiles import open as aio_open
-from aiofiles.threadpool.binary import AsyncBufferedIOBase
-from aiohttp import ClientError, ClientSession, ClientTimeout, FormData
 from google.protobuf.message import Message
-from grpc import aio as grpc_aio
 from pydantic import GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import CoreSchema, core_schema, from_json, to_json
 from tinode_grpc import pb
@@ -30,9 +24,10 @@ from .config import Config
 from .config import Server as ServerConfig
 from .config import get_config, init_config
 from .logger import Level, get_sub_logger
-from .utils.context import nullcontext
+from .server import BaseServer, get_server_type
 from .utils.decode import decode_mapping, encode_mapping
 from .version import APP_VERSION, LIB_VERSION
+from .exception import KaruhaBotError, KaruhaServerError, KaruhaTimeoutError
 
 
 class BotState(IntEnum):
@@ -49,9 +44,10 @@ class Bot(object):
 
     Provides many low-level API interfaces.
     """
+    
     __slots__ = [
-        "queue", "state", "client", "logger", "config", "server", "user_id", "token", "token_expires", "authlvl",
-        "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref"
+        "state", "logger", "config", "server", "server_info", "account_info",
+        "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref", "_server_config"
     ]
 
     initialize_event_callback: Callable[[Self], Any]
@@ -90,7 +86,7 @@ class Bot(object):
     @overload
     def __init__(
         self, name: str, /,
-        schema: Literal["basic", "token", "cookie"],
+        scheme: Literal["basic", "token", "cookie"],
         secret: str,
         *,
         server: Union[ServerConfig, Any, None] = None,
@@ -99,8 +95,8 @@ class Bot(object):
         """
         :param name: the bot name
         :type name: str
-        :param schema: the authentication scheme
-        :type schema: Literal["basic", "token", "cookie"]
+        :param scheme: the authentication scheme
+        :type scheme: Literal["basic", "token", "cookie"]
         :param secret: the authentication secret
         :type secret: str
         :param server: the server configuration
@@ -112,7 +108,7 @@ class Bot(object):
         self,
         name: Union[str, BotConfig],
         /,
-        schema: Optional[Literal["basic", "token", "cookie"]] = None,
+        scheme: Optional[Literal["basic", "token", "cookie"]] = None,
         secret: Optional[str] = None,
         *,
         server: Union[ServerConfig, Any, None] = None,
@@ -120,18 +116,17 @@ class Bot(object):
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
-        elif schema is None or secret is None:  # pragma: no cover
+        elif scheme is None or secret is None:  # pragma: no cover
             raise ValueError("authentication scheme not defined")
         else:
-            self.config = BotConfig(name=name, schema=schema, secret=secret)
+            self.config = BotConfig(name=name, scheme=scheme, secret=secret)
         self.state = BotState.stopped
         self.logger = get_sub_logger(self.name)
         if log_level is not None:
             self.logger.setLevel(log_level)
         if server is not None and not isinstance(server, ServerConfig):
             server = ServerConfig.model_validate(server)
-        self.server = server
-        self.token: Optional[str] = None
+        self._server_config = server
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
         self._tasks = WeakSet()  # type: WeakSet[asyncio.Future]
@@ -153,7 +148,7 @@ class Bot(object):
         user_agent = ' '.join((
             f"KaruhaBot/{APP_VERSION}",
             f"({platform.system()}/{platform.release()});",
-            f"gRPC-python/{LIB_VERSION}"
+            f"{self.server.type}-python/{LIB_VERSION}"
         ))
         ctrl = await self.send_message(
             tid,
@@ -169,11 +164,13 @@ class Bot(object):
             err_text = f"fail to init chatbot: {ctrl.text}"
             self.logger.error(err_text)
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
-        build = ctrl.params["build"].decode()
-        ver = ctrl.params["ver"].decode()
-        if build:
+        params = decode_mapping(ctrl.params)
+        self.server_info = params
+        build = params.get("build")
+        ver = params.get("ver")
+        if build and ver:
             self.logger.info(f"server: {build} {ver}")
-        return tid, decode_mapping(ctrl.params)
+        return tid, params
 
     async def account(
             self,
@@ -249,24 +246,13 @@ class Bot(object):
         :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
-        schema, secret = self.config.schema_, self.config.secret
-        try:
-            if self.token is not None and self.token_expires > datetime.now(timezone.utc):
-                schema, secret = "token", base64.b64decode(self.token.encode())
-            elif schema == "cookie":
-                schema, secret = await read_auth_cookie(self.config.secret)
-            else:
-                secret = secret.encode()
-        except Exception as e:  # pragma: no cover
-            err_text = f"fail to read auth secret: {e}"
-            self.logger.error(err_text)
-            self.cancel()
-            raise KaruhaBotError(err_text, bot=self) from e
+        scheme, secret = await self._eval_secret()
+        
         ctrl = await self.send_message(
             tid,
             login=pb.ClientLogin(
                 id=tid,
-                scheme=schema,
+                scheme=scheme,
                 secret=secret
             )
         )
@@ -280,15 +266,13 @@ class Bot(object):
             # self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
 
-        self.logger.info(f"login successful (schema {schema})")
+        self.logger.info(f"login successful (scheme {scheme})")
 
         params = decode_mapping(ctrl.params)
-        if "user" in params:
-            self.user_id = params["user"]
-        if "token" in params:
-            self.token = params["token"]
+        self.account_info = params
+        if "expires" in params:
             # datetime.fromisoformat before 3.11 does not support any iso 8601 format, use pydantic instead
-            self.token_expires = TypeAdapter(datetime).validate_python(params["expires"])
+            params["expires"] = TypeAdapter(datetime).validate_python(params["expires"])
         return tid, params
 
     async def subscribe(
@@ -1003,7 +987,8 @@ class Bot(object):
 
     async def upload(
             self,
-            path: Union[str, os.PathLike, BinaryIO]
+            path: Union[str, os.PathLike, BinaryIO],
+            filename: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         upload a file
@@ -1015,53 +1000,16 @@ class Bot(object):
         :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
-
-        try:
-            async with await self._get_http_session() as session:
-                self.logger.debug(f"upload request: {tid=} {path=} {session.headers=}")
-                while True:
-                    url = "/v0/file/u/"
-                    data = FormData()
-                    data.add_field("id", tid)
-                    if isinstance(path, (BinaryIO, IOBase)):
-                        path.seek(0)
-                        cm = nullcontext(path)
-                        _path = None
-                    else:
-                        cm = open(path, "rb")
-                        _path = os.path.basename(path)
-                    with cm as f:
-                        data.add_field("file", f, filename=_path)
-                        async with session.post(url, data=data) as resp:
-                            ret = await resp.text()
-                    self.logger.debug(f"upload response: {ret}")
-                    ctrl = from_json(ret)["ctrl"]
-                    params = ctrl["params"]
-                    code = ctrl["code"]
-                    if code != 307:
-                        break
-                    url = params["url"]
-                    # If 307 Temporary Redirect is returned, the client must retry the upload at the provided URL.
-                    self.logger.info(f"upload redirected to {url}")
-        except OSError as e:
-            raise KaruhaBotError(f"fail to read file {path}", bot=self) from e
-        except ClientError as e:
-            err_text = f"fail to upload file {path}: {e}"
-            self.logger.error(err_text, exc_info=True)
-            raise KaruhaBotError(err_text, bot=self) from e
-        assert ctrl["id"] == tid, "tid mismatch"
-        if code < 200 or code >= 400:  # pragma: no cover
-            err_text = f"fail to upload file {path}: {ctrl['text']}"
-            self.logger.error(err_text)
-            raise KaruhaBotError(err_text, bot=self, code=code)
-        self.logger.info(f"upload file {path}")
+        scheme, secret = await self._eval_secret()
+        secret = base64.b64encode(secret).decode()
+        params = await self.server.upload(path, f"{scheme} {secret}", tid=tid, filename=filename)
         return tid, params
 
     async def download(
             self,
             url: str,
             path: Union[str, os.PathLike, BinaryIO]
-    ) -> None:
+    ) -> Tuple[str, int]:
         """
         download a file
 
@@ -1072,31 +1020,10 @@ class Bot(object):
         :raises KaruhaBotError: fail to download file
         """
         tid = self._get_tid()
-        if isinstance(path, (BinaryIO, IOBase)):
-            path.seek(0)
-            cm = nullcontext(path)
-        else:
-            cm = aio_open(path, "wb")
-        try:
-            async with await self._get_http_session() as session, cm as f:
-                self.logger.debug(f"download request: {tid=} {path=} {session.headers=}")
-                size = 0
-                async with session.get(url, params={"id": tid}) as resp:
-                    resp.raise_for_status()
-                    async for chunk in resp.content.iter_any():
-                        size += len(chunk)
-                        if isinstance(f, AsyncBufferedIOBase):
-                            await f.write(chunk)
-                        else:
-                            f.write(chunk)
-            self.logger.debug(f"download length: {size}")
-        except OSError as e:
-            raise KaruhaBotError(f"fail to write file {path}", bot=self) from e
-        except ClientError as e:
-            err_text = f"fail to download file {path}: {e}"
-            self.logger.error(err_text, exc_info=True)
-            raise KaruhaBotError(err_text, bot=self) from e
-        self.logger.info(f"download file {path}")
+        scheme, secret = await self._eval_secret()
+        secret = base64.b64encode(secret).decode()
+        size = await self.server.download(url, path, f"{scheme} {secret}", tid=tid)
+        return tid, size
 
     @overload
     async def send_message(
@@ -1136,13 +1063,14 @@ class Bot(object):
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds, extra=extra)  # type: ignore
+        self.logger.debug(f"out: {client_msg}")
         ret = None
         if wait_tid is None:
-            await self.queue.put(client_msg)
+            await self.server.send(client_msg)
         else:
-            timeout = self.server.timeout if self.server is not None else 10
+            timeout = self._server_config.timeout if self._server_config is not None else 10
             with self._wait_reply(wait_tid) as future:
-                await self.queue.put(client_msg)
+                await self.server.send(client_msg)
                 ret = await asyncio.wait_for(future, timeout=timeout)
         for k, v in kwds.items():
             if v is None:
@@ -1159,18 +1087,21 @@ class Bot(object):
         :type server_config: Optional[ServerConfig]
         :return: None
         """
-        server = server_config or self.server
+        server = server_config or self._server_config
         if server is None:
             raise ValueError("server not specified")
 
-        self._prepare_loop_task()
+        if self.state == BotState.running:
+            raise KaruhaBotError(f"rerun bot {self.name}", bot=self)
+        elif self.state != BotState.stopped:
+            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
+        self.state = BotState.running
+        self._loop_task_ref = ref(asyncio.current_task())
+        
         while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
-            async with self._run_context(server) as channel:
-                stream = get_stream(channel)  # type: ignore
-                msg_gen = self._message_generator()
-                client = stream(msg_gen)
-                await self._loop(client)
+            async with self._run_context(server) as client:
+                await self._recv_loop(client)
 
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
@@ -1183,10 +1114,10 @@ class Bot(object):
         try:
             get_config()
         except Exception:
-            if self.server is None:
+            if self._server_config is None:
                 raise ValueError("server not specified") from None
             init_config(
-                server=self.server,
+                server=self._server_config,
                 bots=[self.config],
                 log_level=self.logger.level
             )
@@ -1242,39 +1173,38 @@ class Bot(object):
         return self.config.name
 
     @property
-    def uid(self) -> str:
-        return self.user_id
+    def user_id(self) -> str:
+        return self.account_info["user"]
+    
+    @property
+    def authlvl(self) -> Optional[str]:
+        acc_info = getattr(self, "account_info", None)
+        return acc_info and acc_info.get("authlvl")
+
+    @property
+    def token(self) -> Optional[str]:
+        acc_info = getattr(self, "account_info", None)
+        return acc_info and acc_info.get("token")
+
+    @property
+    def token_expires(self) -> Optional[datetime]:
+        acc_info = getattr(self, "account_info", None)
+        return acc_info and acc_info.get("expires")
+
+    uid = user_id
+
+    @property
+    def server_config(self) -> ServerConfig:
+        if server := getattr(self, "server", None):
+            return server.config
+        if self._server_config is None:
+            raise AttributeError("server not specified")
+        return self._server_config
 
     def _get_tid(self) -> str:
         tid = str(self._tid_counter)
         self._tid_counter += 1
         return tid
-
-    async def _get_http_session(self) -> ClientSession:
-        if self.server is None:
-            raise ValueError("server not specified")
-        web_host = self.server.web_host
-
-        try:
-            schema, secret = self.config.schema_, self.config.secret
-            if self.token is not None and self.token_expires > datetime.now(timezone.utc):
-                schema, secret = "token", self.token
-            elif schema == "cookie":
-                schema, secret_bytes = await read_auth_cookie(secret)
-                secret = base64.b64encode(secret_bytes).decode()
-            else:
-                secret = base64.b64encode(secret.encode()).decode()
-        except Exception as e:  # pragma: no cover
-            err_text = f"fail to read auth secret: {e}"
-            self.logger.error(err_text)
-            raise KaruhaBotError(err_text, bot=self) from e
-
-        headers = {
-            'X-Tinode-APIKey': self.server.api_key,
-            "X-Tinode-Auth": f"{schema.title()} {secret}",
-            "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}",
-        }
-        return ClientSession(str(web_host), headers=headers, timeout=ClientTimeout(self.server.timeout))
 
     @contextmanager
     def _wait_reply(self, tid: Optional[str] = None) -> Generator[asyncio.Future, None, None]:
@@ -1298,6 +1228,24 @@ class Bot(object):
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
+    
+    async def _eval_secret(self) -> Tuple[str, bytes]:
+        try:
+            scheme, secret = self.config.scheme, self.config.secret
+            if self.token is not None and (
+                self.token_expires is None
+                or self.token_expires > datetime.now(timezone.utc)
+            ):
+                scheme, secret = "token", base64.b64decode(self.token.encode())
+            elif scheme == "cookie":
+                scheme, secret = await read_auth_cookie(self.config.secret)
+        except Exception as e:  # pragma: no cover
+            err_text = f"fail to read auth secret: {e}"
+            self.logger.error(err_text)
+            raise KaruhaBotError(err_text, bot=self) from e
+        if isinstance(secret, str):
+            secret = secret.encode()
+        return scheme, secret
 
     async def _prepare_account(self) -> None:
         try:
@@ -1311,7 +1259,7 @@ class Bot(object):
             self.logger.info("auto login is disabled, skipping")
             return
 
-        retry = self.server.retry if self.server is not None else 0
+        retry = self._server_config.retry if self._server_config is not None else 0
         for i in range(retry):
             try:
                 await self.login()
@@ -1331,37 +1279,18 @@ class Bot(object):
             get="sub desc tags cred"
         )
 
-    def _prepare_loop_task(self) -> None:
-        if self.state == BotState.running:
-            raise KaruhaBotError(f"rerun bot {self.name}", bot=self)
-        elif self.state != BotState.stopped:
-            raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
-        self.state = BotState.running
-        self.queue = Queue()
-        self._loop_task_ref = ref(asyncio.current_task())
-
-    def _get_channel(self, server_config: ServerConfig, /) -> grpc_aio.Channel:  # pragma: no cover
-        host = server_config.host
-        secure = server_config.ssl
-        ssl_host = server_config.ssl_host
-        if not secure:
-            self.logger.info(f"connecting to server at {host}")
-            return grpc_aio.insecure_channel(host)
-        opts = (('grpc.ssl_target_name_override', ssl_host),) if ssl_host else None
-        self.logger.info(f"connecting to secure server at {host} SNI={ssl_host or host}")
-        return grpc_aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
-
     @asynccontextmanager
-    async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[grpc_aio.Channel, None]:  # pragma: no cover
-        channel = self._get_channel(server_config)
-        old_server_config = self.server
-        self.server = server_config
+    async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[BaseServer, None]:  # pragma: no cover
+        server_type = get_server_type(self.config.connect_mode or server_config.connect_mode)
+        self.server = server_type(server_config, self.logger)
+
         try:
             self.initialize_event_callback(self)
-            yield channel
-        except grpc.RpcError:
+            await self.server.start()
+            yield self.server
+        except KaruhaServerError:
             self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(5)
         except asyncio.CancelledError:
             if self.state == BotState.running:
                 self.cancel(cancel_loop=False)
@@ -1371,7 +1300,7 @@ class Bot(object):
             raise
         finally:
             try:
-                await channel.close()
+                await self.server.stop()
                 await self.finalize_event_callback(self)
             except Exception:
                 self.logger.exception("error while finalizing event callback", exc_info=True)
@@ -1384,25 +1313,12 @@ class Bot(object):
             elif self.state == BotState.cancelling:
                 # shutdown from Bot.cancel()
                 self.state = BotState.stopped
-            self.server = old_server_config
-
-            # clean up for restarting
-            while not self.queue.empty():
-                self.queue.get_nowait()
 
             for t in self._tasks:
                 t.cancel()
 
-    async def _message_generator(self) -> AsyncGenerator[pb.ClientMsg, None]:  # pragma: no cover
-        while True:
-            assert self.state == BotState.running
-            msg: pb.ClientMsg = await self.queue.get()
-            self.logger.debug(f"out: {msg}")
-            yield msg
-
-    async def _loop(self, client: grpc_aio.StreamStreamCall) -> None:  # pragma: no cover
-        message: pb.ServerMsg
-        async for message in client:  # type: ignore
+    async def _recv_loop(self, server: BaseServer) -> None:
+        async for message in server:
             self.logger.debug(f"in: {message}")
 
             for desc, msg in message.ListFields():
@@ -1420,15 +1336,14 @@ class Bot(object):
     def __repr__(self) -> str:
         state = self.state.name
         uid = getattr(self, "user_id", 'unknown uid')
-        host = self.server.host if self.server else 'unknown'
-        return f"<bot {self.name} ({uid}) {state} on host {host}>"
+        return f"<bot {self.name} ({uid}) {state}>"
 
 
 class ProxyBot(Bot):
     """
     the bot that runs on the `extra.on_behalf_of` proxy
     """
-    __slots__ = ["on_behalf_of", "login_user_id"]
+    __slots__ = ["on_behalf_of"]
 
     def __init__(self, *args: Any, on_behalf_of: str, **kwds: Any) -> None:
         super().__init__(*args, **kwds)
@@ -1441,7 +1356,7 @@ class ProxyBot(Bot):
             config.name = f"{config.name}_proxy_{on_behalf_of}"
         else:
             config.name = name
-        return cls(config, bot.server, bot.logger.level, on_behalf_of=on_behalf_of)
+        return cls(config, bot._server_config, bot.logger.level, on_behalf_of=on_behalf_of)
     
     @overload
     async def send_message(
@@ -1495,33 +1410,22 @@ class ProxyBot(Bot):
     @property
     def user_id(self) -> str:
         return self.on_behalf_of
+    
+    uid = user_id
 
-    @user_id.setter
-    def user_id(self, val: str) -> None:
-        self.login_user_id = val
-
-
-def get_stream(channel: grpc_aio.Channel, /) -> grpc_aio.StreamStreamMultiCallable:  # pragma: no cover
-    return channel.stream_stream(
-        '/pbx.Node/MessageLoop',
-        request_serializer=pb.ClientMsg.SerializeToString,
-        response_deserializer=pb.ServerMsg.FromString
-    )
+    @property
+    def login_user_id(self) -> str:
+        return super().user_id
 
 
-async def read_auth_cookie(cookie_file_name: Union[str, os.PathLike]) -> Tuple[str, bytes]:
+async def read_auth_cookie(cookie_file_name: Union[str, bytes, os.PathLike]) -> Tuple[str, Union[str, bytes]]:
     """Read authentication token from a file"""
     async with aio_open(cookie_file_name, 'r') as cookie:
         params = from_json(await cookie.read())
-    schema = params.get("schema")
+    scheme = params.get("scheme")
     secret = params.get('secret')
-    if schema is None or secret is None:
+    if scheme is None or secret is None:
         raise ValueError("invalid cookie file")
-    if schema == 'token':
+    if scheme == 'token':
         secret = base64.b64decode(secret)
-    else:
-        secret = secret.encode('utf-8')
-    return schema, secret
-
-
-from .exception import KaruhaBotError, KaruhaTimeoutError
+    return scheme, secret

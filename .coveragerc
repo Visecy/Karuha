@@ -3,6 +3,7 @@
 branch = True
 omit =
     __main__.py
+    karuha/utils/locks.py
 
 [report]
 # Regexes for lines to exclude from consideration
@@ -26,6 +27,7 @@ exclude_lines =
 
     # Don't complain aboud typing hint
     class (\w+)\(Protocol\):
+    if TYPE_CHECKING:
     @(typing\.)?overload
 
 

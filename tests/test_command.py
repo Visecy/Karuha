@@ -15,7 +15,7 @@ from karuha.command.parser import SimpleCommandParser
 from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
 from karuha.text.textchain import Mention, NewLine, Quote, TextChain
 
-from .utils import bot_mock, new_test_message, new_test_command_message
+from .utils import TEST_TOPIC, TEST_UID, bot_mock, new_test_message, new_test_command_message
 
 
 class TestCommand(TestCase):
@@ -57,7 +57,7 @@ class TestCommand(TestCase):
         self.assertEqual(
             kwargs,
             {
-                "user_id": "user", "content": b"\"test\"",
+                "user_id": TEST_UID, "content": b"\"test\"",
                 "argc": 0, "argv": [], "undefined": None
             }
         )
@@ -178,11 +178,11 @@ class TestCommand(TestCase):
         msg = new_test_command_message(to_json("Hello World!"))
         rk = rule(keyword="Hello")
         self.assertEqual(rk.match(msg), 1.0)
-        rt = rule(topic="test")
+        rt = rule(topic=TEST_TOPIC)
         self.assertEqual(rt.match(msg), 1.0)
-        rs = rule(topic="test", seq_id=1)
+        rs = rule(topic=TEST_TOPIC, seq_id=1)
         self.assertEqual(rs.match(msg), 1.0)
-        ru = rule(user_id="user")
+        ru = rule(user_id=TEST_UID)
         self.assertEqual(ru.match(msg), 1.0)
         rr = rule(regex=r"W.+d")
         self.assertEqual(rr.match(msg), 1.0)
@@ -202,7 +202,7 @@ class TestCommand(TestCase):
             1,
             {"reply": "114"},
             to_json(TextChain(
-                Quote(content=TextChain(Mention(text="@user", val=bot_mock.uid), NewLine, "Quote content ...")),
+                Quote(content=TextChain(Mention(text="@user", val=TEST_UID), NewLine, "Quote content ...")),
                 "Hello world!"
             ).to_drafty())
         )
@@ -211,7 +211,7 @@ class TestCommand(TestCase):
         self.assertEqual(rq1.match(msg), 1.0)
         rq2 = rule(quote=514)
         self.assertEqual(rq2.match(msg), 0.0)
-        rm = rule(mention=bot_mock.uid)
+        rm = rule(mention=TEST_UID)
         self.assertEqual(rm.match(msg), 1.0)
         rm1 = rule(mention="114514")
         self.assertEqual(rm1.match(msg), 0.0)

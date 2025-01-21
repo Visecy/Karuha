@@ -89,7 +89,7 @@ class TestData(AsyncBotTestCase):
 
     async def test_me_meta(self) -> None:
         task = asyncio.create_task(get_user(self.bot, skip_cache=True))
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.get
         get_msg = get_msg.get
         meta = pb.ServerMeta(
@@ -112,7 +112,7 @@ class TestData(AsyncBotTestCase):
                 state="ok"
             )
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
         user = await self.wait_for(task)
         self.assertIsInstance(user, User)
         self.assertIsNone(user.fn)
@@ -123,7 +123,7 @@ class TestData(AsyncBotTestCase):
     async def test_me_sub_meta(self) -> None:
         clear_cache()
         task = asyncio.create_task(get_topic_list(self.bot, ensure_all=True))
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.HasField("get"), get_msg
         get_msg = get_msg.get
         meta = pb.ServerMeta(
@@ -159,7 +159,7 @@ class TestData(AsyncBotTestCase):
                 )
             ]
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
         subs = await self.wait_for(task)
         self.assertEqual(len(subs), 2)
         for sub in subs:
@@ -210,7 +210,7 @@ class TestData(AsyncBotTestCase):
     
     async def test_tag_and_cred(self) -> None:
         task = asyncio.create_task(get_user_tags(self.bot))
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.get
         get_msg = get_msg.get
         meta = pb.ServerMeta(
@@ -218,12 +218,12 @@ class TestData(AsyncBotTestCase):
             topic="me",
             tags=["basic:test"]
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
         tags = await self.wait_for(task)
         self.assertEqual(tags, ["basic:test"])
 
         task = asyncio.create_task(get_user_cred(self.bot))
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.get
         get_msg = get_msg.get
         meta = pb.ServerMeta(
@@ -234,7 +234,7 @@ class TestData(AsyncBotTestCase):
                 value="test@example.com"
             )]
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
         cred = await self.wait_for(task)
         self.assertEqual(cred, [Cred(method="email", value="test@example.com")])
     
@@ -242,7 +242,7 @@ class TestData(AsyncBotTestCase):
         clear_cache()
         task = asyncio.create_task(get_topic(self.bot, "usr_test_1", skip_cache=True))
     
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.HasField("get")
         get_msg = get_msg.get
         self.assertEqual(get_msg.query.what, "desc")
@@ -263,9 +263,9 @@ class TestData(AsyncBotTestCase):
                 # last_seen_user_agent="Tindroid/0.22.12 (Android 11; zh_CN); tindroid/0.22.12"
             )
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
 
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.HasField("get")
         get_msg = get_msg.get
         self.assertEqual(get_msg.query.what, "sub")
@@ -286,7 +286,7 @@ class TestData(AsyncBotTestCase):
                 # )
             ]
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
 
         topic = await self.wait_for(task)
         assert isinstance(topic, Topic)
@@ -299,7 +299,7 @@ class TestData(AsyncBotTestCase):
         clear_cache()
         task = asyncio.create_task(get_topic(self.bot, "grp_test_1"))
 
-        get_msg = await self.bot.consum_message()
+        get_msg = await self.get_bot_sent()
         assert get_msg.HasField("get")
         get_msg = get_msg.get
         meta = pb.ServerMeta(
@@ -319,7 +319,7 @@ class TestData(AsyncBotTestCase):
                 is_chan=True
             )
         )
-        self.bot.receive_message(pb.ServerMsg(meta=meta))
+        await self.put_bot_received(pb.ServerMsg(meta=meta))
         
         topic = await self.wait_for(task)
         assert isinstance(topic, Topic)

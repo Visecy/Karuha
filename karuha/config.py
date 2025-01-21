@@ -1,6 +1,6 @@
 from pathlib import Path
-from typing import Iterable, Literal, Optional, Tuple, Union
-from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, ValidationError, field_validator
+from typing import Any, Iterable, Literal, Optional, Tuple, Union
+from pydantic import BaseModel, HttpUrl, PrivateAttr, ValidationError, field_validator, NonNegativeInt, model_validator
 
 from . import CONFIG_PATH
 from .logger import logger, Level
@@ -14,17 +14,30 @@ class Server(BaseModel):
     ssl_host: Optional[str] = None
     enable_plugin: bool = False
     listen: str = "0.0.0.0:40051"
+    connect_mode: str = "grpc"
     timeout: float = 5
-    retry: int = 5
+    retry: NonNegativeInt = 5
+    file_size_threshold: int = 1024 * 32
 
 
 class Bot(BaseModel):
     name: str = "chatbot"
-    schema_: Literal["basic", "token", "cookie"] = Field(alias="schema")
+    scheme: Union[Literal["basic", "token", "cookie"], str]
     secret: str
     auto_login: bool = True
     auto_subscribe_new_user: bool = False
-    file_size_threshold: int = 8192
+    connect_mode: Optional[str] = None
+
+    @model_validator(mode="before")
+    def compate_old_scheme(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+        if "scheme" not in values and "schema" in values:
+            values["scheme"] = values.pop("schema")
+            logger.warning(
+                "'schema' in bot config is deprecated, please use 'scheme' instead"
+            )
+        return values
 
 
 class Config(BaseModel):

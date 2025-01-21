@@ -27,7 +27,7 @@ class BotService(BaseService):
         if bot_name is None:
             bot_name = f"chatbot_{user_id}"
         if not use_proxy:
-            bot = Bot(bot_name, schema="basic", secret=secret, server=self.bot.server)
+            bot = Bot(bot_name, scheme="basic", secret=secret, server=self.bot._server_config)
         else:
             bot = ProxyBot.from_bot(self.bot, user_id, bot_name)
         if not start_run:
@@ -35,16 +35,14 @@ class BotService(BaseService):
         add_bot(bot)
         if ensure_state:
             with EventCatcher(BotReadyEvent) as catcher:
-                ev = await catcher.catch_event()
-                while ev.bot is not bot:
-                    ev = await catcher.catch_event()
+                await catcher.catch_event(pred=lambda ev: ev.bot is bot)
         return bot
 
     run_bot = staticmethod(run_bot)
 
     async def attach(
         self,
-        schema: Literal["basic", "token", "cookie"],
+        scheme: Literal["basic", "token", "cookie"],
         secret: str,
         *,
         bot_name: Optional[str] = None,
@@ -53,15 +51,13 @@ class BotService(BaseService):
     ) -> Bot:
         if bot_name is None:
             bot_name = f"chatbot_attach_{self.random_string()}"
-        bot = Bot(bot_name, schema=schema, secret=secret, server=self.bot.server)
+        bot = Bot(bot_name, scheme=scheme, secret=secret, server=self.bot._server_config)
         if not start_run:
             return bot
         add_bot(bot)
         if ensure_state:
             with EventCatcher(BotReadyEvent) as catcher:
-                ev = await catcher.catch_event()
-                while ev.bot is not bot:
-                    ev = await catcher.catch_event()
+                await catcher.catch_event(pred=lambda ev: ev.bot is bot)
         return bot
     
     async def attach_in_proxy(
@@ -80,9 +76,7 @@ class BotService(BaseService):
         add_bot(bot)
         if ensure_state:
             with EventCatcher(BotReadyEvent) as catcher:
-                ev = await catcher.catch_event()
-                while ev.bot is not bot:
-                    ev = await catcher.catch_event()
+                await catcher.catch_event(pred=lambda ev: ev.bot is bot)
         return bot
     
     async def detach(self, bot: Bot, *, ensure_state: bool = True) -> None:
@@ -90,9 +84,7 @@ class BotService(BaseService):
         if not ensure_state:
             return
         with EventCatcher(BotFinishEvent) as catcher:
-            ev = await catcher.catch_event()
-            while ev.bot is not bot:
-                ev = await catcher.catch_event()
+            await catcher.catch_event(pred=lambda ev: ev.bot is bot)
     
     async def del_bot(self, bot: Bot, /, *, hard: bool = False) -> None:
         await self.detach(bot, ensure_state=True)
