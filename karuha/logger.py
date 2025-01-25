@@ -3,7 +3,8 @@ import os
 from logging import LogRecord
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import Union
+import sys
+from typing import TextIO, Union
 
 from . import WORKDIR
 
@@ -18,6 +19,22 @@ class NameFilter(logging.Filter):
             return True
         return record.name == self.name
 
+
+class _StderrHandler(logging.StreamHandler):
+    """
+    This class is like a StreamHandler using sys.stderr, but always uses
+    whatever sys.stderr is currently set to rather than the value of
+    sys.stderr at handler construction time.
+    """
+    def __init__(self, level: "logging._Level" = logging.NOTSET):
+        """
+        Initialize the handler.
+        """
+        super(logging.StreamHandler, self).__init__(level)
+
+    @property
+    def stream(self) -> TextIO:
+        return sys.stderr
 
 def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> None:
     log_dir = Path(log_dir)
@@ -47,7 +64,7 @@ def get_sub_logger(name: str) -> logging.Logger:
 
 logger = logging.getLogger("Karuha")
 logger.setLevel(logging.INFO)
-console_handler = logging.StreamHandler()
+console_handler = _StderrHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 add_log_dir(logger, WORKDIR / "log")

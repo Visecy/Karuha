@@ -141,7 +141,7 @@ async def async_run() -> None:
 
         if config.server.enable_plugin:  # pragma: no cover
             server = init_server(config.server.listen)
-            loop.call_soon(server.start)
+            tasks.append(loop.create_task(server.start()))
 
         if config.log_level == "DEBUG":
             loop.set_debug(True)
@@ -155,7 +155,7 @@ async def async_run() -> None:
     finally:
         if server is not None:  # pragma: no cover
             logger.info("stop plugin server")
-            server.stop(None)
+            await server.stop(None)
         try:
             await SystemStopEvent(config).trigger(return_exceptions=True)
         finally:

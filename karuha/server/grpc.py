@@ -1,3 +1,4 @@
+import sys
 from asyncio import Queue
 from typing import AsyncGenerator
 
@@ -11,28 +12,40 @@ class GRPCServer(BaseServer, type="grpc"):
     __slots__ = ["channel", "client", "queue"]
 
     async def start(self) -> None:
-        if self._running:  # pragma: no cover
-            return await super().start()
+        is_running = self._running
+        await super().start()
+        if is_running:  # pragma: no cover
+            return
+        
         self.queue = Queue()
         self.channel = self._get_channel()
         stream = get_stream(self.channel)
         self.client: grpc.aio.StreamStreamCall[pb.ClientMsg, pb.ServerMsg] = stream(self._message_generator())
-        return await super().start()
     
     async def stop(self) -> None:
-        if not self._running:  # pragma: no cover
-            return await super().stop()
+        is_running = self._running
         await super().stop()
-        await self.channel.close()
+        if not is_running:  # pragma: no cover
+            return
+        
+        if hasattr(self, "channel"):
+            await self.channel.close()
     
     async def send(self, msg: pb.ClientMsg) -> None:
+        self._ensure_running()
         await self.queue.put(msg)
     
     async def __anext__(self) -> pb.ServerMsg:
-        msg = await self.client.read()
+        self._ensure_running()
+        try:
+            msg = await self.client.read()
+        except grpc.RpcError as e:  # pragma: no cover
+            self.logger.error("gRPC server error", exc_info=sys.exc_info())
+            raise self.exc_type(e) from e
         if msg == grpc.aio.EOF:  # pragma: no cover
             self.logger.info("server closed connection")
             raise StopAsyncIteration(msg)
+        self.logger.debug(f"in: {msg}")
         return msg
 
     async def _message_generator(self) -> AsyncGenerator[pb.ClientMsg, None]:  # pragma: no cover

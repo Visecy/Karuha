@@ -27,7 +27,7 @@ class BaseServer(ABC):
     __slots__ = ["config", "logger", "_running"]
 
     type: ClassVar[str] = "generic"
-    exc_type: ClassVar[Type[Exception]] = Exception
+    exc_type: ClassVar[Type[Exception]] = KaruhaServerError
 
     UPLOAD_ROUTE = "/v0/file/u/"
 
@@ -109,6 +109,10 @@ class BaseServer(ABC):
     @property
     def running(self) -> bool:
         return self._running
+    
+    def _ensure_running(self) -> None:
+        if not self._running:
+            raise self.exc_type("server not running")
     
     async def __aenter__(self) -> Self:
         await self.start()

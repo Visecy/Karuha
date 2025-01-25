@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Iterable, Literal, Optional, Tuple, Union
+from typing import Any, Iterable, Literal, Optional, Tuple, Union, overload
 from pydantic import BaseModel, HttpUrl, PrivateAttr, ValidationError, field_validator, NonNegativeInt, model_validator
 
 from . import CONFIG_PATH
@@ -73,7 +73,7 @@ _config = None
 
 
 def get_config() -> Config:
-    if _config is None:
+    if _config is None:  # pragma: no cover
         raise ValueError("no config loaded")
     return _config
 
@@ -93,10 +93,10 @@ def load_config(
         config = Config(_path=path)  # type: ignore
         if auto_create:
             config.save(path, encoding=encoding, ignore_error=True)
-    except ValidationError:
+    except ValidationError:  # pragma: no cover
         logger.error(f"'{path}' is not valid config file")
         raise
-    except Exception:
+    except Exception:  # pragma: no cover
         logger.error(f"failed to load config from '{path}'")
         raise
     config._path = path  # type: ignore
@@ -104,9 +104,21 @@ def load_config(
     return config
 
 
+@overload
+def init_config(
+    server: Union[dict, Server] = ...,
+    bots: Iterable[Union[dict, Bot]] = ...,
+    log_level: Level = "INFO"
+) -> Config: ...
+
+@overload
+def init_config(
+    config: Config, /
+) -> Config: ...
+
 def init_config(
     server: Union[dict, Server, Config] = Server(),
-    bots: Optional[Iterable[Union[dict, Bot]]] = None,
+    bots: Iterable[Union[dict, Bot]] = (),
     log_level: Level = "INFO"
 ) -> Config:
     global _config
@@ -115,7 +127,7 @@ def init_config(
     else:
         _config = Config(
             server=server,  # type: ignore
-            bots=bots or (),  # type: ignore
+            bots=bots,  # type: ignore
             log_level=log_level
         )
     return _config

@@ -2,12 +2,11 @@ import asyncio
 import base64
 import os
 import platform
-import sys
 from collections import defaultdict
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
-from typing import (Any, AsyncGenerator, BinaryIO, Callable, Coroutine, Dict,
+from typing import (Any, BinaryIO, Callable, Coroutine, Dict,
                     Generator, Iterable, List, Literal, Optional, Tuple, Union,
                     overload)
 from weakref import WeakSet, ref
@@ -345,6 +344,10 @@ class Bot(object):
                 else:
                     self.cancel()
             raise KaruhaBotError(err_text, bot=self, code=ctrl.code)
+        elif topic.startswith("new"):
+            self.logger.info(f"subscribe new topic {ctrl.topic}")
+        elif topic.startswith("nch"):
+            self.logger.info(f"subscribe new channel {ctrl.topic}")
         else:
             self.logger.info(f"subscribe topic {topic}")
         return tid, decode_mapping(ctrl.params)
@@ -1063,7 +1066,6 @@ class Bot(object):
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds, extra=extra)  # type: ignore
-        self.logger.debug(f"out: {client_msg}")
         ret = None
         if wait_tid is None:
             await self.server.send(client_msg)
@@ -1079,7 +1081,7 @@ class Bot(object):
                 cb(self, v, ret, extra)
         return ret
 
-    async def async_run(self, server_config: Optional[ServerConfig] = None) -> None:  # pragma: no cover
+    async def async_run(self, _server_config: Optional[ServerConfig] = None) -> None:  # pragma: no cover
         """
         run the bot in an async loop
 
@@ -1087,8 +1089,8 @@ class Bot(object):
         :type server_config: Optional[ServerConfig]
         :return: None
         """
-        server = server_config or self._server_config
-        if server is None:
+        server_config = _server_config or self._server_config
+        if server_config is None:
             raise ValueError("server not specified")
 
         if self.state == BotState.running:
@@ -1100,8 +1102,41 @@ class Bot(object):
         
         while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
-            async with self._run_context(server) as client:
-                await self._recv_loop(client)
+            server_type = get_server_type(self.config.connect_mode or server_config.connect_mode)
+            self.server = server_type(server_config, self.logger)
+
+            try:
+                await self.server.start()
+                self.initialize_event_callback(self)
+                await self._recv_loop(self.server)
+            except KaruhaServerError:  # pragma: no cover
+                self.logger.error(f"disconnected from {server_config.host}, retrying...")
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:  # pragma: no cover
+                if self.state == BotState.running:
+                    self.cancel(cancel_loop=False)
+                    raise
+            except:  # noqa: E722  # pragma: no cover
+                self.cancel(cancel_loop=False)
+                raise
+            finally:
+                try:
+                    await self.server.stop()
+                    await self.finalize_event_callback(self)
+                except Exception:  # pragma: no cover
+                    self.logger.exception("error while finalizing event callback", exc_info=True)
+                except asyncio.CancelledError:  # pragma: no cover
+                    pass
+
+                if self.state == BotState.restarting:
+                    # uncancel from Bot.restart()
+                    self.state = BotState.running
+                elif self.state == BotState.cancelling:
+                    # shutdown from Bot.cancel()
+                    self.state = BotState.stopped
+
+                for t in self._tasks:
+                    t.cancel()
 
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
@@ -1251,7 +1286,7 @@ class Bot(object):
         try:
             await self.hello()
         except Exception:
-            self.logger.error("failed to connect to server, restarting")
+            self.logger.error("failed to connect to server, restarting", exc_info=True)
             self.restart()
             return
 
@@ -1279,48 +1314,8 @@ class Bot(object):
             get="sub desc tags cred"
         )
 
-    @asynccontextmanager
-    async def _run_context(self, server_config: ServerConfig, /) -> AsyncGenerator[BaseServer, None]:  # pragma: no cover
-        server_type = get_server_type(self.config.connect_mode or server_config.connect_mode)
-        self.server = server_type(server_config, self.logger)
-
-        try:
-            self.initialize_event_callback(self)
-            await self.server.start()
-            yield self.server
-        except KaruhaServerError:
-            self.logger.error(f"disconnected from {server_config.host}, retrying...", exc_info=sys.exc_info())
-            await asyncio.sleep(5)
-        except asyncio.CancelledError:
-            if self.state == BotState.running:
-                self.cancel(cancel_loop=False)
-                raise
-        except:  # noqa: E722
-            self.cancel(cancel_loop=False)
-            raise
-        finally:
-            try:
-                await self.server.stop()
-                await self.finalize_event_callback(self)
-            except Exception:
-                self.logger.exception("error while finalizing event callback", exc_info=True)
-            except asyncio.CancelledError:
-                pass
-
-            if self.state == BotState.restarting:
-                # uncancel from Bot.restart()
-                self.state = BotState.running
-            elif self.state == BotState.cancelling:
-                # shutdown from Bot.cancel()
-                self.state = BotState.stopped
-
-            for t in self._tasks:
-                t.cancel()
-
     async def _recv_loop(self, server: BaseServer) -> None:
         async for message in server:
-            self.logger.debug(f"in: {message}")
-
             for desc, msg in message.ListFields():
                 for e in self.server_event_callbacks[desc.name]:
                     e(self, msg)

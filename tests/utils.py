@@ -50,9 +50,11 @@ class MockServer(BaseServer, type="mock"):
         return await self.send_queue.get()
     
     async def send(self, msg: pb.ClientMsg) -> None:
+        self._ensure_running()
         await self.send_queue.put(msg)
     
     async def __anext__(self) -> pb.ServerMsg:
+        self._ensure_running()
         return await self.recv_queue.get()
     
     async def upload(

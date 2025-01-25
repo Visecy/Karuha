@@ -3,7 +3,7 @@ from argparse import ArgumentParser as _ArgumentParser
 from typing import Any, NoReturn, Optional
 from weakref import WeakSet
 
-from ..command import BaseSession
+from ..session import BaseSession
 from ..exception import KaruhaCommandCanceledError
 
 

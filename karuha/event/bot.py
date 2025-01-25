@@ -690,8 +690,13 @@ class SubscribeEvent(ClientEvent, on_field="sub"):
     response_message: Optional[pb.ServerCtrl]
 
     id: ProxyPropertyType[str] = ClientMessageProperty()
-    topic: ProxyPropertyType[str] = ClientMessageProperty()
     session = SessionProperty
+
+    @property
+    def topic(self) -> str:
+        if self.response_message is not None and self.response_message.topic:
+            return self.response_message.topic
+        return self.client_message.topic
 
 
 class LeaveEvent(ClientEvent, on_field="leave"):
@@ -720,6 +725,11 @@ class LeaveEvent(ClientEvent, on_field="leave"):
     response_message: Optional[pb.ServerCtrl]
 
     id: ProxyPropertyType[str] = ClientMessageProperty()
-    topic: ProxyPropertyType[str] = ClientMessageProperty()
     unsub: ProxyPropertyType[bool] = ClientMessageProperty()
     session = SessionProperty
+
+    @property
+    def topic(self) -> str:
+        if self.response_message is not None and self.response_message.topic:
+            return self.response_message.topic
+        return self.client_message.topic
