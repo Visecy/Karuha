@@ -17,7 +17,8 @@ from .bot import Bot, BotState
 from .exception import KaruhaException
 from .event import on, on_event, Event
 from .text import Drafty, BaseText, PlainText, Message, TextChain
-from .command import CommandCollection, AbstractCommand, AbstractCommandParser, BaseSession, MessageSession, CommandSession, get_collection, on_command, rule, on_rule
+from .command import CommandCollection, AbstractCommand, AbstractCommandParser, get_collection, on_command, rule, on_rule
+from .session import BaseSession, MessageSession, CommandSession
 from .data import get_user, get_topic, try_get_user, try_get_topic
 from .runner import try_get_bot, get_bot, add_bot, try_add_bot, get_all_bots, remove_bot, cancel_all_bots, async_run, run, reset
 

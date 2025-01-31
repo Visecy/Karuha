@@ -1,8 +1,6 @@
-import re
-from collections import deque
 from inspect import Parameter
 import sys
-from typing import Any, Dict, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type, TypeVar, Union, cast
 
 from pydantic import computed_field
 from pydantic_core import from_json
@@ -105,51 +103,23 @@ class Message(HandlerInvokerModel, frozen=True, arbitrary_types_allowed=True):  
         return MessageSession(self.bot, self).bind_task()
 
 
-from ..session import BaseSession
-
-
-class MessageSession(BaseSession):
-    __slots__ = ["_messages"]
-
-    def __init__(self, /, bot: Bot, message: Message) -> None:
-        super().__init__(bot, message.topic)
-        self._messages = deque((message,))
-    
-    async def wait_reply(
-            self,
-            topic: Optional[str] = None,
-            user_id: Optional[str] = None,
-            pattern: Optional[re.Pattern] = None,
-            priority: float = 1.2
-    ) -> Message:
-        message = await super().wait_reply(topic, user_id, pattern, priority)
-        self._add_message(message)
-        return message
-    
-    def _add_message(self, message: Message) -> None:
-        assert message.bot is self.bot
-        if message.topic != self.topic:
-            return
-        self._messages.append(message)
-
-    @property
-    def messages(self) -> Tuple[Message, ...]:
-        return tuple(self._messages)
-    
-    @property
-    def last_message(self) -> Message:
-        return self._messages[-1]
-
-
-class _HeadDependency(HandlerInvokerDependency):
-    __slots__ = []
-
-    @classmethod
-    def resolve_dependency(cls, invoker: Message, param: Parameter, **kwds: Any) -> Any:
-        if not isinstance(invoker, Message):
-            raise KaruhaHandlerInvokerError(f"cannot resolve head dependency for {param.name!r}")
-        return invoker.head.get(param.name)
+from ..session import MessageSession
 
 
 T = TypeVar("T")
-Head = Annotated[T, _HeadDependency]
+
+
+if TYPE_CHECKING:
+    Head = Annotated[T, ...]
+else:
+    class Head(HandlerInvokerDependency):
+        __slots__ = []
+
+        @classmethod
+        def resolve_dependency(cls, invoker: Message, param: Parameter, **kwds: Any) -> Any:
+            if not isinstance(invoker, Message):
+                raise KaruhaHandlerInvokerError(f"cannot resolve head dependency for {param.name!r}")
+            return invoker.head.get(param.name)
+        
+        def __class_getitem__(cls, tp: Type) -> Annotated:
+            return Annotated[tp, cls()]

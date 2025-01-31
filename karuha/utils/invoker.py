@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import is_dataclass
 from inspect import Parameter, Signature
 from types import new_class
-from typing import Any, Callable, ClassVar, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any, Callable, ClassVar, Dict, Mapping, Optional, Tuple, Type, TypeVar
 from typing_extensions import Annotated, Self, get_args, get_origin, is_typeddict
 
 from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler, TypeAdapter
@@ -82,15 +82,7 @@ class AbstractHandlerInvoker(ABC):
                 result[param.name] = param.default
                 still_missing.pop(param)
 
-        if not still_missing:
-            return result
-        raise KaruhaHandlerInvokerError(
-            f"Missing dependencies: (extra data: {kwds})\n" +
-            ''.join(
-                f"\t{param.name}: {error}\t"
-                for param, error in still_missing.items()
-            )
-        )
+        return result
 
     def extract_handler_params(self, sig: Signature, *, name: Optional[str] = None) -> Tuple[list, Dict[str, Any]]:
         dependencies = {}
@@ -105,14 +97,26 @@ class AbstractHandlerInvoker(ABC):
                 dependencies[param.name] = val
 
         dependencies.update(self.resolve_missing_dependencies(missing, **kwds))
-        assert len(dependencies) == len(sig.parameters)
+        if len(dependencies) != len(sig.parameters):
+            raise KaruhaHandlerInvokerError(
+                f"Missing dependencies: (extra data: {kwds})\n" +
+                ''.join(
+                    f"\t{param.name}: {error}\t"
+                    for param, error in missing.items()
+                    if param.name not in dependencies
+                )
+            )
         args = []
         kwargs = {}
         for param in sig.parameters.values():
-            if param.kind in [Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD]:
-                raise KaruhaHandlerInvokerError(f"{param.kind} parameters are not supported")
-            elif param.kind == Parameter.POSITIONAL_ONLY:
+            # if param.kind in [Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD]:
+            #     raise KaruhaHandlerInvokerError(f"{param.kind} parameters are not supported")
+            if param.kind == Parameter.POSITIONAL_ONLY:
                 args.append(dependencies[param.name])
+            elif param.kind == Parameter.VAR_POSITIONAL:
+                args.extend(dependencies[param.name])
+            elif param.kind == Parameter.VAR_KEYWORD:
+                kwargs.update(dependencies[param.name])
             else:
                 kwargs[param.name] = dependencies[param.name]
         return args, kwargs
@@ -192,3 +196,35 @@ class HandlerInvoker(AbstractHandlerInvoker):
             if isinstance(attr, depend_property):
                 cls.register_dependency(name, lambda self, param: getattr(self, param.name))
         super().__init_subclass__(**kwds)
+
+
+class DictHandlerInvoker(AbstractHandlerInvoker):
+    __slots__ = ["data"]
+
+    def __init__(self, data: Mapping[str, Any]) -> None:
+        self.data = data
+
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
+        try:
+            val = self.data[param.name]
+        except KeyError:  # pragma: no cover
+            raise KaruhaHandlerInvokerError(f"failed to get dependency '{param.name}'") from None
+        return self.validate_dependency(param, val, **kwds)
+
+
+class ChainHandlerInvoker(AbstractHandlerInvoker):
+    __slots__ = ["invokers"]
+
+    def __init__(self, *invokers: AbstractHandlerInvoker) -> None:
+        self.invokers = list(invokers)
+
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
+        for invoker in self.invokers:
+            try:
+                val = invoker.get_dependency(param, **kwds)
+            except KaruhaHandlerInvokerError:
+                continue
+            else:
+                return self.validate_dependency(param, val, **kwds)
+        raise KaruhaHandlerInvokerError(f"failed to get dependency '{param.name}'")
+    

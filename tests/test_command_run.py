@@ -1,7 +1,7 @@
 from pydantic_core import from_json, to_json
 from tinode_grpc import pb
 
-from karuha.command import MessageSession, get_collection, on_rule, on_command, set_collection
+from karuha.command import get_collection, on_rule, on_command, set_collection
 from karuha.event import on
 from karuha.event.command import (
     CommandCompleteEvent,
@@ -10,6 +10,7 @@ from karuha.event.command import (
 )
 from karuha.exception import KaruhaCommandCanceledError
 from karuha.text import Drafty, Mention
+from karuha.session import MessageSession
 
 from .utils import TEST_TOPIC, AsyncBotTestCase
 

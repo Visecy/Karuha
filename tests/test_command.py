@@ -1,5 +1,7 @@
 from inspect import signature
+from pathlib import Path
 from typing import List, Optional
+from typing_extensions import Annotated
 from unittest import TestCase
 
 from pydantic_core import to_json
@@ -10,10 +12,12 @@ from karuha.command.rule import rule
 from karuha.command.collection import (add_sub_collection, get_collection, new_collection, remove_sub_collection,
                                        reset_collection, set_collection,
                                        set_collection_factory, set_prefix)
-from karuha.command.command import FunctionCommand, ParamFunctionCommand
+from karuha.command.command import FunctionCommand
 from karuha.command.parser import SimpleCommandParser
 from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
 from karuha.text.textchain import Mention, NewLine, Quote, TextChain
+from karuha.utils.invoker import ChainHandlerInvoker, DictHandlerInvoker
+from karuha.utils.argparse import Argument, Arg, get_argument, build_parser
 
 from .utils import TEST_TOPIC, TEST_UID, bot_mock, new_test_message, new_test_command_message
 
@@ -38,6 +42,17 @@ class TestCommand(TestCase):
         self.assertIsNone(simple_parser.parse(message5))
 
     def test_invoker(self) -> None:
+        invoker1 = DictHandlerInvoker({"foo": 114})
+        invoker2 = DictHandlerInvoker({"bar": 514})
+        invoker = ChainHandlerInvoker(invoker1, invoker2)
+        self.assertEqual(invoker1.call_handler(lambda foo: foo), 114)
+        with self.assertRaises(KaruhaHandlerInvokerError):
+            invoker1.call_handler(lambda foo, bar: foo + bar)
+        self.assertEqual(invoker.call_handler(lambda foo, bar: foo + bar), 114 + 514)
+        with self.assertRaises(KaruhaHandlerInvokerError):
+            invoker.call_handler(lambda foo, bar, unknown: foo + bar + unknown)
+
+    def test_cmd_invoker(self) -> None:
         def cmd_meta(
             bot: Bot,
             message: Message,
@@ -160,7 +175,7 @@ class TestCommand(TestCase):
     def test_sub_collection(self) -> None:
         reset_collection()
         c = new_collection()
-        c.add_command(ParamFunctionCommand.from_function(lambda bot: ..., name="test"))
+        c.add_command(FunctionCommand.from_function(lambda bot: ..., name="test"))
 
         cd = get_collection()
         cd.sub_collections.append(c)
@@ -223,3 +238,53 @@ class TestCommand(TestCase):
         self.assertEqual(rh.match(msg), 1.0)
         rh1 = rule(has_head="quote")
         self.assertEqual(rh1.match(msg), 0.0)
+    
+    def test_argument(self) -> None:
+        arg = Arg[str, "-v", "--version"]
+        arg_ins = get_argument(arg)
+        assert arg_ins is not None
+        self.assertEqual(arg_ins.args, ("-v", "--version"))
+        self.assertEqual(arg_ins.kwargs, {"type": str})
+
+        arg = Arg[str, "-v", "--version", {}]
+        self.assertEqual(get_argument(arg), arg_ins)
+
+        arg = Arg[str, "-v", "--version", Argument()]
+        self.assertEqual(get_argument(arg), arg_ins)
+
+        arg = Annotated[str, Argument("-v", "--version", type=str)]
+        self.assertEqual(get_argument(arg), arg_ins)
+    
+    def test_build_parser(self) -> None:
+        def example(
+            path: Arg[str, Argument(help="Input path")],
+            timeout: Arg[int, "--timeout"] = 10,
+            *,
+            force: bool = False,
+        ) -> None: ...
+
+        parser = build_parser(example)
+        self.assertEqual(
+            parser.parse_known_args(["/tmp", "--force", "--timeout", "20"])[0].__dict__,
+            {"path": "/tmp", "force": True, "timeout": 20}
+        )
+
+        with self.assertRaises(TypeError):
+            build_parser(example, unannotated_mode="strict")
+        
+        parser = build_parser(example, unannotated_mode="ignore")
+        self.assertEqual(
+            parser.parse_known_args(["/tmp", "--force"])[0].__dict__,
+            {"path": "/tmp", "timeout": 10}
+        )
+
+        def example2(
+            path: Arg[str, Argument(help="Input path", type=Path)],
+            *args: Arg[str, Argument(help="Extra arguments")],
+        ) -> None: ...
+
+        parser = build_parser(example2, unannotated_mode="strict")
+        self.assertEqual(
+            parser.parse_known_args(["/tmp", "foo", "bar"])[0].__dict__,
+            {"path": Path("/tmp"), "args": ["foo", "bar"]}
+        )

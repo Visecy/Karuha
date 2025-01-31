@@ -1,10 +1,11 @@
 import asyncio
+from collections import deque
 import os
 import re
 import weakref
 from functools import partialmethod
 from io import IOBase
-from typing import (Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional,
+from typing import (Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional, Tuple,
                     Union, overload)
 
 from aiofiles import open as aio_open
@@ -15,7 +16,7 @@ from typing_extensions import Self, deprecated
 import karuha
 
 from .bot import Bot
-from .exception import KaruhaRuntimeError
+from .exception import KaruhaCommandCanceledError, KaruhaRuntimeError
 
 
 class BaseSession(object):
@@ -459,6 +460,48 @@ class BaseSession(object):
     def _ensure_status(self) -> None:
         if self._closed:
             raise KaruhaRuntimeError("session is closed")
+
+
+
+class MessageSession(BaseSession):
+    __slots__ = ["_messages"]
+
+    def __init__(self, /, bot: Bot, message: "Message") -> None:
+        super().__init__(bot, message.topic)
+        self._messages = deque((message,))
+    
+    async def wait_reply(
+            self,
+            topic: Optional[str] = None,
+            user_id: Optional[str] = None,
+            pattern: Optional[re.Pattern] = None,
+            priority: float = 1.2
+    ) -> "Message":
+        message = await super().wait_reply(topic, user_id, pattern, priority)
+        self._add_message(message)
+        return message
+    
+    def _add_message(self, message: "Message") -> None:
+        assert message.bot is self.bot
+        if message.topic != self.topic:
+            return
+        self._messages.append(message)
+
+    @property
+    def messages(self) -> Tuple["Message", ...]:
+        return tuple(self._messages)
+    
+    @property
+    def last_message(self) -> "Message":
+        return self._messages[-1]
+
+
+class CommandSession(MessageSession):
+    __slots__ = []
+
+    def cancel(self) -> NoReturn:
+        self.close()
+        raise KaruhaCommandCanceledError
 
 
 from .event.message import MessageDispatcher, get_message_lock

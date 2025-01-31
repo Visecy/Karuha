@@ -1036,7 +1036,14 @@ class Bot(object):
         *,
         extra: Optional[pb.ClientExtra] = None,
         **kwds: Optional[Message],
-    ) -> Message: ...
+    ) -> Message:
+        """send messages to Tinode server and wait until a response message with the same tid is received
+
+        :param wait_tid: if set, it will , defaults to None
+        :type wait_tid: Optional[str], optional
+        :return: message which has the same tid
+        :rtype: Optional[Message]
+        """
 
     @overload
     async def send_message(
@@ -1046,7 +1053,14 @@ class Bot(object):
         *,
         extra: Optional[pb.ClientExtra] = None,
         **kwds: Optional[Message],
-    ) -> None: ...
+    ) -> None:
+        """send messages to Tinode server
+
+        :param wait_tid: if set, it will wait until a response message with the same tid is received, defaults to None
+        :type wait_tid: Optional[str], optional
+        :return: message which has the same tid
+        :rtype: Optional[Message]
+        """
 
     async def send_message(
             self,
@@ -1055,14 +1069,6 @@ class Bot(object):
             extra: Optional[pb.ClientExtra] = None,
             **kwds: Optional[Message]
     ) -> Optional[Message]:
-        """set messages to Tinode server
-
-        :param wait_tid: if set, it will wait until a response message with the same tid is received, defaults to None
-        :type wait_tid: Optional[str], optional
-        :return: message which has the same tid
-        :rtype: Optional[Message]
-        """
-
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
         client_msg = pb.ClientMsg(**kwds, extra=extra)  # type: ignore
@@ -1100,6 +1106,7 @@ class Bot(object):
         self.state = BotState.running
         self._loop_task_ref = ref(asyncio.current_task())
         
+        wait_time = 0
         while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
             server_type = get_server_type(self.config.connect_mode or server_config.connect_mode)
@@ -1111,7 +1118,7 @@ class Bot(object):
                 await self._recv_loop(self.server)
             except KaruhaServerError:  # pragma: no cover
                 self.logger.error(f"disconnected from {server_config.host}, retrying...")
-                await asyncio.sleep(5)
+                wait_time = min(max(wait_time, 5) * 2, 120)
             except asyncio.CancelledError:  # pragma: no cover
                 if self.state == BotState.running:
                     self.cancel(cancel_loop=False)
@@ -1131,12 +1138,16 @@ class Bot(object):
                 if self.state == BotState.restarting:
                     # uncancel from Bot.restart()
                     self.state = BotState.running
+                    wait_time = 0
                 elif self.state == BotState.cancelling:
                     # shutdown from Bot.cancel()
                     self.state = BotState.stopped
 
                 for t in self._tasks:
                     t.cancel()
+                
+                if wait_time:
+                    await asyncio.sleep(wait_time)
 
     @deprecated("karuha.Bot.run() is desprecated, using karuha.run() instead")
     def run(self) -> None:
@@ -1177,6 +1188,10 @@ class Bot(object):
     def restart(self) -> None:
         if self.state == BotState.disabled:
             raise KaruhaBotError(f"cannot restart disabled bot {self.name}", bot=self)
+        elif self.state == BotState.stopped:
+            raise KaruhaBotError(f"cannot restart stopped bot {self.name}", bot=self)
+        elif self.state in [BotState.restarting, BotState.cancelling]:
+            return
         loop_task = self._loop_task_ref()
         self.state = BotState.restarting
         if loop_task is not None:

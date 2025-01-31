@@ -9,8 +9,7 @@ from ..text.message import Message
 from ..exception import KaruhaCommandError, KaruhaException
 from .parser import AbstractCommandParser, SimpleCommandParser
 from .rule import BaseRule, MessageRuleDispatcher, NoopRule
-from .command import AbstractCommand, FunctionCommand
-from .session import CommandMessage
+from .command import AbstractCommand, FunctionCommand, CommandMessage
 
 
 P = ParamSpec("P")

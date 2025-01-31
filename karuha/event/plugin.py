@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Coroutine, Union
 from tinode_grpc import pb
 from typing_extensions import Self
 
-from ..command.session import BaseSession
+from ..session import BaseSession
 from ..bot import Bot
 from ..logger import logger
 from ..utils.proxy_propery import ProxyProperty

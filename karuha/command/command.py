@@ -1,14 +1,17 @@
 import asyncio
 import sys
 from abc import ABC, abstractmethod
-from inspect import signature
-from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar
+from inspect import Parameter, signature
+from typing import Any, Callable, Generic, Iterable, Optional, Tuple, TypeVar, Union
 from venv import logger
 
+from pydantic import computed_field
 from typing_extensions import ParamSpec, Self
 
+from ..text import BaseText, Message
+from ..session import CommandSession
 from ..event.message import Message
-from ..exception import KaruhaCommandCanceledError, KaruhaCommandError
+from ..exception import KaruhaCommandCanceledError, KaruhaCommandError, KaruhaHandlerInvokerError
 from .rule import BaseRule
 
 
@@ -111,9 +114,50 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         return cls(name, func, alias=alias, rule=rule)
 
 
-ParamFunctionCommand = FunctionCommand
+
+class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
+    name: str
+    argv: Tuple[Union[str, BaseText], ...]
+    command: "AbstractCommand"
+    collection: "CommandCollection"
+
+    @classmethod
+    def from_message(
+            cls,
+            message: Message,
+            /,
+            command: "AbstractCommand",
+            collection: "CommandCollection",
+            name: str,
+            argv: Iterable[Union[str, BaseText]]
+    ) -> Self:
+        data = dict(message)
+        data["command"] = command
+        data["collection"] = collection
+        data["name"] = name
+        data["argv"] = tuple(argv)
+        return cls(**data)
+    
+    def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
+        if param.name == "argv":
+            try:
+                return self.validate_dependency(param, self.argv, **kwds)
+            except KaruhaHandlerInvokerError:
+                pass
+            return self.validate_dependency(param, tuple(str(i) for i in self.argv))
+        return super().get_dependency(param, **kwds)
+    
+    @computed_field
+    @property
+    def argc(self) -> int:
+        return len(self.argv)
+    
+    @computed_field
+    @property
+    def session(self) -> "CommandSession":
+        return CommandSession(self.bot, self)
 
 
 from ..event.command import (CommandCompleteEvent, CommandFailEvent,
                              CommandPrepareEvent)
-from .session import CommandMessage
+from .collection import CommandCollection

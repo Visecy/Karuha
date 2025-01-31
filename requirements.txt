@@ -11,4 +11,5 @@ numpy>=1.21
 
 greenback
 
+prompt_toolkit>=3.0
 pillow>=10.0

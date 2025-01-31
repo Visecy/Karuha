@@ -15,21 +15,21 @@ R = TypeVar("R")
 
 @overload
 def on_command(
-    name: Optional[str] = ...,
-    /, *,
-    alias: Optional[Iterable[str]] = ...,
-    collection: Optional[CommandCollection] = ...,
-    rule: Optional[BaseRule] = ...
+        name: Optional[str] = ...,
+        /, *,
+        alias: Optional[Iterable[str]] = ...,
+        collection: Optional[CommandCollection] = ...,
+        rule: Optional[BaseRule] = ...
 ) -> Callable[[Callable[P, R]], FunctionCommand[P, R]]: ...
 
 
 @overload
 def on_command(
-    func: Callable,
-    /, *,
-    alias: Optional[Iterable[str]] = ...,
-    collection: Optional[CommandCollection] = ...,
-    rule: Optional[BaseRule] = ...
+        func: Callable,
+        /, *,
+        alias: Optional[Iterable[str]] = ...,
+        collection: Optional[CommandCollection] = ...,
+        rule: Optional[BaseRule] = ...
 ) -> FunctionCommand: ...
 
 

@@ -51,11 +51,14 @@ class MockServer(BaseServer, type="mock"):
     
     async def send(self, msg: pb.ClientMsg) -> None:
         self._ensure_running()
+        self.logger.debug(f"out: {msg}")
         await self.send_queue.put(msg)
     
     async def __anext__(self) -> pb.ServerMsg:
         self._ensure_running()
-        return await self.recv_queue.get()
+        msg = await self.recv_queue.get()
+        self.logger.debug(f"in: {msg}")
+        return msg
     
     async def upload(
         self,
@@ -172,7 +175,6 @@ class AsyncBotTestCase(IsolatedAsyncioTestCase):
         self.bot._wait_list[tid].set_result(
             pb.ServerCtrl(
                 id=tid,
-                topic="test",
                 code=code,
                 text=text,
                 params={k: json.dumps(v).encode() for k, v in params.items()}

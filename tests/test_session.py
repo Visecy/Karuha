@@ -1,8 +1,7 @@
 import asyncio
 
 from karuha.exception import KaruhaRuntimeError
-from karuha.session import BaseSession
-from karuha.command import MessageSession
+from karuha.session import BaseSession, MessageSession
 from karuha.event.message import get_message_lock
 from karuha.text import Drafty, Button, File, Image, drafty2text
 
@@ -127,7 +126,7 @@ class TestSession(AsyncBotTestCase):
         await self.wait_for(image_task)
 
     async def test_get_data(self) -> None:
-        ss = BaseSession(self.bot, "test_get_data")
+        ss = BaseSession(self.bot, TEST_TOPIC)
 
         # test get single data
         task = asyncio.create_task(ss.get_data(seq_id=114))
@@ -136,7 +135,7 @@ class TestSession(AsyncBotTestCase):
         self.assertTrue(getmsg.HasField("get"))
         self.assertEqual(getmsg.get.query.data.since_id, 114)
         self.assertEqual(getmsg.get.query.data.before_id, 115)
-        await self.put_bot_content(b"\"test\"", topic="test_get_data", seq_id=114)
+        await self.put_bot_content(b"\"test\"", topic=TEST_TOPIC, seq_id=114)
         msg = await self.wait_for(task)
         self.assertEqual(msg.content, b"\"test\"")
 
@@ -152,14 +151,14 @@ class TestSession(AsyncBotTestCase):
         self.assertTrue(getmsg.HasField("get"), getmsg)
         self.assertEqual(getmsg.get.query.data.since_id, 113)
         self.assertEqual(getmsg.get.query.data.before_id, 114)
-        await self.put_bot_content(b"\"113\"", topic="test_get_data", seq_id=113)
+        await self.put_bot_content(b"\"113\"", topic=TEST_TOPIC, seq_id=113)
         getmsg = await self.get_bot_sent()
         if getmsg.HasField("note"):
             getmsg = await self.get_bot_sent()
         self.assertTrue(getmsg.HasField("get"), getmsg)
         self.assertEqual(getmsg.get.query.data.since_id, 115)
         self.assertEqual(getmsg.get.query.data.before_id, 116)
-        await self.put_bot_content(b"\"115\"", topic="test_get_data", seq_id=115)
+        await self.put_bot_content(b"\"115\"", topic=TEST_TOPIC, seq_id=115)
         msgs = await self.wait_for(task)
         self.assertEqual(msgs[0].content, b"\"113\"")
         self.assertEqual(msgs[1].content, b"\"test\"")
