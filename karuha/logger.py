@@ -10,7 +10,7 @@ from . import WORKDIR
 
 
 Level = Union[int, str]
-formatter = logging.Formatter('[%(asctime)s %(name)s][%(levelname)s] %(message)s')
+formatter = logging.Formatter("[%(asctime)s %(name)s][%(levelname)s] %(message)s")
 
 
 class NameFilter(logging.Filter):
@@ -26,6 +26,7 @@ class _StderrHandler(logging.StreamHandler):
     whatever sys.stderr is currently set to rather than the value of
     sys.stderr at handler construction time.
     """
+
     def __init__(self, level: "logging._Level" = logging.NOTSET):
         """
         Initialize the handler.
@@ -36,21 +37,17 @@ class _StderrHandler(logging.StreamHandler):
     def stream(self) -> TextIO:
         return sys.stderr
 
+
 def add_log_dir(logger: logging.Logger, log_dir: Union[str, os.PathLike]) -> None:
     log_dir = Path(log_dir)
     name = logger.name
-    if '.' not in name:
+    if "." not in name:
         file_path = log_dir / "main.log"
     else:
-        _, bot_name = name.split('.')
+        _, bot_name = name.split(".")
         file_path = log_dir / f"bot_{bot_name}.log"
     log_dir.mkdir(exist_ok=True, parents=True)
-    handler = TimedRotatingFileHandler(
-        file_path,
-        when="D",
-        backupCount=64,
-        encoding="utf-8"
-    )
+    handler = TimedRotatingFileHandler(file_path, when="D", backupCount=64, encoding="utf-8")
     handler.setFormatter(formatter)
     handler.addFilter(NameFilter(name))
     logger.addHandler(handler)
@@ -71,5 +68,5 @@ add_log_dir(logger, WORKDIR / "log")
 
 
 __all__ = [
-    'logger',
+    "logger",
 ]

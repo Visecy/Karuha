@@ -10,7 +10,6 @@ from typing_extensions import ParamSpec, Self
 
 from ..text import BaseText, Message
 from ..session import CommandSession
-from ..event.message import Message
 from ..exception import KaruhaCommandCanceledError, KaruhaCommandError, KaruhaHandlerInvokerError
 from .rule import BaseRule
 
@@ -24,11 +23,11 @@ class AbstractCommand(ABC):
         self.__name__ = name
         self.rule = rule
         self.alias = () if alias is None else tuple(alias)
-    
+
     @property
     def name(self) -> str:
         return self.__name__
-    
+
     @abstractmethod
     async def call_command(self, message: "CommandMessage") -> Any:
         pass
@@ -66,7 +65,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         except KaruhaCommandCanceledError:
             logger.info(f"command {self.name} canceled before run")
             raise
-        
+
         try:
             args, kwargs = self.parse_message(message)
             result = self.__func__(*args, **kwargs)  # type: ignore
@@ -88,7 +87,7 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
             logger.info(f"command {self.name} complete")
             CommandCompleteEvent.new(message.collection, self, result)
         return result
-    
+
     def format_help(self) -> str:
         if self.__doc__ is None:
             return super().format_help()
@@ -114,7 +113,6 @@ class FunctionCommand(AbstractCommand, Generic[P, R]):
         return cls(name, func, alias=alias, rule=rule)
 
 
-
 class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
     name: str
     argv: Tuple[Union[str, BaseText], ...]
@@ -123,13 +121,13 @@ class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
 
     @classmethod
     def from_message(
-            cls,
-            message: Message,
-            /,
-            command: "AbstractCommand",
-            collection: "CommandCollection",
-            name: str,
-            argv: Iterable[Union[str, BaseText]]
+        cls,
+        message: Message,
+        /,
+        command: "AbstractCommand",
+        collection: "CommandCollection",
+        name: str,
+        argv: Iterable[Union[str, BaseText]],
     ) -> Self:
         data = dict(message)
         data["command"] = command
@@ -137,7 +135,7 @@ class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
         data["name"] = name
         data["argv"] = tuple(argv)
         return cls(**data)
-    
+
     def get_dependency(self, param: Parameter, /, **kwds: Any) -> Any:
         if param.name == "argv":
             try:
@@ -146,18 +144,17 @@ class CommandMessage(Message, frozen=True, arbitrary_types_allowed=True):
                 pass
             return self.validate_dependency(param, tuple(str(i) for i in self.argv))
         return super().get_dependency(param, **kwds)
-    
+
     @computed_field
     @property
     def argc(self) -> int:
         return len(self.argv)
-    
+
     @computed_field
     @property
     def session(self) -> "CommandSession":
         return CommandSession(self.bot, self)
 
 
-from ..event.command import (CommandCompleteEvent, CommandFailEvent,
-                             CommandPrepareEvent)
+from ..event.command import CommandCompleteEvent, CommandFailEvent, CommandPrepareEvent
 from .collection import CommandCollection

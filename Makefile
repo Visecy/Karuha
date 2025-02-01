@@ -25,7 +25,7 @@ develop:
 	pip install -e .[dev]
 
 lint:
-	flake8 ${MODULE}/ tests/ --exclude __init__.py --count --max-line-length=127 --extend-ignore=W293,E402
+	ruff check ${MODULE}/ tests/ --exclude __init__.py --line-length=127 --extend-ignore=W293,E402
 
 test:
 	pytest --ignore=tests/online/

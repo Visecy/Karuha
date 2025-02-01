@@ -22,13 +22,13 @@ class BaseRule(ABC):
         Returns a score between 0 and 1 indicating how well the rule matches the message.
         """
         raise NotImplementedError
-    
+
     def __and__(self, other: "BaseRule") -> "AndRule":
         return AndRule(self, other)
-    
+
     def __or__(self, other: "BaseRule") -> "OrRule":
         return OrRule(self, other)
-    
+
     def __invert__(self) -> "NotRule":
         return NotRule(self)
 
@@ -69,7 +69,7 @@ class AndRule(BaseRule):
             if score <= 0.0:
                 break
         return score
-    
+
     def __iand__(self, other: BaseRule) -> Self:
         self.rules += (other,)
         return self
@@ -89,7 +89,7 @@ class OrRule(BaseRule):
         scores = [0.0]
         scores.extend(rule.match(message) for rule in self.rules)
         return max(scores)
-    
+
     def __ior__(self, other: BaseRule) -> Self:
         self.rules += (other,)
         return self
@@ -161,7 +161,7 @@ class BotRule(BaseRule):
 
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
-    
+
     def match(self, message: Message, /) -> float:
         return 1.0 if message.bot is self.bot else 0.0
 
@@ -263,9 +263,7 @@ class QuoteRule(BaseRule):
         quote = message.quote
         if quote is None:
             return 0.0
-        if self.mention is not None and (
-            quote.mention is None or quote.mention.val != self.mention
-        ):
+        if self.mention is not None and (quote.mention is None or quote.mention.val != self.mention):
             return 0.0
         return 1.0
 
@@ -279,7 +277,7 @@ class HasHead(BaseRule):
 
     def __init__(self, name: str) -> None:
         self.name = name
-    
+
     def match(self, message: Message, /) -> float:
         return 1.0 if self.name in message.head else 0.0
 
@@ -294,7 +292,7 @@ class NoopRule(BaseSingletonRule):
     @staticmethod
     def match(message: Message, /) -> float:
         return 1.0
-    
+
     def __and__(self, other: BaseRule) -> BaseRule:
         return other
 

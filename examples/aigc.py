@@ -25,18 +25,20 @@ _aigc_cache: Dict[Tuple[str, int], Tuple[Optional[int], str, Any]] = {}
 
 
 async def parse_aigc_user_text(session: MessageSession, topic: str, message: Message) -> Tuple[Optional[int], str, Namespace]:
-    aigc_parser = ArgumentParser(session, "aigc", description="Large language model interface commands. Use the reply function to add context to them.")
+    aigc_parser = ArgumentParser(
+        session, "aigc", description="Large language model interface commands. Use the reply function to add context to them."
+    )
     aigc_parser.add_argument("-m", "--model", type=str)
     aigc_parser.add_argument("-t", "--temperature", type=float, default=0.85)
     aigc_parser.add_argument("-s", "--seed", type=int, default=1234)
     aigc_parser.add_argument("-S", "--system-prompt")
     aigc_parser.add_argument("-w", "--web-search", action="store_true")
-    aigc_parser.add_argument("message", type=str, nargs='+')
+    aigc_parser.add_argument("message", type=str, nargs="+")
 
-    argv = message.text.split(' ')
+    argv = message.text.split(" ")
     ns = aigc_parser.parse_args([str(i) for i in argv[1:]])
     await aigc_parser.wait_tasks()
-    
+
     reply = message.head.get("reply")
     reply = reply and int(reply)
     quote = message.quote
@@ -45,13 +47,15 @@ async def parse_aigc_user_text(session: MessageSession, topic: str, message: Mes
             await session.finish("invalid chat context")
         if quote.quote_content and (topic, reply) not in _aigc_cache:
             _aigc_cache[topic, reply] = None, str(quote.quote_content), None
-    prompt = ' '.join(ns.message)
+    prompt = " ".join(ns.message)
     _aigc_cache[topic, message.seq_id] = reply, prompt, ns
     session.bot.logger.debug(f"aigc usr traceback {message.seq_id} => {reply}")
     return reply, prompt, ns
 
 
-async def get_aigc_usr_text(session: MessageSession, topic: str, usr_seq: int) -> Tuple[Optional[int], str, Optional[Namespace]]:
+async def get_aigc_usr_text(
+    session: MessageSession, topic: str, usr_seq: int
+) -> Tuple[Optional[int], str, Optional[Namespace]]:
     if user_text_info := _aigc_cache.get((topic, usr_seq)):
         return user_text_info
     message = await session.get_data(seq_id=usr_seq)
@@ -65,7 +69,9 @@ async def get_aigc_usr_text(session: MessageSession, topic: str, usr_seq: int) -
     return reply, message.plain_text, None
 
 
-async def get_aigc_ast_text(session: MessageSession, topic: str, ast_seq: int, *, silent: bool = False) -> Tuple[int, str, int]:
+async def get_aigc_ast_text(
+    session: MessageSession, topic: str, ast_seq: int, *, silent: bool = False
+) -> Tuple[int, str, int]:
     ast_text_info = _aigc_cache.get((topic, ast_seq))
     if ast_text_info is None:
         user_seq = text = turn = None
@@ -85,7 +91,7 @@ async def get_aigc_ast_text(session: MessageSession, topic: str, ast_seq: int, *
         user_seq = message.head.get("aigc_reply")
         turn = message.head.get("aigc_turn", 0)
         _aigc_cache[topic, ast_seq] = user_seq, text, turn
-    
+
     if turn >= 10:
         await session.finish("The maximum number of conversation rounds has been reached. Please restart the conversation")
     if user_seq is None:
@@ -96,7 +102,9 @@ async def get_aigc_ast_text(session: MessageSession, topic: str, ast_seq: int, *
 openai_client = AsyncOpenAI()
 
 
-async def aigc_call(session: MessageSession, messages: List[ChatCompletionMessageParam], ns: Namespace, turn: int, reply_user_seq: int) -> None:
+async def aigc_call(
+    session: MessageSession, messages: List[ChatCompletionMessageParam], ns: Namespace, turn: int, reply_user_seq: int
+) -> None:
     session.bot.logger.info(f"aigc message: {to_json(messages, indent=4)}")
     text_seq = await session.send("...", head={"aigc_turn": turn + 1, "aigc_reply": reply_user_seq})
     assert isinstance(text_seq, int)
@@ -109,7 +117,7 @@ async def aigc_call(session: MessageSession, messages: List[ChatCompletionMessag
             stream=True,
             temperature=ns.temperature,
             seed=ns.seed,
-            extra_body={"enable_search": ns.web_search}
+            extra_body={"enable_search": ns.web_search},
         )
         async for chunk in stream:
             if content := chunk.choices[0].delta.content:

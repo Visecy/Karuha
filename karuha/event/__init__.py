@@ -10,6 +10,7 @@ def on(event: Type[Event]) -> Callable[[_T_Callable], _T_Callable]:
     def wrapper(func: _T_Callable) -> _T_Callable:
         event.add_handler(func)
         return func
+
     return wrapper
 
 

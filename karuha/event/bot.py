@@ -16,7 +16,7 @@ def ensure_text_len(text: str, length: int = 128) -> str:
     if len(text) < length:
         return text
     tail_length = length // 4
-    return f"{text[:length-tail_length]} ... {text[-tail_length:]}"
+    return f"{text[: length - tail_length]} ... {text[-tail_length:]}"
 
 
 class BotEvent(Event):
@@ -158,7 +158,7 @@ class CtrlEvent(ServerEvent, on_field="ctrl"):
     text: ProxyPropertyType[str] = ServerMessageProperty()
     params: ProxyPropertyType[Mapping[str, bytes]] = ServerMessageProperty()
     session = SessionProperty
-    
+
     async def __default_handler__(self) -> None:
         tid = self.server_message.id
         self.bot._set_reply_message(tid, self.server_message)
@@ -279,7 +279,7 @@ class MetaEvent(ServerEvent, on_field="meta"):
     id: ProxyPropertyType[str] = ServerMessageProperty()
     topic: ProxyPropertyType[str] = ServerMessageProperty()
     session = SessionProperty
-    
+
     async def __default_handler__(self) -> None:
         tid = self.server_message.id
         self.bot._set_reply_message(tid, self.server_message)
@@ -357,15 +357,7 @@ class PresEvent(ServerEvent, on_field="pres"):
         if msg.what == pb.ServerPres.ON:
             await self.bot.subscribe(msg.src, get="desc sub")
         elif msg.what == pb.ServerPres.MSG:
-            await self.bot.subscribe(
-                msg.src,
-                get=pb.GetQuery(
-                    what="desc sub data",
-                    data=pb.GetOpts(
-                        since_id=msg.seq_id
-                    )
-                )
-            )
+            await self.bot.subscribe(msg.src, get=pb.GetQuery(what="desc sub data", data=pb.GetOpts(since_id=msg.seq_id)))
         elif msg.what == pb.ServerPres.OFF:
             await self.bot.leave(msg.src)
         elif msg.what == pb.ServerPres.UPD:
@@ -420,7 +412,7 @@ ClientMessageProperty = partial(ProxyProperty, "client_message")
 
 class ClientEvent(BotEvent):
     """base class for client events
-    
+
     NOTE: Such events will be triggered after the corresponding action is completed.
     """
 
@@ -469,6 +461,7 @@ class LoginEvent(ClientEvent, on_field="login"):
     The `token` contains an encrypted string which can be used for authentication.
     Expiration time of the token is passed as `expires`.
     """
+
     __slots__ = []
 
     client_message: pb.ClientLogin
@@ -550,20 +543,20 @@ class PublishEvent(ClientEvent, on_field="pub"):
 
     client_message: pb.ClientPub
     response_message: Optional[pb.ServerCtrl]
-    
+
     id: ProxyPropertyType[str] = ClientMessageProperty()
     topic: ProxyPropertyType[str] = ClientMessageProperty()
     head: ProxyPropertyType[Mapping[str, bytes]] = ClientMessageProperty()
     content: ProxyPropertyType[bytes] = ClientMessageProperty()
     session = SessionProperty
-    
+
     async def __default_handler__(self) -> None:
         self.bot.logger.info(f"({self.topic})<= {ensure_text_len(self.text)}")
 
     @property
     def text(self) -> str:
         return self.content.decode(errors="ignore")
-    
+
     @property
     def seq_id(self) -> Optional[int]:
         if self.response_message is None:

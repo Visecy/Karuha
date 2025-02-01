@@ -27,7 +27,7 @@ async def eval_(session: MessageSession, name: str, user_id: str, text: str) -> 
     user = await session.get_user(user_id, skip_cache=True)
     if not user.staff:
         await session.finish("Permission denied")
-    text = text[text.index(name) + len(name):]
+    text = text[text.index(name) + len(name) :]
     try:
         result = eval(text, {"session": session})
     except:  # noqa: E722
@@ -41,7 +41,7 @@ async def exec_(session: MessageSession, name: str, user_id: str, text: str) -> 
     user = await session.get_user(user_id)
     if not user.staff:
         await session.finish("Permission denied")
-    text = text[text.index(name) + len(name):]
+    text = text[text.index(name) + len(name) :]
     ss = StringIO()
     stdout = sys.stdout
     stderr = sys.stderr
@@ -77,7 +77,7 @@ class DateProtocol(asyncio.SubprocessProtocol):
         # pipe_connection_lost() method: wait until both methods are
         # called.
         self.check_for_exit()
-    
+
     async def wait(self) -> None:
         if self.pipe_closed and self.exited:
             return

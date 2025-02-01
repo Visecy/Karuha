@@ -15,10 +15,7 @@ from ..version import APP_VERSION, LIB_VERSION
 
 
 def get_session(config: ServerConfig, auth: Optional[str] = None) -> ClientSession:
-    headers = {
-        "X-Tinode-APIKey": config.api_key,
-        "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}"
-    }
+    headers = {"X-Tinode-APIKey": config.api_key, "User-Agent": f"KaruhaBot {APP_VERSION}/{LIB_VERSION}"}
     if auth:
         headers["X-Tinode-Auth"] = auth
     return ClientSession(
@@ -34,7 +31,7 @@ async def upload_file(
     path: Union[str, os.PathLike, BinaryIO],
     *,
     tid: Optional[str] = None,
-    filename: Optional[str] = None
+    filename: Optional[str] = None,
 ) -> pb.ServerCtrl:
     data = FormData()
     if tid is not None:
@@ -58,11 +55,7 @@ async def upload_file(
 
 
 async def download_file(
-    session: ClientSession,
-    url: str,
-    path: Union[str, os.PathLike, BinaryIO],
-    *,
-    tid: Optional[str] = None
+    session: ClientSession, url: str, path: Union[str, os.PathLike, BinaryIO], *, tid: Optional[str] = None
 ) -> int:
     if isinstance(path, (BinaryIO, IOBase)):
         path.seek(0)

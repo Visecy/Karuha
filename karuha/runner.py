@@ -131,7 +131,7 @@ async def async_run() -> None:
 
     if not _runner_lock.acquire(blocking=False):
         raise RuntimeError("another runner is running")
-    
+
     tasks: List[asyncio.Future] = []
     server = None
     try:

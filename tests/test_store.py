@@ -6,8 +6,7 @@ import greenback
 from pydantic import ValidationError
 from pydantic_core import from_json
 
-from karuha.store import (DataModel, JsonFileStore, MemoryStore, PrimaryKey,
-                          get_store, is_pk_annotation, T_Data)
+from karuha.store import DataModel, JsonFileStore, MemoryStore, PrimaryKey, get_store, is_pk_annotation, T_Data
 from karuha.utils.invoker import HandlerInvoker
 
 from .utils import TEST_TIMEOUT
@@ -53,10 +52,10 @@ class TestStore(IsolatedAsyncioTestCase):
         self.assertEqual(DataPk2.__primary_key__, ("pk1", "pk2"))
         data = DataPk2(pk1="test1", pk2="test2", content="test")
         self.assertEqual(set(data.get_primary_key()), {"test1", "test2"})
-    
+
     def test_memory_store(self) -> None:
         self.assertIs(MemoryStore.__store_type_var__, T_Data)
-        store = MemoryStore[DataModel]('test')
+        store = MemoryStore[DataModel]("test")
         self.assertIsInstance(store, MemoryStore)
         self.assertIs(store.data_type, DataModel)
 
@@ -102,10 +101,11 @@ class TestStore(IsolatedAsyncioTestCase):
         self.assertFalse(store.discard(data))
         self.assertFalse(store.discard(data1))
         self.assertFalse(store)
-    
+
     def test_store_dependency(self) -> None:
         def store_getter(store: MemoryStore[DataNoPk]) -> MemoryStore:
             return store
+
         s1 = HandlerInvoker().call_handler(store_getter)
         self.assertIsInstance(s1, MemoryStore)
         self.assertEqual(s1.name, "dependency-store_getter-store")
@@ -147,7 +147,7 @@ class TestStore(IsolatedAsyncioTestCase):
         self.assertTrue(store._save_tasks)
         await store.wait_tasks()
         self.assertFalse(store._should_wait())
-        
+
         async with aiofiles.open(store.path, "rb") as f:
             content = await f.read()
         self.assertEqual(content, store.encode_data())
@@ -177,13 +177,13 @@ class TestStore(IsolatedAsyncioTestCase):
         store.save_backend()
         await asyncio.wait_for(store.wait_tasks(), timeout=TEST_TIMEOUT)
         self.assertFalse(store._should_wait())
-    
+
     def test_sync_json_store(self) -> None:
         store = JsonFileSyncStore.get_store(indent=4)
         self.assertIs(store.data_type, DataPk1)
         self.assertFalse(store.enable_async_backend)
         store.clear()
-        
+
         data = DataPk1(pk1="test", content="test")
         store.add(data)
         self.assertFalse(store._save_tasks)

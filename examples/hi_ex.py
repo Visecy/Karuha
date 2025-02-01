@@ -12,7 +12,7 @@ async def hi(session: MessageSession, name: str, user_id: str, argv: List[str]) 
     parser.add_argument("-p", "--in-private", action="store_true", help="send message in private chat")
     ns = parser.parse_args(argv)
     if ns.name:
-        name = ' '.join(ns.name)
+        name = " ".join(ns.name)
     else:
         user = await session.get_user(user_id)
         name = user.fn or "world"

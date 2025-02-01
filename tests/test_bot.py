@@ -4,9 +4,17 @@ from tinode_grpc import pb
 
 from karuha.bot import BotState
 from karuha.config import Bot as BotConfig
-from karuha.event.bot import (CtrlEvent, DataEvent, InfoEvent, LeaveEvent,
-                              LoginEvent, MetaEvent, PresEvent, PublishEvent,
-                              SubscribeEvent)
+from karuha.event.bot import (
+    CtrlEvent,
+    DataEvent,
+    InfoEvent,
+    LeaveEvent,
+    LoginEvent,
+    MetaEvent,
+    PresEvent,
+    PublishEvent,
+    SubscribeEvent,
+)
 from karuha.exception import KaruhaBotError
 from karuha.runner import remove_bot
 
@@ -17,25 +25,14 @@ class TestBot(AsyncBotTestCase):
     bot = BotMock("test_bot", "basic", "123456", log_level="DEBUG")
 
     def test_bot_init(self) -> None:
-        self.assertEqual(
-            self.bot.config,
-            BotConfig(name="test_bot", scheme="basic", secret="123456")
-        )
-        self.assertEqual(
-            self.bot.server_config,
-            bot_mock_server
-        )
+        self.assertEqual(self.bot.config, BotConfig(name="test_bot", scheme="basic", secret="123456"))
+        self.assertEqual(self.bot.server_config, bot_mock_server)
         self.assertIsInstance(self.bot.server, MockServer)
         self.assertEqual(self.bot.state, BotState.running)
 
     async def test_server_message(self) -> None:
         with self.catchEvent(DataEvent) as catcher:
-            message = pb.ServerData(
-                topic="topic_test",
-                content=b"\"Hello world!\"",
-                seq_id=114,
-                from_user_id="uid_test"
-            )
+            message = pb.ServerData(topic="topic_test", content=b'"Hello world!"', seq_id=114, from_user_id="uid_test")
             await self.put_bot_received(pb.ServerMsg(data=message))
             e = await catcher.catch_event()
         self.assertEqual(e.server_message, message)
@@ -50,34 +47,23 @@ class TestBot(AsyncBotTestCase):
         self.assertEqual(e.server_message, message)
 
         with self.catchEvent(MetaEvent) as catcher:
-            message = pb.ServerMeta(
-                id="114",
-                topic="topic_test"
-            )
+            message = pb.ServerMeta(id="114", topic="topic_test")
             await self.put_bot_received(pb.ServerMsg(meta=message))
             e = await catcher.catch_event()
         self.assertEqual(e.server_message, message)
-        
+
         with self.catchEvent(PresEvent) as catcher:
-            message = pb.ServerPres(
-                topic="topic_test",
-                seq_id=114,
-                what=pb.ServerPres.ON
-            )
+            message = pb.ServerPres(topic="topic_test", seq_id=114, what=pb.ServerPres.ON)
             await self.put_bot_received(pb.ServerMsg(pres=message))
             e = await catcher.catch_event()
         self.assertEqual(e.server_message, message)
 
         with self.catchEvent(InfoEvent) as catcher:
-            message = pb.ServerInfo(
-                topic="topic_test",
-                from_user_id="uid_test",
-                seq_id=114
-            )
+            message = pb.ServerInfo(topic="topic_test", from_user_id="uid_test", seq_id=114)
             await self.put_bot_received(pb.ServerMsg(info=message))
             e = await catcher.catch_event()
         self.assertEqual(e.server_message, message)
-    
+
     async def test_client_message(self) -> None:
         bot = self.bot
 
@@ -113,7 +99,7 @@ class TestBot(AsyncBotTestCase):
             e = await catcher.catch_event()
             self.assertEqual(e.client_message, sub_msg_inner)
             self.assertIsNotNone(e.response_message)
-        
+
         sub_task = asyncio.create_task(bot.subscribe("topic_test"))
         sub_msg = await self.get_bot_sent()
         sub_msg_inner = sub_msg.sub
@@ -123,13 +109,13 @@ class TestBot(AsyncBotTestCase):
         self.assertEqual(tid, sub_msg_inner.id)
         with self.assertRaises(KaruhaBotError):
             await asyncio.wait_for(sub_task, TEST_TIMEOUT)
-        
+
         pub_task = asyncio.create_task(bot.publish("topic_test", "Hello world!"))
         pub_msg = await self.get_bot_sent()
         pub_msg_inner = pub_msg.pub
         self.assertIsInstance(pub_msg_inner, pb.ClientPub)
         self.assertEqual(pub_msg_inner.topic, "topic_test")
-        self.assertEqual(pub_msg_inner.content, b"\"Hello world!\"")
+        self.assertEqual(pub_msg_inner.content, b'"Hello world!"')
         tid = self.confirm_message(seq=114)
         self.assertEqual(tid, pub_msg_inner.id)
         with self.catchEvent(PublishEvent) as catcher:
@@ -137,7 +123,7 @@ class TestBot(AsyncBotTestCase):
             e = await catcher.catch_event()
             self.assertIsNotNone(e.response_message)
             self.assertEqual(e.seq_id, 114)
-        
+
         leave_task = asyncio.create_task(bot.leave("topic_test"))
         leave_msg = await self.get_bot_sent()
         leave_msg_inner = leave_msg.leave
@@ -149,12 +135,12 @@ class TestBot(AsyncBotTestCase):
             await asyncio.wait_for(leave_task, TEST_TIMEOUT)
             e = await catcher.catch_event()
             self.assertIsNotNone(e.response_message)
-        
+
     async def test_restart(self) -> None:
         self.bot.restart()
         self.assertEqual(self.bot.state, BotState.restarting)
         await self.bot.wait_state(BotState.running)
-    
+
     @classmethod
     def tearDownClass(cls) -> None:
         remove_bot(cls.bot)

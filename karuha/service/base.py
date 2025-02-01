@@ -11,11 +11,12 @@ class BaseService(HandlerInvokerDependency):
     """
     Base class for all services.
     """
+
     __slots__ = ["bot"]
 
     def __init__(self, bot: Bot, /) -> None:
         self.bot = bot
-    
+
     @classmethod
     def resolve_dependency(cls, invoker: Union[Message, BotEvent], param: Parameter, **kwds: Any) -> Any:
         if not hasattr(invoker, "bot"):

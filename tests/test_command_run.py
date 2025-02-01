@@ -81,7 +81,7 @@ class TestCommandRun(AsyncBotTestCase):
         with self.catchEvent(CommandCompleteEvent) as catcher:
             e = await catcher.catch_event()
         self.assertEqual(e.result, 1)
-    
+
     async def test_on_rule(self) -> None:
         set_collection(self.command_collection)
         await self.put_bot_content(to_json(Mention(text="@1", val="usr_1").to_drafty()), from_user_id="usr_2")

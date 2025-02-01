@@ -1,5 +1,4 @@
-from typing import (FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union,
-                    overload)
+from typing import FrozenSet, Iterable, List, Optional, Tuple, TypeVar, Union, overload
 from typing_extensions import deprecated
 
 from pydantic import BaseModel
@@ -11,12 +10,17 @@ from ..event.bot import MetaEvent
 from ..event.message import MessageEvent
 from ..event.sys import SystemStartEvent
 from ..logger import logger
-from ..store import (DataModel, LruStore, MemoryStore, MessageBoundDataModel,
-                     PrimaryKey, TopicBoundDataModel, UserBoundDataModel)
+from ..store import (
+    DataModel,
+    LruStore,
+    MemoryStore,
+    MessageBoundDataModel,
+    PrimaryKey,
+    TopicBoundDataModel,
+    UserBoundDataModel,
+)
 from ..text import Message
-from .meta import (BaseDesc, BaseSubscription, CommonDesc,
-                   GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo,
-                   UserDesc)
+from .meta import BaseDesc, BaseSubscription, CommonDesc, GroupTopicDesc, P2PTopicDesc, Subscription, TopicInfo, UserDesc
 from .model import Cred
 from .sub import has_sub
 
@@ -30,6 +34,7 @@ UserCreds = List[Cred]
 def _update_model(raw: T, model: T) -> T: ...
 @overload
 def _update_model(raw: Optional[T], model: Optional[T]) -> Optional[T]: ...
+
 
 def _update_model(raw: Optional[T], model: Optional[T]) -> Optional[T]:  # noqa: E302
     if raw is None:
@@ -157,17 +162,10 @@ def try_get_group_desc(bot: Bot, /, topic_id: str) -> Optional[BaseDesc]:
     return desc
 
 
-async def get_group_desc(
-    bot: Bot, /, topic_id: str, *, skip_cache: bool = False
-) -> BaseDesc:
+async def get_group_desc(bot: Bot, /, topic_id: str, *, skip_cache: bool = False) -> BaseDesc:
     assert topic_id.startswith("grp"), "topic_id must be a group topic"
     topic = group_cache.get(topic_id)
-    if (
-        topic is not None
-        and topic.desc is not None
-        and isinstance(topic.desc, BaseDesc)
-        and not skip_cache
-    ):
+    if topic is not None and topic.desc is not None and isinstance(topic.desc, BaseDesc) and not skip_cache:
         return topic.desc
     _, topic = await bot.get(topic_id, "desc")
     assert topic is not None
@@ -188,12 +186,7 @@ def try_get_p2p_desc(bot: Bot, /, topic_id: str) -> Optional[TopicInfo]:
 
 async def _get_p2p_topic(bot: Bot, /, topic_id: str, *, skip_cache: bool = False) -> TopicInfo:
     topic = group_cache.get(topic_id)
-    if (
-        topic is not None
-        and topic.desc is not None
-        and isinstance(topic.desc, TopicInfo)
-        and not skip_cache
-    ):
+    if topic is not None and topic.desc is not None and isinstance(topic.desc, TopicInfo) and not skip_cache:
         return topic.desc
     _, topic = await bot.get(topic_id, "desc")
     assert topic is not None
@@ -248,19 +241,13 @@ async def get_sub(
 
 def try_get_topic_sub(bot: Bot, /, topic_id: str) -> List[Tuple[str, BaseSubscription]]:
     assert topic_id != "me", "topic_id must not be 'me'"
-    return [
-        (c.user_id, c.sub) for c in subscription_cache.values() if c.topic == topic_id
-    ]
+    return [(c.user_id, c.sub) for c in subscription_cache.values() if c.topic == topic_id]
 
 
 @deprecated("use `get_user_list` instead")
-async def get_topic_sub(
-    bot: Bot, /, topic_id: str, *, ensure_all: bool = True
-) -> List[Tuple[str, BaseSubscription]]:
+async def get_topic_sub(bot: Bot, /, topic_id: str, *, ensure_all: bool = True) -> List[Tuple[str, BaseSubscription]]:
     assert topic_id != "me", "topic_id must not be 'me'"
-    sub = [
-        (c.user_id, c.sub) for c in subscription_cache.values() if c.topic == topic_id
-    ]
+    sub = [(c.user_id, c.sub) for c in subscription_cache.values() if c.topic == topic_id]
     if sub and not ensure_all:
         return sub
     _, sub_meta = await bot.get(topic_id, "sub")
@@ -273,9 +260,7 @@ def try_get_my_sub(bot: Bot, /) -> List[Tuple[str, BaseSubscription]]:
 
 
 @deprecated("Use `get_topic_list` instead")
-async def get_my_sub(
-    bot: Bot, /, *, ensure_all: bool = True
-) -> List[Tuple[str, BaseSubscription]]:
+async def get_my_sub(bot: Bot, /, *, ensure_all: bool = True) -> List[Tuple[str, BaseSubscription]]:
     sub = [(c.topic, c.sub) for c in subscription_cache.values() if c.user_id == bot.uid]
     if sub and not ensure_all:
         return sub
@@ -386,10 +371,7 @@ def handle_meta(event: MetaEvent) -> None:
         assert topic == "me" or topic.startswith("usr")
         update_user_cache(
             bot_user_id if topic == "me" else topic,
-            cred=[
-                {"method": c.method, "value": c.value, "done": c.done}
-                for c in meta.cred
-            ],  # type: ignore
+            cred=[{"method": c.method, "value": c.value, "done": c.done} for c in meta.cred],  # type: ignore
         )
 
 

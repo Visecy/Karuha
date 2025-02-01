@@ -57,7 +57,7 @@ class TestText(TestCase):
             example1.txt,
             "this is bold, code and italic, strike combined bold and italic an url: "
             "https://www.example.com/abc#fragment and another www.tinode.co this "
-            "is a @mention and a #hashtag in a string second #hashtag"
+            "is a @mention and a #hashtag in a string second #hashtag",
         )
         t = PlainText("Hello world!\n")
         self.assertEqual(str(t), "Hello world!\n")
@@ -70,7 +70,7 @@ class TestText(TestCase):
         empty = TextChain()
         self.assertEqual(len(empty), 0)
         self.assertEqual(str(empty), "")
-        self.assertEqual(empty.to_drafty(), Drafty.from_str(' '))
+        self.assertEqual(empty.to_drafty(), Drafty.from_str(" "))
 
     def test_span(self) -> None:
         spans, attachments = eval_spans(example1)
@@ -109,58 +109,46 @@ class TestText(TestCase):
         self.assertEqual(message.raw_text, "test")
         self.assertEqual(message.content, b"test")
 
-        message = new_test_message(b"\"test\"")
+        message = new_test_message(b'"test"')
         self.assertIsInstance(message.text, PlainText)
         self.assertEqual(message.text, PlainText("test"))
         self.assertEqual(message.raw_text, "test")
 
-        message = new_test_message(b"{\"txt\": \"test\"}")
+        message = new_test_message(b'{"txt": "test"}')
         self.assertIsInstance(message.text, PlainText)
         self.assertEqual(message.text, PlainText("test"))
         self.assertIsInstance(message.raw_text, Drafty)
         self.assertEqual(message.raw_text, Drafty(txt="test"))
 
-        message = new_test_message(
-            b"{\"txt\": \"test\", \"fmt\": [{\"at\": 0, \"len\": 4, \"tp\": \"ST\"}]}"
-        )
+        message = new_test_message(b'{"txt": "test", "fmt": [{"at": 0, "len": 4, "tp": "ST"}]}')
         assert isinstance(message.text, Bold)
         self.assertEqual(message.text.content, PlainText("test"))
         self.assertEqual(
             message.raw_text,
-            Drafty(txt="test", fmt=[{"at": 0, "len": 4, "tp": "ST"}])  # type: ignore
+            Drafty(txt="test", fmt=[{"at": 0, "len": 4, "tp": "ST"}]),  # type: ignore
         )
 
-        message = new_test_message(
-            b"{\"txt\": \"test\", \"fmt\": [{\"at\": 0, \"len\": -1, \"tp\": \"ST\"}]}"
-        )
+        message = new_test_message(b'{"txt": "test", "fmt": [{"at": 0, "len": -1, "tp": "ST"}]}')
         self.assertIsInstance(message.text, str)
         self.assertIsInstance(message.raw_text, str)
 
-        message = new_test_message(
-            b"{\"txt\": \"hello world\", \"fmt\": [{\"at\": 6, \"len\": 15, \"tp\": \"ST\"}]}"
-        )
+        message = new_test_message(b'{"txt": "hello world", "fmt": [{"at": 6, "len": 15, "tp": "ST"}]}')
         assert isinstance(message.text, TextChain)
         world = message.text[1]
         assert isinstance(world, Bold)
         self.assertEqual(world.content, PlainText("world"))
         self.assertIsInstance(message.raw_text, Drafty)
 
-        message = new_test_message(
-            b"{\"txt\": \"test\", \"fmt\": [{\"at\": 0, \"len\": 4}]}"
-        )
+        message = new_test_message(b'{"txt": "test", "fmt": [{"at": 0, "len": 4}]}')
         assert isinstance(message.text, Hidden)
         self.assertEqual(message.text.content, PlainText("test"))
         self.assertIsInstance(message.raw_text, Drafty)
 
     def test_message_event(self) -> None:
-        ev = MessageEvent(
-            bot_mock,
-            "", "", 0, {},
-            b"\"\""
-        )
+        ev = MessageEvent(bot_mock, "", "", 0, {}, b'""')
         self.assertEqual(ev.text, "")
         self.assertEqual(ev.raw_text, "")
-        self.assertEqual(ev.content, b"\"\"")
+        self.assertEqual(ev.content, b'""')
 
     def test_drafty_ops(self) -> None:
         df = Drafty.from_str("Hello")
@@ -172,11 +160,11 @@ class TestText(TestCase):
     def test_file(self) -> None:
         f = File(
             name="test.txt",
-            raw_val=b"test"  # type: ignore
+            raw_val=b"test",  # type: ignore
         )
         self.assertEqual(f.val, "dGVzdA==")
         self.assertEqual(f.mime, "text/plain")
-        
+
         df = Drafty.model_validate(
             {
                 "ent": [
@@ -195,19 +183,13 @@ class TestText(TestCase):
         )
         f = drafty2text(df)
         self.assertIsInstance(f, File)
-    
+
     def test_quote(self) -> None:
         df = Drafty.model_validate(
             {
                 "txt": "user quote textuser text",
-                "fmt": [
-                    {"len": 4},
-                    {"at": 4, "len": 1, "tp": "BR"},
-                    {"len": 15, "tp": "QQ"}
-                ],
-                "ent": [
-                    {"tp": "MN", "data": {"val": "user_id"}}
-                ]
+                "fmt": [{"len": 4}, {"at": 4, "len": 1, "tp": "BR"}, {"len": 15, "tp": "QQ"}],
+                "ent": [{"tp": "MN", "data": {"val": "user_id"}}],
             }
         )
         t = drafty2text(df)
@@ -219,7 +201,7 @@ class TestText(TestCase):
         self.assertEqual(qq.content[0], Mention(text="user", val="user_id"))
         self.assertEqual(qq.content[1], PlainText("\nquote text"))
         self.assertEqual(t[1], PlainText("user text"))
-    
+
     def test_split(self) -> None:
         txt = PlainText("Hello world! Hello world!")
         self.assertEqual([str(i) for i in txt.split(maxsplit=1)], "Hello world! Hello world!".split(maxsplit=1))

@@ -30,37 +30,34 @@ class Event(HandlerInvoker):
 
     __handlers__: ClassVar[List[Callable[..., Any]]] = []
     __event_lock__: ClassVar[Lock]
-    
+
     @classmethod
     def add_handler(cls, handler: Callable[..., Any]) -> None:
         cls.__handlers__.append(handler)
-    
+
     @classmethod
     def remove_handler(cls, handler: Callable[..., Any]) -> None:
         cls.__handlers__.remove(handler)
-    
+
     @classmethod  # type: ignore
     def new(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
         event = cls(*args, **kwds)
         event.trigger(return_exceptions=True)
         return event
-    
+
     @classmethod  # type: ignore
     async def new_and_wait(cls: Callable[P, Self], *args: P.args, **kwds: P.kwargs) -> Self:  # type: ignore
         event = cls(*args, **kwds)
         await event.trigger()
         return event
-    
+
     def call_handler(self, handler: Callable[..., Any]) -> Awaitable:
         return asyncio.create_task(handler_runner(self, logger, handler))
-    
+
     def trigger(self, *, return_exceptions: bool = False) -> "asyncio.Future[list]":
         logger.debug(f"trigger event {self.__class__.__name__}")
-        return asyncio.gather(
-            *(self.call_handler(i) for i in self.__handlers__),
-            return_exceptions=return_exceptions
-        )
-    
+        return asyncio.gather(*(self.call_handler(i) for i in self.__handlers__), return_exceptions=return_exceptions)
+
     @classmethod
     def get_lock(cls) -> Lock:
         loop = asyncio.get_running_loop()
@@ -69,7 +66,7 @@ class Event(HandlerInvoker):
             lock = Lock()
             cls.__event_lock__ = lock
         return lock
-    
+
     def __init_subclass__(cls, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)
         if "__handlers__" not in cls.__dict__:

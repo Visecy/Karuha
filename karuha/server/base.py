@@ -35,30 +35,25 @@ class BaseServer(ABC):
         self.config = config
         self.logger = logger or global_logger
         self._running = False
-    
+
     async def start(self) -> None:
         if self._running:
             self.logger.warning(f"server {self.type} already running")
             return
         self._running = True
-    
+
     async def stop(self) -> None:
         if not self._running:
             self.logger.warning(f"server {self.type} already stopped")
             return
         self._running = False
-    
+
     @abstractmethod
     async def send(self, msg: pb.ClientMsg) -> None:
         raise NotImplementedError
-    
+
     async def upload(
-        self,
-        path: Union[str, os.PathLike, BinaryIO],
-        auth: str,
-        *,
-        tid: Optional[str] = None,
-        filename: Optional[str] = None
+        self, path: Union[str, os.PathLike, BinaryIO], auth: str, *, tid: Optional[str] = None, filename: Optional[str] = None
     ) -> Dict[str, Any]:
         url = self.UPLOAD_ROUTE
         retry = self.config.retry or 1
@@ -81,12 +76,7 @@ class BaseServer(ABC):
                 retry -= 1
 
     async def download(
-        self,
-        url: str,
-        path: Union[str, os.PathLike, BinaryIO],
-        auth: str,
-        *,
-        tid: Optional[str] = None
+        self, url: str, path: Union[str, os.PathLike, BinaryIO], auth: str, *, tid: Optional[str] = None
     ) -> int:
         retry = self.config.retry or 1
         async with get_session(self.config, auth) as session:
@@ -105,35 +95,35 @@ class BaseServer(ABC):
                     self.logger.error(err_text, exc_info=True)
                     raise KaruhaServerError(err_text) from e
                 retry -= 1
-    
+
     @property
     def running(self) -> bool:
         return self._running
-    
+
     def _ensure_running(self) -> None:
         if not self._running:
             raise self.exc_type("server not running")
-    
+
     async def __aenter__(self) -> Self:
         await self.start()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.stop()
-    
+
     def __aiter__(self) -> Self:
         return self
-    
+
     @abstractmethod
     async def __anext__(self) -> pb.ServerMsg:
         raise NotImplementedError
-    
+
     def __init_subclass__(cls, *, type: Optional[str] = None, **kwds: Any) -> None:
         if type is not None:
             cls.type = type
             _server_types[type] = cls
         return super().__init_subclass__(**kwds)
-    
+
     def __repr__(self) -> str:
         if self._running:
             return f"<karuha.server {self.type} {self.config} running>"

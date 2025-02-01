@@ -22,7 +22,7 @@ from setuptools import setup, find_packages
 description = long_description = "A simple Tinode chatbot framework."
 
 try:
-    with open("README.md", encoding='utf-8') as f:
+    with open("README.md", encoding="utf-8") as f:
         long_description = f.read()
 except OSError:
     warnings.warn("Miss file 'README.md', using default description.", ResourceWarning)
@@ -39,14 +39,12 @@ setup(
     version=version,
     description=description,
     long_description=long_description,
-    long_description_content_type='text/markdown',
-    
+    long_description_content_type="text/markdown",
     author="Visecy",
     author_email="Visecy@visecy.org",
     maintainer="Ovizro",
     maintainer_email="Ovizro@visecy.org",
     license="Apache 2.0",
-
     url="https://github.com/Visecy/Karuha",
     packages=find_packages(),
     python_requires=">=3.8",
@@ -57,9 +55,8 @@ setup(
         "pydantic>=2.9",
         "aiohttp>=3.7",
         "aiofiles>=23.1",
-        "puremagic>=1.20"
+        "puremagic>=1.20",
     ],
-
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
@@ -72,5 +69,5 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Communications :: Chat",
-    ]
+    ],
 )

@@ -1,8 +1,7 @@
 import asyncio
 import sys
 
-from aiohttp import (ClientConnectionError, WebSocketError,
-                     WSServerHandshakeError)
+from aiohttp import ClientConnectionError, WebSocketError, WSServerHandshakeError
 from pydantic_core import from_json, to_json
 from tinode_grpc import pb
 
@@ -21,7 +20,7 @@ class WebsocketServer(BaseServer, type="websocket"):
         await super().start()
         if is_running:  # pragma: no cover
             return
-        
+
         try:
             self.session = get_session(self.config)
             self.request = await self.session._ws_connect(self.WS_ROUTE)
@@ -39,12 +38,12 @@ class WebsocketServer(BaseServer, type="websocket"):
         await super().stop()
         if not is_running:  # pragma: no cover
             return
-        
+
         if hasattr(self, "request"):
             await self.request.close()
         if hasattr(self, "session"):
             await self.session.close()
-    
+
     async def send(self, msg: pb.ClientMsg) -> None:
         self._ensure_running()
         data = msg2dict(msg)
@@ -54,7 +53,7 @@ class WebsocketServer(BaseServer, type="websocket"):
         except WebSocketError as e:  # pragma: no cover
             self.logger.error("websocket send error", exc_info=sys.exc_info())
             raise self.exc_type("websocket send error") from e
-    
+
     async def __anext__(self) -> pb.ServerMsg:
         self._ensure_running()
         try:

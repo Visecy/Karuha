@@ -13,13 +13,13 @@ class _ContextHelper(AbstractContextManager):
     def __enter__(self) -> Self:
         self.activate()
         return self
-    
+
     def __exit__(self, exc_type: Type[BaseException], exc_ins: BaseException, traceback: TracebackType) -> None:
         self.deactivate()
-    
+
     def activate(self) -> None:
         raise NotImplementedError
-    
+
     def deactivate(self) -> None:
         raise NotImplementedError
 

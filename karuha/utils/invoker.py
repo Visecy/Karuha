@@ -42,19 +42,15 @@ class AbstractHandlerInvoker(ABC):
             "invoker": self,
             **kwds,
         }
-        config: Optional[ConfigDict] = (
-            None if _type_has_config(ann) else {"arbitrary_types_allowed": True}
-        )
+        config: Optional[ConfigDict] = None if _type_has_config(ann) else {"arbitrary_types_allowed": True}
         try:
             return TypeAdapter(ann, config=config).validate_python(val, context=context)
         except Exception as e:
-            raise KaruhaHandlerInvokerError(
-                f"failed to validate dependency '{param.name}':\n{e}"
-            ) from e
+            raise KaruhaHandlerInvokerError(f"failed to validate dependency '{param.name}':\n{e}") from e
 
     def resolve_missing_dependencies(
         self, missing: Dict[Parameter, KaruhaHandlerInvokerError], /, **kwds: Any
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Dict[str, Any], Dict[Parameter, Exception]]:
         result = {}
         still_missing = {}
 
@@ -69,9 +65,7 @@ class AbstractHandlerInvoker(ABC):
             except KaruhaHandlerInvokerError as e:
                 still_missing[param] = e
             except Exception as e:  # pragma: no cover
-                err = KaruhaHandlerInvokerError(
-                    f"failed to resolve dependency '{param.name}':\n{e}"
-                )
+                err = KaruhaHandlerInvokerError(f"failed to resolve dependency '{param.name}':\n{e}")
                 err.__suppress_context__ = True
                 err.__cause__ = e
                 still_missing[param] = err
@@ -82,12 +76,12 @@ class AbstractHandlerInvoker(ABC):
                 result[param.name] = param.default
                 still_missing.pop(param)
 
-        return result
+        return result, still_missing
 
     def extract_handler_params(self, sig: Signature, *, name: Optional[str] = None) -> Tuple[list, Dict[str, Any]]:
         dependencies = {}
         missing = {}
-        kwds = {"signature": sig, "identifier": name}
+        kwds = {"signature": sig, "identifier": name, "extra_data": {}}
         for param in sig.parameters.values():
             try:
                 val = self.get_dependency(param, **kwds)
@@ -96,16 +90,15 @@ class AbstractHandlerInvoker(ABC):
             else:
                 dependencies[param.name] = val
 
-        dependencies.update(self.resolve_missing_dependencies(missing, **kwds))
-        if len(dependencies) != len(sig.parameters):
+        result, missing = self.resolve_missing_dependencies(missing, **kwds)
+        if missing:
             raise KaruhaHandlerInvokerError(
-                f"Missing dependencies: (extra data: {kwds})\n" +
-                ''.join(
-                    f"\t{param.name}: {error}\t"
-                    for param, error in missing.items()
-                    if param.name not in dependencies
-                )
+                f"Missing dependencies: (extra data: {kwds})\n"
+                + "".join(f"\t{param.name}: {error}\t" for param, error in missing.items() if param.name not in dependencies)
             )
+        dependencies.update(result)
+        if len(dependencies) != len(sig.parameters):
+            raise KaruhaHandlerInvokerError("bad dependency resolution")
         args = []
         kwargs = {}
         for param in sig.parameters.values():
@@ -133,14 +126,14 @@ class HandlerInvokerDependency(ABC):
     @abstractmethod
     def resolve_dependency(cls, /, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
         raise NotImplementedError
-    
+
     @classmethod
     def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
         def _validate_dependency(val: Any, info: core_schema.ValidationInfo) -> Any:
             if val is not EMPTY:
                 return val
             return cls.resolve_dependency(**(info.context or {}))
-        
+
         if source is cls or get_origin(source) is cls:
             return core_schema.with_info_plain_validator_function(_validate_dependency)
         return core_schema.with_info_before_validator_function(_validate_dependency, handler(source))
@@ -186,7 +179,7 @@ class HandlerInvoker(AbstractHandlerInvoker):
     @classmethod
     def register_dependency(cls, name: str, getter: Callable[[Self, Parameter], Any]) -> None:
         cls.__dependencies__[name] = getter
-    
+
     def __init_subclass__(cls, **kwds: Any) -> None:
         cls.__dependencies__ = cls.__dependencies__.copy()
         for name, annotation in cls.__annotations__.items():
@@ -227,4 +220,3 @@ class ChainHandlerInvoker(AbstractHandlerInvoker):
             else:
                 return self.validate_dependency(param, val, **kwds)
         raise KaruhaHandlerInvokerError(f"failed to get dependency '{param.name}'")
-    

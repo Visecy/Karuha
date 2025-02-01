@@ -14,7 +14,7 @@ ExtendType = Literal["AU", "BN", "EX", "FM", "HT", "IM", "LN", "MN", "RW", "VC",
 
 
 class DraftyFormat(BaseModel, frozen=True):
-    at: int = 0     # -1 means not applying any styling to text.
+    at: int = 0  # -1 means not applying any styling to text.
     len: NonNegativeInt = 0
     key: NonNegativeInt = 0
     tp: Optional[InlineType] = None
@@ -34,7 +34,7 @@ class DraftyExtend(BaseModel, frozen=True):
 
 
 class Drafty(BaseModel):
-    txt: str = ''
+    txt: str = ""
     fmt: List[DraftyFormat] = []
     ent: List[DraftyExtend] = []
 
@@ -46,14 +46,14 @@ class Drafty(BaseModel):
         obj = self.model_copy()
         obj += other
         return obj
-    
+
     def __radd__(self, other: str) -> Self:
         if not isinstance(other, str):  # pragma: no cover
             return NotImplemented
         obj = self.model_copy()
         obj.txt = other + obj.txt
         return obj
-    
+
     def __iadd__(self, other: Union[str, "Drafty"]) -> Self:
         if isinstance(other, str):
             self.txt += other
@@ -77,13 +77,11 @@ class Drafty(BaseModel):
                 self.ent.append(e)
                 continue
             repeat[i] = j - i
-        self.fmt.extend(
-            v.rebase(offset, repeat.get(i, k_base)) for i, v in enumerate(other.fmt)
-        )
+        self.fmt.extend(v.rebase(offset, repeat.get(i, k_base)) for i, v in enumerate(other.fmt))
         return self
 
     def __repr__(self) -> str:
         return f"<drafty message {self.txt!r}>"
-    
+
     def __str__(self) -> str:
         return self.txt

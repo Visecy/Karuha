@@ -23,7 +23,7 @@ class DynamicGatheringFuture(asyncio.Future):
                 done_futs.append(child)
             else:
                 child.add_done_callback(self._done_callback)
-        
+
         for child in done_futs:
             self._done_callback(child)
 
@@ -42,7 +42,7 @@ class DynamicGatheringFuture(asyncio.Future):
             # warning.
             fut._log_destroy_pending = False  # type: ignore[attr-defined]
         self.add_task(fut)
-    
+
     def cancel(self, msg=None) -> bool:  # pragma: no cover
         if self.done():
             return False
@@ -93,9 +93,7 @@ class DynamicGatheringFuture(asyncio.Future):
                     # Check if 'fut' is cancelled first, as
                     # 'fut.exception()' will *raise* a CancelledError
                     # instead of returning it.
-                    res = asyncio.CancelledError(
-                        getattr(fut, "_cancel_message", '') or ''
-                    )
+                    res = asyncio.CancelledError(getattr(fut, "_cancel_message", "") or "")
                 else:
                     res = fut.exception()
                     if res is None:

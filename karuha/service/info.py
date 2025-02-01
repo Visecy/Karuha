@@ -85,9 +85,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
             await bot.set(
                 id,
                 desc=set_desc,
-                extra=pb.ClientExtra(
-                    attachments=attachments, auth_level=pb.ROOT if as_root else None
-                ),
+                extra=pb.ClientExtra(attachments=attachments, auth_level=pb.ROOT if as_root else None),
             )
 
     async def set_public(
@@ -106,9 +104,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
             public.update(data)
         else:
             public = data
-        return await self.set_desc(
-            info, public=public, as_root=as_root, **kwds
-        )
+        return await self.set_desc(info, public=public, as_root=as_root, **kwds)
 
     async def set_trusted(
         self,
@@ -126,9 +122,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
             trusted.update(data)
         else:
             trusted = data
-        return await self.set_desc(
-            info, trusted=trusted, as_root=as_root, **kwds
-        )
+        return await self.set_desc(info, trusted=trusted, as_root=as_root, **kwds)
 
     async def set_private(
         self,
@@ -146,9 +140,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
             private.update(data)
         else:
             private = data
-        return await self.set_desc(
-            info, private=private, as_root=as_root, **kwds
-        )
+        return await self.set_desc(info, private=private, as_root=as_root, **kwds)
 
     async def set_fn(self, info: Union[str, T_Info], /, fn: str, **kwds: Any) -> None:
         return await self.set_public(info, {"fn": fn}, update=True, **kwds)
@@ -158,7 +150,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
 
     async def set_comment(self, info: Union[str, T_Info], /, comment: str, **kwds: Any) -> None:
         return await self.set_private(info, {"comment": comment}, update=True, **kwds)
-    
+
     @asynccontextmanager
     async def _run_proxy_bot(self, use_proxy: bool, proxy_bot: Union[str, Bot, None]) -> AsyncGenerator[Bot, None]:
         if not use_proxy or proxy_bot is None:
@@ -174,4 +166,5 @@ class InfoService(_BaseInfoService[BaseInfo]):
     """
     Service to work with user and group descriptions.
     """
+
     __slots__ = []

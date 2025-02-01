@@ -14,14 +14,8 @@ from .utils import AsyncBotTestCase
 
 class TestData(AsyncBotTestCase):
     def test_access(self) -> None:
-        self.assertEqual(
-            AccessPermission.model_validate("N"),
-            AccessPermission()
-        )
-        self.assertEqual(
-            AccessPermission.model_validate(""),
-            AccessPermission()
-        )
+        self.assertEqual(AccessPermission.model_validate("N"), AccessPermission())
+        self.assertEqual(AccessPermission.model_validate(""), AccessPermission())
         self.assertEqual(
             AccessPermission.model_validate("JRWPASDO"),
             AccessPermission(
@@ -33,7 +27,7 @@ class TestData(AsyncBotTestCase):
                 sharing=True,
                 delete=True,
                 owner=True,
-            )
+            ),
         )
         self.assertEqual(
             AccessPermission.model_validate("RWRWJ"),
@@ -41,7 +35,7 @@ class TestData(AsyncBotTestCase):
                 join=True,
                 read=True,
                 write=True,
-            )
+            ),
         )
         with self.assertRaises(ValueError):
             AccessPermission.model_validate("NJRW")
@@ -51,17 +45,14 @@ class TestData(AsyncBotTestCase):
                 read=True,
                 write=True,
             ).model_dump(),
-            'JRW'
+            "JRW",
         )
-        self.assertEqual(
-            AccessPermission().model_dump(),
-            "N"
-        )
+        self.assertEqual(AccessPermission().model_dump(), "N")
 
     def test_cache(self) -> None:
         base_desc = BaseDesc(
-            public=b"{\"fn\": \"test\"}",  # type: ignore
-            trusted=None
+            public=b'{"fn": "test"}',  # type: ignore
+            trusted=None,
         )
         cache = user_cache.get("user")
         self.assertIsNone(cache)
@@ -73,8 +64,8 @@ class TestData(AsyncBotTestCase):
         desc = UserDesc(
             created=1709214504076,  # type: ignore
             updated=1709466962755,  # type: ignore
-            public=b"{\"fn\": \"user\"}",  # type: ignore
-            trusted=b"{\"staff\": true}"  # type: ignore
+            public=b'{"fn": "user"}',  # type: ignore
+            trusted=b'{"staff": true}',  # type: ignore
         )
         update_user_cache(user_id="user", desc=desc)
         cache = user_cache.get("user")
@@ -99,18 +90,12 @@ class TestData(AsyncBotTestCase):
                 created_at=1709214504076,
                 updated_at=1709466962755,
                 touched_at=1709466962755,
-                defacs=pb.DefaultAcsMode(
-                    auth="JRWPAS",
-                    anon="N"
-                ),
-                acs=pb.AccessMode(
-                    want="JPS",
-                    given="JPS"
-                ),
+                defacs=pb.DefaultAcsMode(auth="JRWPAS", anon="N"),
+                acs=pb.AccessMode(want="JPS", given="JPS"),
                 public=to_json({"note": "test note"}),
                 trusted=to_json({"staff": True}),
-                state="ok"
-            )
+                state="ok",
+            ),
         )
         await self.put_bot_received(pb.ServerMsg(meta=meta))
         user = await self.wait_for(task)
@@ -132,22 +117,16 @@ class TestData(AsyncBotTestCase):
             sub=[
                 pb.TopicSub(
                     updated_at=1707738410676,
-                    acs=pb.AccessMode(
-                        want="JRWPA",
-                        given="JRWPA"
-                    ),
+                    acs=pb.AccessMode(want="JRWPA", given="JRWPA"),
                     read_id=2,
                     recv_id=2,
                     topic="usr_test_1",
                     touched_at=1707738410960,
-                    seq_id=2
+                    seq_id=2,
                 ),
                 pb.TopicSub(
                     updated_at=1708326544978,
-                    acs=pb.AccessMode(
-                        want="JRWPS",
-                        given="JRWPASD"
-                    ),
+                    acs=pb.AccessMode(want="JRWPS", given="JRWPASD"),
                     read_id=70,
                     recv_id=70,
                     public=to_json({"fn": "Test Group"}),
@@ -155,9 +134,9 @@ class TestData(AsyncBotTestCase):
                     topic="grp_test_1",
                     touched_at=1708326545004,
                     seq_id=70,
-                    del_id=3
-                )
-            ]
+                    del_id=3,
+                ),
+            ],
         )
         await self.put_bot_received(pb.ServerMsg(meta=meta))
         subs = await self.wait_for(task)
@@ -172,9 +151,7 @@ class TestData(AsyncBotTestCase):
                 assert sub.acs
                 self.assertEqual(
                     sub.acs.want,
-                    AccessPermission(
-                        join=True, read=True, write=True, presence=True, sharing=True
-                    ),
+                    AccessPermission(join=True, read=True, write=True, presence=True, sharing=True),
                 )
             elif sub.topic == "usr_test_1":
                 self.assertIsNone(sub.public)
@@ -182,7 +159,7 @@ class TestData(AsyncBotTestCase):
                 self.assertEqual(sub.recv, 2)
             else:
                 assert False, f"unexpected topic: {sub.topic}"
-        
+
         user = await get_user(self.bot, "usr_test_1")
         self.assertIsInstance(user, BaseUser)
         self.assertEqual(user.user_id, "usr_test_1")
@@ -207,17 +184,13 @@ class TestData(AsyncBotTestCase):
         self.assertIsNone(topic.note)
         self.assertIsNone(topic.comment)
         # self.assertFalse(topic.verified)
-    
+
     async def test_tag_and_cred(self) -> None:
         task = asyncio.create_task(get_user_tags(self.bot))
         get_msg = await self.get_bot_sent()
         assert get_msg.get
         get_msg = get_msg.get
-        meta = pb.ServerMeta(
-            id=get_msg.id,
-            topic="me",
-            tags=["basic:test"]
-        )
+        meta = pb.ServerMeta(id=get_msg.id, topic="me", tags=["basic:test"])
         await self.put_bot_received(pb.ServerMsg(meta=meta))
         tags = await self.wait_for(task)
         self.assertEqual(tags, ["basic:test"])
@@ -226,22 +199,15 @@ class TestData(AsyncBotTestCase):
         get_msg = await self.get_bot_sent()
         assert get_msg.get
         get_msg = get_msg.get
-        meta = pb.ServerMeta(
-            id=get_msg.id,
-            topic="me",
-            cred=[pb.ServerCred(
-                method="email",
-                value="test@example.com"
-            )]
-        )
+        meta = pb.ServerMeta(id=get_msg.id, topic="me", cred=[pb.ServerCred(method="email", value="test@example.com")])
         await self.put_bot_received(pb.ServerMsg(meta=meta))
         cred = await self.wait_for(task)
         self.assertEqual(cred, [Cred(method="email", value="test@example.com")])
-    
+
     async def test_p2p_meta(self) -> None:
         clear_cache()
         task = asyncio.create_task(get_topic(self.bot, "usr_test_1", skip_cache=True))
-    
+
         get_msg = await self.get_bot_sent()
         assert get_msg.HasField("get")
         get_msg = get_msg.get
@@ -261,7 +227,7 @@ class TestData(AsyncBotTestCase):
                 public=to_json({"fn": "Test User"}),
                 # last_seen_time=1709705329000,
                 # last_seen_user_agent="Tindroid/0.22.12 (Android 11; zh_CN); tindroid/0.22.12"
-            )
+            ),
         )
         await self.put_bot_received(pb.ServerMsg(meta=meta))
 
@@ -274,17 +240,13 @@ class TestData(AsyncBotTestCase):
             id=get_msg.id,
             topic="me",
             sub=[
-                pb.TopicSub(
-                    updated_at=1708326544978,
-                    public=to_json({"fn": "Test User1"}),
-                    topic="usr_test_2"
-                ),
+                pb.TopicSub(updated_at=1708326544978, public=to_json({"fn": "Test User1"}), topic="usr_test_2"),
                 # pb.TopicSub(
                 #     updated_at=1708326544978,
                 #     public=to_json({"fn": "Test User"}),
                 #     topic="usr_test_1",
                 # )
-            ]
+            ],
         )
         await self.put_bot_received(pb.ServerMsg(meta=meta))
 
@@ -294,7 +256,7 @@ class TestData(AsyncBotTestCase):
         self.assertEqual(topic.fn, "Test User")
         self.assertIsNone(topic.note)
         self.assertIsNone(topic.defacs)
-    
+
     async def test_topic_meta(self) -> None:
         clear_cache()
         task = asyncio.create_task(get_topic(self.bot, "grp_test_1"))
@@ -316,11 +278,11 @@ class TestData(AsyncBotTestCase):
                 recv_id=121,
                 del_id=2,
                 public=to_json({"fn": "Test Group", "note": "Test Group Note"}),
-                is_chan=True
-            )
+                is_chan=True,
+            ),
         )
         await self.put_bot_received(pb.ServerMsg(meta=meta))
-        
+
         topic = await self.wait_for(task)
         assert isinstance(topic, Topic)
         self.assertEqual(topic.topic, "grp_test_1")
@@ -329,16 +291,10 @@ class TestData(AsyncBotTestCase):
         self.assertIsNone(topic.comment)
         self.assertEqual(topic.seq, 122)
         assert topic.defacs
-        self.assertEqual(
-            topic.defacs.auth,
-            AccessPermission(join=True, read=True, write=True, presence=True, sharing=True)
-        )
+        self.assertEqual(topic.defacs.auth, AccessPermission(join=True, read=True, write=True, presence=True, sharing=True))
         assert topic.acs
-        self.assertEqual(
-            topic.acs.want,
-            AccessPermission(join=True, read=True, write=True, presence=True, sharing=True)
-        )
+        self.assertEqual(topic.acs.want, AccessPermission(join=True, read=True, write=True, presence=True, sharing=True))
         self.assertTrue(topic.is_chan)
-    
+
     async def test_sub(self) -> None:
         self.assertFalse(has_sub(self.bot, "test"))

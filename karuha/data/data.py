@@ -29,8 +29,7 @@ async def get_data(
     seq_id: Optional[int] = None,
     low: Optional[int] = None,
     hi: Optional[int] = None,
-) -> Union[List[Message], Message]:
-    ...
+) -> Union[List[Message], Message]: ...
 
 
 async def get_data(
@@ -48,15 +47,15 @@ async def get_data(
             return cache.message
         with DataDispatcher(topic_id, seq_id, seq_id) as dispatcher:
             return (await _get_data_no_cache(bot, dispatcher, topic_id, seq_id, seq_id))[0]
-    
+
     cache_segments = []
     start = None
-    for i in range(low, hi+1):
+    for i in range(low, hi + 1):
         if (topic_id, i) in message_cache:
             if start is None:
                 start = i
         elif start is not None:
-            cache_segments.append((start, i-1))
+            cache_segments.append((start, i - 1))
             start = None
     if start is not None:
         cache_segments.append((start, hi))
@@ -65,9 +64,9 @@ async def get_data(
     start = low
     for s, e in cache_segments:
         if s > start:
-            with DataDispatcher(topic_id, start, s-1) as dispatcher:
-                messages.extend(await _get_data_no_cache(bot, dispatcher, topic_id, start, s-1))
-        messages.extend(message_cache[topic_id, s].message for s in range(s, e+1))
+            with DataDispatcher(topic_id, start, s - 1) as dispatcher:
+                messages.extend(await _get_data_no_cache(bot, dispatcher, topic_id, start, s - 1))
+        messages.extend(message_cache[topic_id, s].message for s in range(s, e + 1))
         start = e + 1
     if start <= hi:
         with DataDispatcher(topic_id, start, hi) as dispatcher:
@@ -86,12 +85,12 @@ class DataDispatcher(MessageDispatcher):
         self.low = low
         self.data = {}
         self._futures = WeakSet()
-    
+
     def match(self, message: Message, /) -> float:
         if message.topic == self.topic and self.low <= message.seq_id <= self.hi:
             return 3.0
         return 0
-    
+
     def run(self, message: Message) -> Any:
         self.data[message.seq_id] = message
         if len(self.data) >= self.hi - self.low + 1:
@@ -100,7 +99,7 @@ class DataDispatcher(MessageDispatcher):
                     continue
                 future.set_result(None)
             self.deactivate()
-    
+
     async def wait(self) -> List[Message]:
         if len(self.data) < self.hi - self.low + 1:
             future = asyncio.Future()

@@ -39,17 +39,17 @@ class AbstractDispatcher(_ContextHelper, Generic[T]):
         :rtype: float
         """
         return 1
-    
+
     @abstractmethod
     def run(self, message: T, /) -> Any:
         raise NotImplementedError
-    
+
     def activate(self) -> None:
         self.dispatchers.add(self)
-    
+
     def deactivate(self) -> None:
         self.dispatchers.discard(self)
-    
+
     @classmethod
     def dispatch(cls, message: T, /, threshold: float = 0.4, filter: Optional[Callable[[Self], bool]] = None) -> Optional[Any]:
         dispatchers = cls.dispatchers
@@ -66,7 +66,7 @@ class AbstractDispatcher(_ContextHelper, Generic[T]):
         elif selected.once:
             selected.deactivate()
         return selected.run(message)
-    
+
     @property
     def activated(self) -> bool:
         return self in self.dispatchers
@@ -81,7 +81,7 @@ class FutureDispatcher(AbstractDispatcher[T]):
 
     def run(self, message: T, /) -> None:
         self.future.set_result(message)
-    
+
     async def wait(self) -> T:
         self.activate()
         return await self.future

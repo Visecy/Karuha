@@ -15,6 +15,7 @@ class UserService(_BaseInfoService[BaseUser]):
     """
     Service for user management.
     """
+
     __slots__ = []
 
     async def new_user(
@@ -30,7 +31,7 @@ class UserService(_BaseInfoService[BaseUser]):
         desc: Optional[ClientDescType] = None,
         tags: Iterable[str] = (),
         cred: Iterable[ClientCredType] = (),
-        state: Optional[UserStateType] = None
+        state: Optional[UserStateType] = None,
     ) -> Tuple[str, Optional[str]]:
         secret = f"{uname}:{password}"
         if any((fn, default_acs, public, trusted, private)):
@@ -69,9 +70,7 @@ class UserService(_BaseInfoService[BaseUser]):
         use_proxy: bool = False,
     ) -> BaseUser:
         if not use_proxy:
-            return await get_user(
-                self.bot, user_id, skip_cache=skip_cache, skip_sub_check=skip_sub_check
-            )
+            return await get_user(self.bot, user_id, skip_cache=skip_cache, skip_sub_check=skip_sub_check)
         async with self._run_proxy_bot(use_proxy=use_proxy, proxy_bot=user_id) as bot:
             return await get_user(bot, skip_cache=skip_cache, skip_sub_check=True)
 
@@ -118,9 +117,7 @@ class UserService(_BaseInfoService[BaseUser]):
         use_proxy: bool = True,
         **kwds: Any,
     ) -> None:
-        return await super().set_public(
-            user, data, update=update, use_proxy=use_proxy, **kwds
-        )
+        return await super().set_public(user, data, update=update, use_proxy=use_proxy, **kwds)
 
     async def set_trusted(
         self,
@@ -132,10 +129,8 @@ class UserService(_BaseInfoService[BaseUser]):
         use_proxy: bool = True,
         **kwds: Any,
     ) -> None:
-        return await super().set_trusted(
-            user, data, update=update, use_proxy=use_proxy, **kwds
-        )
-    
+        return await super().set_trusted(user, data, update=update, use_proxy=use_proxy, **kwds)
+
     async def del_user(self, user: Union[str, BaseUser], /, *, hard: bool = False) -> None:
         id = user.id if isinstance(user, BaseUser) else user
         await self.bot.delete("user", user_id=id, hard=hard)

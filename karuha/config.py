@@ -34,9 +34,7 @@ class Bot(BaseModel):
             return values
         if "scheme" not in values and "schema" in values:
             values["scheme"] = values.pop("schema")
-            logger.warning(
-                "'schema' in bot config is deprecated, please use 'scheme' instead"
-            )
+            logger.warning("'schema' in bot config is deprecated, please use 'scheme' instead")
         return values
 
 
@@ -51,19 +49,11 @@ class Config(BaseModel):
         logger.setLevel(val)
         return val
 
-    def save(
-        self,
-        path: Union[str, Path, None] = None,
-        *,
-        encoding: str = "utf-8",
-        ignore_error: bool = False
-    ) -> None:
+    def save(self, path: Union[str, Path, None] = None, *, encoding: str = "utf-8", ignore_error: bool = False) -> None:
         path = path or self._path
         try:
-            with open(path, 'w', encoding=encoding) as f:
-                f.write(self.model_dump_json(
-                    indent=4, by_alias=True, exclude_defaults=False
-                ))
+            with open(path, "w", encoding=encoding) as f:
+                f.write(self.model_dump_json(indent=4, by_alias=True, exclude_defaults=False))
         except OSError:
             if not ignore_error:
                 raise
@@ -78,12 +68,7 @@ def get_config() -> Config:
     return _config
 
 
-def load_config(
-    path: Union[str, Path] = CONFIG_PATH,
-    *,
-    encoding: str = "utf-8",
-    auto_create: bool = True
-) -> "Config":
+def load_config(path: Union[str, Path] = CONFIG_PATH, *, encoding: str = "utf-8", auto_create: bool = True) -> "Config":
     global _config
     try:
         with open(path, "r", encoding=encoding) as f:
@@ -106,20 +91,16 @@ def load_config(
 
 @overload
 def init_config(
-    server: Union[dict, Server] = ...,
-    bots: Iterable[Union[dict, Bot]] = ...,
-    log_level: Level = "INFO"
+    server: Union[dict, Server] = ..., bots: Iterable[Union[dict, Bot]] = ..., log_level: Level = "INFO"
 ) -> Config: ...
+
 
 @overload
-def init_config(
-    config: Config, /
-) -> Config: ...
+def init_config(config: Config, /) -> Config: ...
+
 
 def init_config(
-    server: Union[dict, Server, Config] = Server(),
-    bots: Iterable[Union[dict, Bot]] = (),
-    log_level: Level = "INFO"
+    server: Union[dict, Server, Config] = Server(), bots: Iterable[Union[dict, Bot]] = (), log_level: Level = "INFO"
 ) -> Config:
     global _config
     if isinstance(server, Config):
@@ -128,7 +109,7 @@ def init_config(
         _config = Config(
             server=server,  # type: ignore
             bots=bots,  # type: ignore
-            log_level=log_level
+            log_level=log_level,
         )
     return _config
 

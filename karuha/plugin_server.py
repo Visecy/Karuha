@@ -1,5 +1,3 @@
-from concurrent import futures
-
 import grpc
 from tinode_grpc import pb, pbx
 
@@ -12,12 +10,12 @@ class Plugin(pbx.PluginServicer):
         logger.debug(f"plugin in: {tpc_event}")
         await TopicEvent.new_and_wait(tpc_event)
         return pb.Unused()
-    
+
     async def Account(self, acc_event: pb.AccountEvent, context: grpc.ServicerContext):
         logger.debug(f"plugin in: {acc_event}")
         await AccountEvent.new_and_wait(acc_event)
         return pb.Unused()
-    
+
     async def Subscription(self, sub_event: pb.SubscriptionEvent, context: grpc.ServicerContext):
         logger.debug(f"plugin in: {sub_event}")
         await SubscriptionEvent.new_and_wait(sub_event)

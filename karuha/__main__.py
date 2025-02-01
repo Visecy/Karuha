@@ -28,17 +28,15 @@ description = """
 A easy way to run chatbots from a configuration file
 """.strip()
 
-version_info = ' '.join((
-    f"%(prog)s v{APP_VERSION}",
-    f"({platform.system()}/{platform.release()});",
-    f"gRPC-python/{LIB_VERSION}"
-))
+version_info = " ".join(
+    (f"%(prog)s v{APP_VERSION}", f"({platform.system()}/{platform.release()});", f"gRPC-python/{LIB_VERSION}")
+)
 
 default_config = CONFIG_PATH
 default_modules = os.environ.get("KARUHA_MODULES", "").split(os.pathsep)
 
 parser = ArgumentParser("Karuha", description=description)
-parser.add_argument("config", type=Path, nargs='?', default=default_config, help="path of the Karuha config")
+parser.add_argument("config", type=Path, nargs="?", default=default_config, help="path of the Karuha config")
 parser.add_argument("--auto-create", action="store_true", help="auto create config")
 parser.add_argument("--encoding", default="utf-8", help="config encoding")
 parser.add_argument("-m", "--module", type=str, action="append", help="module to load", default=default_modules)
@@ -47,11 +45,7 @@ parser.add_argument("-v", "--version", action="version", version=version_info)
 
 if __name__ == "__main__":
     namespace = parser.parse_args()
-    load_config(
-        namespace.config,
-        encoding=namespace.encoding,
-        auto_create=namespace.auto_create
-    )
+    load_config(namespace.config, encoding=namespace.encoding, auto_create=namespace.auto_create)
     if namespace.module:
         for module in namespace.module:
             if not module:

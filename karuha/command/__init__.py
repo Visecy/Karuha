@@ -1,14 +1,27 @@
 from .rule import *  # noqa: F403
 from .command import AbstractCommand, FunctionCommand
-from .collection import (CommandCollection, add_sub_collection, get_collection,
-                         new_collection, remove_sub_collection, reset_collection,
-                         set_collection, set_collection_factory, set_prefix)
+from .collection import (
+    CommandCollection,
+    add_sub_collection,
+    get_collection,
+    new_collection,
+    remove_sub_collection,
+    reset_collection,
+    set_collection,
+    set_collection_factory,
+    set_prefix,
+)
 from .decoractor import on_command, on_rule
 from .parser import AbstractCommandParser, SimpleCommandParser
 
-from ..event.command import (BaseCommandEvent, CommandCompleteEvent, CommandEvent,
-                    CommandFailEvent, CommandNotFoundEvent,
-                    CommandPrepareEvent)
+from ..event.command import (
+    BaseCommandEvent,
+    CommandCompleteEvent,
+    CommandEvent,
+    CommandFailEvent,
+    CommandNotFoundEvent,
+    CommandPrepareEvent,
+)
 
 
 __all__ = [

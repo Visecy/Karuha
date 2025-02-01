@@ -18,6 +18,7 @@ from .bot import BotEvent, ProxyPropertyType, SessionProperty
 
 class PluginServerEvent(Event):
     """base class for all event from plugin server"""
+
     __slots__ = ["raw_message"]
 
     raw_message: Dependency[Union[pb.TopicEvent, pb.AccountEvent, pb.SubscriptionEvent, pb.MessageEvent]]
@@ -43,7 +44,7 @@ class TopicEvent(PluginServerEvent):
     __slots__ = []
 
     raw_message: pb.TopicEvent
-    
+
     name: ProxyPropertyType[str] = PluginServerProperty()
     desc: ProxyPropertyType["pb.TopicDesc"] = PluginServerProperty()
 
@@ -105,7 +106,7 @@ class AccountCreateEvent(BotEvent):
     def __init__(self, bot: Bot, message: pb.AccountEvent) -> None:
         super().__init__(bot)
         self.raw_message = message
-    
+
     @depend_property
     def session(self) -> BaseSession:
         return BaseSession(self.bot, self.user_id)

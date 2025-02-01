@@ -32,10 +32,7 @@ def _is_map_entry(desc: Descriptor) -> bool:
     value_field: FieldDescriptor = desc.fields_by_name["value"]
 
     # check if the type of the key and value fields
-    return (
-        key_field.type == FieldDescriptor.TYPE_STRING
-        and value_field.type == FieldDescriptor.TYPE_BYTES
-    )
+    return key_field.type == FieldDescriptor.TYPE_STRING and value_field.type == FieldDescriptor.TYPE_BYTES
 
 
 def _encode_params(data: Dict[str, Any], desc: Descriptor) -> Dict[str, Any]:
@@ -49,13 +46,9 @@ def _encode_params(data: Dict[str, Any], desc: Descriptor) -> Dict[str, Any]:
                 key: value if isinstance(value, bytes) else base64.b64encode(to_json(value))
                 for key, value in data[field.name].items()
             }
-        elif field.label == FieldDescriptor.LABEL_REPEATED and isinstance(
-            data[field.name], Iterable
-        ):
+        elif field.label == FieldDescriptor.LABEL_REPEATED and isinstance(data[field.name], Iterable):
             data[field.name] = [
-                _encode_params(item, field.message_type)
-                for item in data[field.name]
-                if isinstance(item, dict)
+                _encode_params(item, field.message_type) for item in data[field.name] if isinstance(item, dict)
             ]
         elif isinstance(data[field.name], dict):
             # Handle non-repeated messages.
@@ -70,7 +63,7 @@ def dict2msg(data: Union[BaseModel, Mapping[str, Any], T_Msg], msg: Type[T_Msg],
         data = data.model_dump(exclude_none=True)
     else:
         data = dict(cast(Mapping[str, Any], data))
-    
+
     msg_ins = msg()
     data = _encode_params(data, msg_ins.DESCRIPTOR)
     return ParseDict(data, msg_ins, **kwds)

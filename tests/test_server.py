@@ -12,11 +12,11 @@ class TestServer(AsyncBotTestCase):
     def test_decode(self) -> None:
         raw_data = {"ctrl": {"id": "123", "code": 200, "params": {"foo": "bar"}}}
         data = _encode_params(raw_data, pb.ServerMsg.DESCRIPTOR)
-        self.assertEqual(data, {"ctrl": {"id": "123", "code": 200, "params": {"foo": base64.b64encode(b"\"bar\"")}}})
+        self.assertEqual(data, {"ctrl": {"id": "123", "code": 200, "params": {"foo": base64.b64encode(b'"bar"')}}})
         msg = dict2msg(raw_data, pb.ServerMsg)
         self.assertEqual(msg.ctrl.id, "123")
         self.assertEqual(msg.ctrl.code, 200)
-        self.assertEqual(msg.ctrl.params["foo"], b"\"bar\"")
+        self.assertEqual(msg.ctrl.params["foo"], b'"bar"')
 
     async def test_run(self) -> None:
         server = self.bot.server
@@ -28,7 +28,7 @@ class TestServer(AsyncBotTestCase):
         self.assertFalse(server.running)
         await server.start()
         self.assertTrue(server.running)
-    
+
     async def test_mock_upload(self) -> None:
         content = b"test"
         tid1, params = await self.bot.upload(BytesIO(content))

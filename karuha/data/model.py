@@ -15,11 +15,13 @@ if TYPE_CHECKING:
     # Json[list[str]] will be recognized by type checkers as list[str]
     JsonSerialize = Annotated[T, ...]
 else:
+
     class JsonSerialize:
         """A special type wrapper which is used to serialize a type to JSON.
 
         You can use it to convert a type to JSON bytes in the model serialization.
         """
+
         @classmethod
         def __class_getitem__(cls, item: Type[T]) -> Type[T]:
             return Annotated[item, cls()]  # type: ignore
@@ -27,18 +29,16 @@ else:
         @classmethod
         def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
             ser = core_schema.plain_serializer_function_ser_schema(
-                lambda v: base64.encodebytes(to_json(v)),
-                is_field_serializer=False,
-                info_arg=False
+                lambda v: base64.encodebytes(to_json(v)), is_field_serializer=False, info_arg=False
             )
             if cls is source:
                 return core_schema.any_schema(serialization=ser)
             schema = handler(source)
             schema["serialization"] = ser
             return schema
-        
+
         def __repr__(self) -> str:
-            return 'JsonSerialize'
+            return "JsonSerialize"
 
         def __hash__(self) -> int:
             return hash(type(self))
@@ -71,6 +71,7 @@ class AccessPermission(BaseModel):
         change topic description, delete topic; topic may have a single owner only;
         some topics have no owner
     """
+
     join: bool = False
     read: bool = False
     write: bool = False

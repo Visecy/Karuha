@@ -36,7 +36,7 @@ class BaseDesc(BaseModel):
     def from_meta(cls, meta: Union[pb.TopicDesc, pb.TopicSub]) -> Self:
         return cls(
             public=meta.public or None,  # type: ignore
-            trusted=meta.trusted or None  # type: ignore
+            trusted=meta.trusted or None,  # type: ignore
         )
 
 
@@ -76,7 +76,7 @@ class GroupTopicDesc(TopicInfo, CommonDesc):
             created=desc.created_at,  # type: ignore
             updated=desc.updated_at,  # type: ignore
             touched=desc.touched_at,  # type: ignore
-            is_chan=desc.is_chan
+            is_chan=desc.is_chan,
         )
 
 
@@ -94,7 +94,7 @@ class UserDesc(TimeInfo, CommonDesc):
             created=desc.created_at,  # type: ignore
             updated=desc.updated_at,  # type: ignore
             touched=desc.touched_at,  # type: ignore
-            defacs=msg2dict(desc.defacs) or None  # type: ignore
+            defacs=msg2dict(desc.defacs) or None,  # type: ignore
         )
 
 

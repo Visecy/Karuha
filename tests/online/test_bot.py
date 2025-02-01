@@ -33,7 +33,7 @@ class TestBotClient(AsyncBotOnlineTestCase):
         uid = params["user"]
         await self.bot.delete("topic", topic=uid, hard=True)
         await self.bot.delete("user", user_id=uid, hard=True)
-    
+
     async def test_anonymous_account(self) -> None:
         _, params = await self.bot.account(
             "newkr_anon_test",
@@ -43,7 +43,7 @@ class TestBotClient(AsyncBotOnlineTestCase):
         uid = params["user"]
         await self.bot.delete("topic", topic=uid, hard=True)
         await self.bot.delete("user", user_id=uid, hard=True)
-    
+
     async def test_proxy_bot(self) -> None:
         _, params = await self.bot.account(
             "new",
@@ -64,7 +64,7 @@ class TestBotClient(AsyncBotOnlineTestCase):
                 async def _handler(session: MessageSession, text: str) -> None:
                     self.assertEqual(text, "test")
                     await session.send("test_reply")
-                
+
                 async with BaseSession(agent_bot, self.bot.user_id) as session:
                     await session.send("test")
                     reply = await session.wait_reply()

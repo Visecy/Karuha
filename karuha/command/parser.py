@@ -10,7 +10,7 @@ class AbstractCommandParser(ABC):
     @abstractmethod
     def parse(self, message: Message) -> Optional[Tuple[str, List[Union[str, BaseText]]]]:
         raise NotImplementedError
-    
+
     def precheck(self, message: Message) -> bool:  # pragma: no cover
         return True
 
@@ -23,7 +23,7 @@ class SimpleCommandParser(AbstractCommandParser):
 
     def __init__(self, prefix: Iterable[str]) -> None:
         self.prefixs = tuple(prefix)
-    
+
     def parse(self, message: Message) -> Optional[Tuple[str, Union[List[str], List[BaseText]]]]:
         text = message.text.split()
         for i, t in enumerate(text):
@@ -35,15 +35,15 @@ class SimpleCommandParser(AbstractCommandParser):
             break
         else:
             return
-        
+
         for prefix in self.prefixs:
             if name.startswith(prefix):
-                name = name[len(prefix):]
+                name = name[len(prefix) :]
                 break
         else:
             return
-        return name, text[i+1:]
-    
+        return name, text[i + 1 :]
+
     def precheck(self, message: Message) -> bool:
         text = message.text.split()
         for t in text:
@@ -52,6 +52,6 @@ class SimpleCommandParser(AbstractCommandParser):
             name = str(t).strip()
             return any(name.startswith(prefix) for prefix in self.prefixs)
         return False
-    
+
     def check_name(self, name: str) -> bool:
-        return ' ' not in name
+        return " " not in name

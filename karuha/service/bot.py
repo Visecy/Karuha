@@ -20,7 +20,7 @@ class BotService(BaseService):
         use_proxy: bool = False,
         start_run: bool = True,
         ensure_state: bool = True,
-        **kwds: Any
+        **kwds: Any,
     ) -> Bot:
         secret = f"{uname}:{password}"
         user_id, _ = await UserService(self.bot).new_user(uname, password, **kwds)
@@ -59,7 +59,7 @@ class BotService(BaseService):
             with EventCatcher(BotReadyEvent) as catcher:
                 await catcher.catch_event(pred=lambda ev: ev.bot is bot)
         return bot
-    
+
     async def attach_in_proxy(
         self,
         user_id: str,
@@ -78,18 +78,18 @@ class BotService(BaseService):
             with EventCatcher(BotReadyEvent) as catcher:
                 await catcher.catch_event(pred=lambda ev: ev.bot is bot)
         return bot
-    
+
     async def detach(self, bot: Bot, *, ensure_state: bool = True) -> None:
         bot.cancel()
         if not ensure_state:
             return
         with EventCatcher(BotFinishEvent) as catcher:
             await catcher.catch_event(pred=lambda ev: ev.bot is bot)
-    
+
     async def del_bot(self, bot: Bot, /, *, hard: bool = False) -> None:
         await self.detach(bot, ensure_state=True)
         await UserService(self.bot).del_user(bot.user_id, hard=hard)
-    
+
     @staticmethod
     def random_string(length: int = 16) -> str:
         import random

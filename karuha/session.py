@@ -5,8 +5,7 @@ import re
 import weakref
 from functools import partialmethod
 from io import IOBase
-from typing import (Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional, Tuple,
-                    Union, overload)
+from typing import Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional, Tuple, Union, overload
 
 from aiofiles import open as aio_open
 from aiofiles.ospath import getsize
@@ -26,6 +25,7 @@ class BaseSession(object):
     allowing for sending messages, handling attachments,
     and managing subscriptions to topics.
     """
+
     __slots__ = ["bot", "topic", "_task", "_closed"]
 
     def __init__(self, /, bot: Bot, topic: str) -> None:
@@ -55,17 +55,18 @@ class BaseSession(object):
         return self
 
     async def send(
-            self,
-            text: Union[str, dict, "Drafty", "BaseText"],
-            /, *,
-            head: Optional[Dict[str, Any]] = None,
-            timeout: Optional[float] = None,
-            topic: Optional[str] = None,
-            replace: Optional[int] = None,
-            attachments: Optional[Iterable[str]] = None
+        self,
+        text: Union[str, dict, "Drafty", "BaseText"],
+        /,
+        *,
+        head: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+        topic: Optional[str] = None,
+        replace: Optional[int] = None,
+        attachments: Optional[Iterable[str]] = None,
     ) -> Optional[int]:
         """Send a message to the specified topic.
-        
+
         :param text: the text or Drafty model to send
         :type text: Union[str, dict, "Drafty", "BaseText"]
         :param head: additional metadata to include in the message, defaults to None
@@ -85,7 +86,7 @@ class BaseSession(object):
         if replace is not None:
             head = head or {}
             head["replace"] = f":{replace}"
-        if isinstance(text, str) and '\n' in text:
+        if isinstance(text, str) and "\n" in text:
             text = PlainText(text)
         if isinstance(text, BaseText):
             text = text.to_drafty()
@@ -94,10 +95,7 @@ class BaseSession(object):
             head = head or {}
             head["mime"] = "text/x-drafty"
         _, params = await asyncio.wait_for(
-            self.bot.publish(
-                topic, text, head=head,
-                extra=pb.ClientExtra(attachments=attachments) if attachments else None
-            ),
+            self.bot.publish(topic, text, head=head, extra=pb.ClientExtra(attachments=attachments) if attachments else None),
             timeout,
         )
         return params.get("seq")
@@ -105,17 +103,18 @@ class BaseSession(object):
     send_text = send
 
     async def send_attachment(
-            self,
-            file: Union[str, os.PathLike, BinaryIO],
-            /, *,
-            name: Optional[str] = None,
-            mime: Optional[str] = None,
-            attachment_cls_name: str = "File",
-            force_upload: bool = False,
-            **kwds: Any
+        self,
+        file: Union[str, os.PathLike, BinaryIO],
+        /,
+        *,
+        name: Optional[str] = None,
+        mime: Optional[str] = None,
+        attachment_cls_name: str = "File",
+        force_upload: bool = False,
+        **kwds: Any,
     ) -> Optional[int]:
         """Send an attachment to the specified topic.
-        
+
         :param path: the path to the file to send
         :type path: Union[str, os.PathLike]
         :param name: the name of the file, defaults to None
@@ -154,11 +153,7 @@ class BaseSession(object):
             return await self.send(attachment, **kwds)
         _, upload_params = await self.bot.upload(file)
         url = upload_params["url"]
-        return await self.send(
-            attachment_cls.from_url(url, name=name, **extra_data),
-            attachments=[url],
-            **kwds
-        )
+        return await self.send(attachment_cls.from_url(url, name=name, **extra_data), attachments=[url], **kwds)
 
     send_file = partialmethod(send_attachment, attachment_cls_name="File")
     send_image = partialmethod(send_attachment, attachment_cls_name="Image")
@@ -177,14 +172,14 @@ class BaseSession(object):
             raise ValueError("attachment has no data")
 
     async def wait_reply(
-            self,
-            topic: Optional[str] = None,
-            user_id: Optional[str] = None,
-            pattern: Optional[re.Pattern] = None,
-            priority: float = 1.2
+        self,
+        topic: Optional[str] = None,
+        user_id: Optional[str] = None,
+        pattern: Optional[re.Pattern] = None,
+        priority: float = 1.2,
     ) -> "Message":
         """Wait for a reply from the specified topic.
-        
+
         :param topic: the topic to wait for, defaults to None
         :type topic: Optional[str], optional
         :param user_id: the user ID to wait for, defaults to None
@@ -199,12 +194,7 @@ class BaseSession(object):
         self._ensure_status()
         loop = asyncio.get_running_loop()
         dispatcher = SessionDispatcher(
-            self,
-            loop.create_future(),
-            topic=topic,
-            user_id=user_id,
-            pattern=pattern,
-            priority=priority
+            self, loop.create_future(), topic=topic, user_id=user_id, pattern=pattern, priority=priority
         )
         return await dispatcher.wait()
 
@@ -216,7 +206,7 @@ class BaseSession(object):
         **kwds: Any,
     ) -> int:
         """Send a form to the specified topic.
-        
+
         :param title: the title of the form
         :type title: Union[str, "BaseText"]
         :param button: the buttons to include in the form
@@ -227,9 +217,7 @@ class BaseSession(object):
         :rtype: int
         """
         self._ensure_status()
-        chain = TextChain(
-            Bold(content=PlainText(title)) if isinstance(title, str) else title
-        )
+        chain = TextChain(Bold(content=PlainText(title)) if isinstance(title, str) else title)
         pred_resp = []
         for i in button:
             if isinstance(i, str):
@@ -251,12 +239,7 @@ class BaseSession(object):
                 raise KaruhaRuntimeError("failed to fetch message id")
 
             loop = asyncio.get_running_loop()
-            dispatcher = _ButtonReplyDispatcher(
-                self,
-                loop.create_future(),
-                seq_id=seq_id,
-                topic=topic
-            )
+            dispatcher = _ButtonReplyDispatcher(self, loop.create_future(), seq_id=seq_id, topic=topic)
             dispatcher.activate()
         try:
             resp = await dispatcher.wait()
@@ -269,7 +252,7 @@ class BaseSession(object):
 
     async def confirm(self, title: Union[str, "BaseText"], **kwds: Any) -> bool:
         """A convenience method to send a form and wait for a reply.
-        
+
         :param title: the title of the form
         :type title: Union[str, "BaseText"]
         :return: True if the user selects "Yes", False otherwise
@@ -279,7 +262,7 @@ class BaseSession(object):
 
     async def finish(self, text: Union[str, dict, "Drafty", "BaseText"], /, **kwds: Any) -> NoReturn:
         """Finish the session and send a message to the user.
-        
+
         :param text: the message to send
         :type text: Union[str, dict, "Drafty", "BaseText"]
         :raises KaruhaRuntimeError: if the session is not active
@@ -288,15 +271,10 @@ class BaseSession(object):
         self.cancel()
 
     async def subscribe(
-        self,
-        topic: Optional[str] = None,
-        *,
-        force: bool = False,
-        get: Union[pb.GetQuery, str, None] = "desc sub",
-        **kwds: Any
+        self, topic: Optional[str] = None, *, force: bool = False, get: Union[pb.GetQuery, str, None] = "desc sub", **kwds: Any
     ) -> None:
         """Subscribe to the specified topic.
-        
+
         :param topic: the topic to subscribe to, defaults to None
         :type topic: Optional[str], optional
         :param force: whether to force the subscription, defaults to False
@@ -312,7 +290,7 @@ class BaseSession(object):
 
     async def leave(self, topic: Optional[str] = None, *, force: bool = False, **kwds: Any) -> None:
         """Leave the specified topic.
-        
+
         :param topic: the topic to leave, defaults to None
         :type topic: Optional[str], optional
         :param force: whether to force the leave, defaults to False
@@ -326,7 +304,7 @@ class BaseSession(object):
     @deprecated("use `UserService` instead")
     async def get_user(self, user_id: str, *, skip_cache: bool = False) -> "karuha.data.BaseUser":
         """Get the user data from the specified user ID.
-        
+
         :param user_id: the user ID to get the data from
         :type user_id: str
         :param ensure_user: whether to ensure that the user exists, defaults to False
@@ -339,7 +317,7 @@ class BaseSession(object):
 
     async def get_topic(self, topic: Optional[str] = None, *, skip_cache: bool = False) -> "karuha.data.BaseTopic":
         """Get the topic data from the specified topic ID.
-        
+
         :param topic: the topic ID to get the data from, defaults to None
         :type topic: Optional[str], optional
         :param ensure_topic: whether to ensure that the topic exists, defaults to False
@@ -358,7 +336,7 @@ class BaseSession(object):
         seq_id: int,
     ) -> "Message":
         """Get the message data from the specified message ID.
-        
+
         :param topic: the topic ID to get the data from, defaults to None
         :type topic: Optional[str], optional
         :param seq_id: the message ID to get the data from
@@ -376,7 +354,7 @@ class BaseSession(object):
         hi: Optional[int] = None,
     ) -> List["Message"]:
         """Get the message data from the specified range.
-        
+
         :param topic: the topic ID to get the data from, defaults to None
         :type topic: Optional[str], optional
         :param low: the lower bound of the range, defaults to None
@@ -397,7 +375,7 @@ class BaseSession(object):
         hi: Optional[int] = None,
     ) -> Union["Message", List["Message"]]:
         """Get the message data from the specified range.
-        
+
         :param topic: the topic ID to get the data from, defaults to None
         :type topic: Optional[str], optional
         :param seq_id: the message ID to get the data from, defaults to None
@@ -420,9 +398,7 @@ class BaseSession(object):
     ) -> Union["Message", List["Message"]]:
         topic = topic or self.topic
         await self.subscribe(topic)
-        return await karuha.data.get_data(
-            self.bot, topic, seq_id=seq_id, low=low, hi=hi
-        )
+        return await karuha.data.get_data(self.bot, topic, seq_id=seq_id, low=low, hi=hi)
 
     def close(self) -> None:
         """Close the session."""
@@ -434,11 +410,7 @@ class BaseSession(object):
         :raises asyncio.CancelledError: cancels the session
         """
         self.close()
-        if (
-            self._task is not None
-            and self._task is not asyncio.current_task()
-            and not self._task.done()
-        ):
+        if self._task is not None and self._task is not asyncio.current_task() and not self._task.done():
             self._task.cancel()
         raise asyncio.CancelledError
 
@@ -462,25 +434,24 @@ class BaseSession(object):
             raise KaruhaRuntimeError("session is closed")
 
 
-
 class MessageSession(BaseSession):
     __slots__ = ["_messages"]
 
     def __init__(self, /, bot: Bot, message: "Message") -> None:
         super().__init__(bot, message.topic)
         self._messages = deque((message,))
-    
+
     async def wait_reply(
-            self,
-            topic: Optional[str] = None,
-            user_id: Optional[str] = None,
-            pattern: Optional[re.Pattern] = None,
-            priority: float = 1.2
+        self,
+        topic: Optional[str] = None,
+        user_id: Optional[str] = None,
+        pattern: Optional[re.Pattern] = None,
+        priority: float = 1.2,
     ) -> "Message":
         message = await super().wait_reply(topic, user_id, pattern, priority)
         self._add_message(message)
         return message
-    
+
     def _add_message(self, message: "Message") -> None:
         assert message.bot is self.bot
         if message.topic != self.topic:
@@ -490,7 +461,7 @@ class MessageSession(BaseSession):
     @property
     def messages(self) -> Tuple["Message", ...]:
         return tuple(self._messages)
-    
+
     @property
     def last_message(self) -> "Message":
         return self._messages[-1]
@@ -508,8 +479,7 @@ from .event.message import MessageDispatcher, get_message_lock
 from .text import textchain
 from .text.drafty import Drafty
 from .text.message import Message
-from .text.textchain import (BaseText, Bold, Button, Form, NewLine, PlainText,
-                             TextChain, _Attachment)
+from .text.textchain import BaseText, Bold, Button, Form, NewLine, PlainText, TextChain, _Attachment
 from .utils.dispatcher import FutureDispatcher
 
 
@@ -517,15 +487,15 @@ class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
     __slots__ = ["session", "priority", "topic", "user_id", "pattern"]
 
     def __init__(
-            self,
-            session: BaseSession,
-            /,
-            future: asyncio.Future,
-            *,
-            priority: float = 1.0,
-            topic: Optional[str] = None,
-            user_id: Optional[str] = None,
-            pattern: Optional[re.Pattern] = None
+        self,
+        session: BaseSession,
+        /,
+        future: asyncio.Future,
+        *,
+        priority: float = 1.0,
+        topic: Optional[str] = None,
+        user_id: Optional[str] = None,
+        pattern: Optional[re.Pattern] = None,
     ) -> None:
         super().__init__(future=future)
         self.session = session
@@ -533,7 +503,7 @@ class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
         self.topic = topic or session.topic
         self.user_id = user_id
         self.pattern = pattern
-    
+
     def match(self, message: Message, /) -> float:
         if message.topic != self.topic:
             return 0
@@ -547,22 +517,22 @@ class SessionDispatcher(MessageDispatcher, FutureDispatcher[Message]):
 
 class _ButtonReplyDispatcher(SessionDispatcher):
     __slots__ = ["seq_id", "_cache"]
-    
+
     def __init__(
-            self,
-            session: BaseSession,
-            /,
-            future: asyncio.Future,
-            *,
-            seq_id: int,
-            priority: float = 2.5,
-            user_id: Optional[str] = None,
-            topic: Optional[str] = None
+        self,
+        session: BaseSession,
+        /,
+        future: asyncio.Future,
+        *,
+        seq_id: int,
+        priority: float = 2.5,
+        user_id: Optional[str] = None,
+        topic: Optional[str] = None,
     ) -> None:
         super().__init__(session, future, priority=priority, user_id=user_id, topic=topic)
         self.seq_id = seq_id
         self._cache = {}
-        
+
     def match(self, message: Message) -> float:
         if super().match(message) < 0:
             return 0
@@ -581,7 +551,7 @@ class _ButtonReplyDispatcher(SessionDispatcher):
                 weakref.finalize(message, self._cache.pop, id(message), None)
                 return self.priority
         return 0
-    
+
     def run(self, message: Message) -> None:
         resp = self._cache[id(message)]
         self.future.set_result(resp)

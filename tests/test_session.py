@@ -14,6 +14,7 @@ class TestSession(AsyncBotTestCase):
             async with BaseSession(self.bot, TEST_TOPIC) as ss:
                 self.assertFalse(ss.closed)
             return ss
+
         task = asyncio.create_task(session_task())
         await self.assert_bot_sub(TEST_TOPIC)
         ss = await self.wait_for(task)
@@ -50,11 +51,7 @@ class TestSession(AsyncBotTestCase):
 
     async def test_form(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
-        form_task = asyncio.create_task(
-            ss.send_form(
-                "title", "Yes", Button(text="No"), Button(text="Cancel", name="cancel")
-            )
-        )
+        form_task = asyncio.create_task(ss.send_form("title", "Yes", Button(text="No"), Button(text="Cancel", name="cancel")))
         await self.get_bot_pub(seq=114)
         self.assertTrue(get_message_lock().locked())
         await self.put_bot_content(
@@ -68,16 +65,11 @@ class TestSession(AsyncBotTestCase):
 
     async def test_form1(self) -> None:
         ss = MessageSession(self.bot, new_test_message())
-        form_task = asyncio.create_task(
-            ss.send_form(
-                "title", "Yes", Button(text="No"), Button(text="Cancel", name="cancel")
-            )
-        )
+        form_task = asyncio.create_task(ss.send_form("title", "Yes", Button(text="No"), Button(text="Cancel", name="cancel")))
         await self.get_bot_pub(seq=114)
         self.assertTrue(get_message_lock().locked())
         await self.put_bot_content(
-            b'{"ent":[{"data":{"mime":"application/json","val":{"seq":114}},"tp":"EX"}],'
-            b'"fmt":[{"at":-1}],"txt":"No"}',
+            b'{"ent":[{"data":{"mime":"application/json","val":{"seq":114}},"tp":"EX"}],"fmt":[{"at":-1}],"txt":"No"}',
         )
         bid = await asyncio.wait_for(form_task, timeout=TEST_TIMEOUT)
         self.assertEqual(bid, 1)
@@ -106,10 +98,10 @@ class TestSession(AsyncBotTestCase):
         file_task = asyncio.create_task(ss.send_file("karuha/version.py"))
         pubmsg = await self.get_bot_pub()
         df = Drafty.model_validate_json(pubmsg.content)
-        self.assertEqual(df.txt, '')
+        self.assertEqual(df.txt, "")
         ft = drafty2text(df)
         assert isinstance(ft, File)
-        self.assertEqual(ft.name, 'version.py')
+        self.assertEqual(ft.name, "version.py")
         self.assertIsNotNone(ft.val)
         await self.wait_for(file_task)
 
@@ -118,10 +110,10 @@ class TestSession(AsyncBotTestCase):
         image_task = asyncio.create_task(ss.send_image("docs/img/tw_icon-karuha2.png"))
         pubmsg = await self.get_bot_pub()
         df = Drafty.model_validate_json(pubmsg.content)
-        self.assertEqual(df.txt, '')
+        self.assertEqual(df.txt, "")
         ft = drafty2text(df)
         assert isinstance(ft, Image)
-        self.assertEqual(ft.name, 'tw_icon-karuha2.png')
+        self.assertEqual(ft.name, "tw_icon-karuha2.png")
         self.assertIsNotNone(ft.ref or ft.val)
         await self.wait_for(image_task)
 
@@ -135,13 +127,13 @@ class TestSession(AsyncBotTestCase):
         self.assertTrue(getmsg.HasField("get"))
         self.assertEqual(getmsg.get.query.data.since_id, 114)
         self.assertEqual(getmsg.get.query.data.before_id, 115)
-        await self.put_bot_content(b"\"test\"", topic=TEST_TOPIC, seq_id=114)
+        await self.put_bot_content(b'"test"', topic=TEST_TOPIC, seq_id=114)
         msg = await self.wait_for(task)
-        self.assertEqual(msg.content, b"\"test\"")
+        self.assertEqual(msg.content, b'"test"')
 
         # test get data from cache
         msg = await self.wait_for(ss.get_data(seq_id=114))
-        self.assertEqual(msg.content, b"\"test\"")
+        self.assertEqual(msg.content, b'"test"')
 
         # test get data range
         task = asyncio.create_task(ss.get_data(low=113, hi=115))
@@ -151,19 +143,19 @@ class TestSession(AsyncBotTestCase):
         self.assertTrue(getmsg.HasField("get"), getmsg)
         self.assertEqual(getmsg.get.query.data.since_id, 113)
         self.assertEqual(getmsg.get.query.data.before_id, 114)
-        await self.put_bot_content(b"\"113\"", topic=TEST_TOPIC, seq_id=113)
+        await self.put_bot_content(b'"113"', topic=TEST_TOPIC, seq_id=113)
         getmsg = await self.get_bot_sent()
         if getmsg.HasField("note"):
             getmsg = await self.get_bot_sent()
         self.assertTrue(getmsg.HasField("get"), getmsg)
         self.assertEqual(getmsg.get.query.data.since_id, 115)
         self.assertEqual(getmsg.get.query.data.before_id, 116)
-        await self.put_bot_content(b"\"115\"", topic=TEST_TOPIC, seq_id=115)
+        await self.put_bot_content(b'"115"', topic=TEST_TOPIC, seq_id=115)
         msgs = await self.wait_for(task)
-        self.assertEqual(msgs[0].content, b"\"113\"")
-        self.assertEqual(msgs[1].content, b"\"test\"")
-        self.assertEqual(msgs[2].content, b"\"115\"")
-    
+        self.assertEqual(msgs[0].content, b'"113"')
+        self.assertEqual(msgs[1].content, b'"test"')
+        self.assertEqual(msgs[2].content, b'"115"')
+
     async def test_topic(self) -> None:
         ss = BaseSession(self.bot, "test_topic")
         task = asyncio.create_task(ss.subscribe(force=True))

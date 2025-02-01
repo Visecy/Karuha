@@ -25,19 +25,14 @@ class MessageEvent(BotEvent):
     def __init__(self, bot: Bot, /, topic: str, user_id: str, seq_id: int, head: Dict[str, str], content: bytes) -> None:
         super().__init__(bot)
         self.message = Message.new(bot, topic, user_id, seq_id, head, content)
-    
+
     @classmethod
     def from_data_event(cls, event: DataEvent, /) -> Self:
         message = event.server_message
         return cls(
-            event.bot,
-            message.topic,
-            message.from_user_id,
-            message.seq_id,
-            decode_mapping(message.head),
-            message.content
+            event.bot, message.topic, message.from_user_id, message.seq_id, decode_mapping(message.head), message.content
         )
-    
+
     async def __default_handler__(self) -> None:
         async with get_message_lock():
             result = MessageDispatcher.dispatch(self.dump())
@@ -46,7 +41,7 @@ class MessageEvent(BotEvent):
 
     def dump(self) -> Message:
         return self.message
-    
+
     topic: ProxyProperty[str] = MessageProperty()
     user_id: ProxyProperty[str] = MessageProperty()
     seq_id: ProxyProperty[int] = MessageProperty()

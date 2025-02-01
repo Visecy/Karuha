@@ -15,13 +15,7 @@ def _tp_weight(tp: str) -> int:
 class Span:
     __slots__ = "tp", "start", "end", "data", "children"
 
-    def __init__(
-        self,
-        tp: Union[InlineType, ExtendType],
-        start: int,
-        end: int,
-        data: Optional[dict] = None
-    ) -> None:
+    def __init__(self, tp: Union[InlineType, ExtendType], start: int, end: int, data: Optional[dict] = None) -> None:
         self.tp = tp
         self.start = start
         self.end = end
@@ -36,7 +30,7 @@ class Span:
         if diff := other.end - self.end:
             return diff > 0
         return _tp_weight(self.tp) < _tp_weight(other.tp)
-    
+
     def __repr__(self) -> str:
         if not self.children:
             return f"<span {self.tp} {self.start}-{self.end}>"
@@ -57,7 +51,7 @@ def to_span_tree(spans: Optional[List[Span]]) -> List[Span]:
             if last.children is None:
                 last.children = []
             last.children.append(i)
-    
+
     for i in tree:
         i.children = to_span_tree(i.children)
     return tree
@@ -95,6 +89,7 @@ def converter(tp: Union[InlineType, ExtendType]) -> Callable[[_T_Converter], _T_
     def inner(func: _T_Converter) -> _T_Converter:
         _converters[tp] = func
         return func
+
     return inner
 
 
@@ -103,11 +98,11 @@ def _convert(text: str, span: Span) -> BaseText:
         return _converters.get(span.tp, _default_converter)(text, span)
     except Exception:  # pragma: no cover
         logger.error(f"message decode error on span {span}", exc_info=True)
-        return PlainText(text=text[span.start:span.end])
+        return PlainText(text=text[span.start : span.end])
 
 
 def _default_converter(text: str, span: Span) -> BaseText:  # pragma: no cover
-    text = text[span.start:span.end]
+    text = text[span.start : span.end]
     logger.warn(f"unknown text {text!r}[{span.tp}]")
     return PlainText(text=text)
 
@@ -117,7 +112,7 @@ def _split_text(text: str, /, spans: List[Span], start: int = 0, end: int = -1) 
     chain = TextChain()
     for i in spans:
         if last < i.start:
-            chain += text[last:i.start]
+            chain += text[last : i.start]
         last = i.end
         chain += _convert(text, i)
     if end < 0:
@@ -136,15 +131,13 @@ def _convert_spans(text: str, spans: Optional[List[Span]], /, start: int, end: i
 
 
 def _container_converter(text: str, span: Span) -> BaseText:
-    return _Container.tp_map[span.tp](
-        content=_convert_spans(text, span.children, span.start, span.end)
-    )  # type: ignore
+    return _Container.tp_map[span.tp](content=_convert_spans(text, span.children, span.start, span.end))  # type: ignore
 
 
 def _attachment_converter(text: str, span: Span) -> BaseText:
     if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
-    return _ExtensionText.tp_map[span.tp](text=text[span.start:span.end], **(span.data or {}))
+    return _ExtensionText.tp_map[span.tp](text=text[span.start : span.end], **(span.data or {}))
 
 
 for i in _Container.tp_map:
@@ -155,21 +148,21 @@ for i in _ExtensionText.tp_map:
 
 @converter("BR")
 def BR_converter(text: str, span: Span) -> PlainText:
-    return PlainText(text='\n')
+    return PlainText(text="\n")
 
 
 @converter("CO")
 def CO_converter(text: str, span: Span) -> BaseText:
     if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
-    return InlineCode(text=text[span.start:span.end])
+    return InlineCode(text=text[span.start : span.end])
 
 
 @converter("MN")
 def MN_converter(text: str, span: Span) -> BaseText:
     if span.children:  # pragma: no cover
         logger.warn(f"ignore children of span {span}")
-    return Mention(text=text[span.start:span.end], **(span.data or {}))
+    return Mention(text=text[span.start : span.end], **(span.data or {}))
 
 
 @converter("FM")

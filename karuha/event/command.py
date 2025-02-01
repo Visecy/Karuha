@@ -56,10 +56,10 @@ class CommandFailEvent(CommandEvent):
     __slots__ = ["exc_info"]
 
     def __init__(
-            self,
-            collection: "CommandCollection",
-            command: "AbstractCommand",
-            exc_info: Tuple[Type[BaseException], BaseException, TracebackType]
+        self,
+        collection: "CommandCollection",
+        command: "AbstractCommand",
+        exc_info: Tuple[Type[BaseException], BaseException, TracebackType],
     ) -> None:
         super().__init__(collection, command)
         self.exc_info = exc_info

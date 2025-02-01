@@ -9,7 +9,7 @@ from karuha.text import Head, Audio
 @on_command
 async def asr(session: MessageSession, reply: Head[Optional[int]] = None) -> None:
     if reply is None:
-         await session.finish("No reply message")
+        await session.finish("No reply message")
     message = await session.get_data(seq_id=reply)
     if not isinstance(message.text, Audio):
         await session.finish("No an audio")

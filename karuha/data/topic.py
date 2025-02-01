@@ -7,9 +7,17 @@ from typing_extensions import deprecated
 
 from ..bot import Bot
 from ..utils.decode import load_json, msg2dict
-from .cache import (get_group_desc, get_p2p_desc, get_sub, get_user_desc,
-                    try_get_group_desc, try_get_my_sub, try_get_p2p_desc,
-                    try_get_sub, try_get_user_desc)
+from .cache import (
+    get_group_desc,
+    get_p2p_desc,
+    get_sub,
+    get_user_desc,
+    try_get_group_desc,
+    try_get_my_sub,
+    try_get_p2p_desc,
+    try_get_sub,
+    try_get_user_desc,
+)
 from .meta import Access, CommonDesc, DefaultAccess, GroupTopicDesc
 from .model import BaseInfo
 
@@ -22,7 +30,7 @@ class BaseTopic(BaseInfo, frozen=True):
         return self.topic
 
     topic_id = id
-    
+
 
 class Topic(BaseTopic, frozen=True):
     created: datetime
@@ -101,7 +109,7 @@ def try_get_p2p_topic(bot: Bot, /, topic_id: str) -> Optional[BaseTopic]:
         topic=topic_id,
         public=desc.public,
         trusted=desc.trusted,
-        )
+    )
 
 
 async def get_p2p_topic(bot: Bot, /, topic_id: str, *, skip_cache: bool = False) -> BaseTopic:
@@ -130,7 +138,7 @@ async def get_p2p_topic(bot: Bot, /, topic_id: str, *, skip_cache: bool = False)
         acs=sub and sub.acs,
         read=sub and sub.read,
         recv=sub and sub.recv,
-        clear=sub and sub.clear
+        clear=sub and sub.clear,
     )
 
 
@@ -152,7 +160,7 @@ def try_get_group_topic(bot: Bot, /, topic_id: str) -> Optional[BaseTopic]:
             touched=desc.touched,
             read=sub.read,
             recv=sub.recv,
-            clear=sub.clear
+            clear=sub.clear,
         )
     elif desc is not None:
         return BaseTopic(
@@ -167,12 +175,7 @@ async def get_group_topic(bot: Bot, /, topic_id: str, *, skip_cache: bool = Fals
     desc = await get_group_desc(bot, topic_id, skip_cache=skip_cache)
     sub = await get_sub(bot, topic_id, skip_cache=skip_cache)
     if not isinstance(desc, GroupTopicDesc):
-        return BaseTopic(
-            topic=topic_id,
-            public=desc.public,
-            trusted=desc.trusted,
-            private=sub and sub.private
-        )
+        return BaseTopic(topic=topic_id, public=desc.public, trusted=desc.trusted, private=sub and sub.private)
     return Topic(
         topic=topic_id,
         public=desc.public,
@@ -231,7 +234,7 @@ async def get_topic_list(bot: Bot, /, *, ensure_all: bool = True) -> List[BaseTo
             read=sub.read_id,
             recv=sub.recv_id,
             clear=sub.del_id,
-            acs=msg2dict(sub.acs)  # type: ignore
+            acs=msg2dict(sub.acs),  # type: ignore
         )
         for sub in sub_meta.sub
     ]

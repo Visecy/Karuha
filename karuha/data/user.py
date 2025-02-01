@@ -56,12 +56,7 @@ def try_get_user(bot: Bot, /, user_id: str = "me") -> Optional[BaseUser]:
             acs=sub and sub.acs,
         )
     elif desc is not None:
-        return BaseUser(
-            user_id=bot.uid,
-            public=desc.public,
-            trusted=desc.trusted,
-            private=sub and sub.private
-        )
+        return BaseUser(user_id=bot.uid, public=desc.public, trusted=desc.trusted, private=sub and sub.private)
 
 
 async def get_user(bot: Bot, /, user_id: str = "me", *, skip_cache: bool = False, skip_sub_check: bool = False) -> BaseUser:
@@ -100,7 +95,7 @@ async def get_user(bot: Bot, /, user_id: str = "me", *, skip_cache: bool = False
             updated=desc.updated,
             touched=desc.touched,
             defacs=desc.defacs,
-            acs=sub.acs
+            acs=sub.acs,
         )
     else:
         return BaseUser(

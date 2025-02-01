@@ -31,7 +31,7 @@ class DateProtocol(asyncio.SubprocessProtocol):
         # pipe_connection_lost() method: wait until both methods are
         # called.
         self.check_for_exit()
-    
+
     async def wait(self) -> None:
         if self.pipe_closed and self.exited:
             return
@@ -72,7 +72,7 @@ async def run(session: MessageSession, name: str, user_id: str, argv: List[str])
             # shell=ns.shell,
             stdin=None,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
         )
     except OSError:
         await session.finish(format_exc())
@@ -80,10 +80,7 @@ async def run(session: MessageSession, name: str, user_id: str, argv: List[str])
     _jobs.append(transport)
     wait_task = asyncio.create_task(protocol.wait())
     while not wait_task.done():
-        done, _ = await asyncio.wait(
-            (wait_task, protocol.output.get()),
-            return_when=asyncio.FIRST_COMPLETED
-        )
+        done, _ = await asyncio.wait((wait_task, protocol.output.get()), return_when=asyncio.FIRST_COMPLETED)
         if wait_task in done:
             done.remove(wait_task)
             if not done:
@@ -101,11 +98,7 @@ async def run(session: MessageSession, name: str, user_id: str, argv: List[str])
     code = transport.get_returncode()
     transport.close()
     if code:
-        await session.send(
-            Italic(
-                content=PlainText(f"Process exited with code {code}")
-            )
-        )
+        await session.send(Italic(content=PlainText(f"Process exited with code {code}")))
 
 
 @on_command
@@ -143,7 +136,7 @@ async def jobs(session: MessageSession, name: str, user_id: str, argv: List[str]
     parser.add_argument("-s", action="store_true", help="restrict output to stopped jobs")
     ns = parser.parse_args(argv)
     if ns.tid:
-        await session.finish('\n'.join(str(i) for i in range(len(_jobs))))
+        await session.finish("\n".join(str(i) for i in range(len(_jobs))))
     ss = StringIO()
     for i, transport in enumerate(_jobs):
         pid = transport.get_pid()

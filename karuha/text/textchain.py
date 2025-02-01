@@ -4,9 +4,25 @@ import os
 from abc import abstractmethod
 from base64 import b64decode, b64encode
 from io import BytesIO
-from typing import (Any, BinaryIO, ClassVar, Dict, Final, Generator, Iterable,
-                    List, Literal, MutableMapping, Optional, Sequence,
-                    SupportsIndex, Tuple, Type, Union, overload)
+from typing import (
+    Any,
+    BinaryIO,
+    ClassVar,
+    Dict,
+    Final,
+    Generator,
+    Iterable,
+    List,
+    Literal,
+    MutableMapping,
+    Optional,
+    Sequence,
+    SupportsIndex,
+    Tuple,
+    Type,
+    Union,
+    overload,
+)
 
 from aiofiles import open as aio_open
 from puremagic import from_stream, from_file
@@ -25,7 +41,7 @@ class BaseText(BaseModel):
 
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List["BaseText"]:
         return [self]
-    
+
     def join(self, chain: Iterable[Union[str, "BaseText"]], /) -> "BaseText":
         it = iter(chain)
         try:
@@ -52,10 +68,7 @@ class BaseText(BaseModel):
     def __contains__(self, other: Union[str, "BaseText"]) -> bool:
         if isinstance(other, str):
             return other in str(self)
-        return any(
-            other in i if i is not self else other == i
-            for i in self.split()
-        )
+        return any(other in i if i is not self else other == i for i in self.split())
 
     def __add__(self, other: Union[str, "BaseText"]) -> "BaseText":
         if not other:
@@ -85,23 +98,23 @@ class BaseText(BaseModel):
 
 class _Text(BaseText):
     text: str
-    
+
     def to_drafty(self) -> Drafty:
         start = 0
         fmt = []
-        while (p := self.text.find('\n', start)) != -1:
+        while (p := self.text.find("\n", start)) != -1:
             fmt.append(DraftyFormat(at=p, len=1, tp="BR"))
             start = p + 1
-        return Drafty(txt=self.text.replace('\n', ' '), fmt=fmt)
+        return Drafty(txt=self.text.replace("\n", " "), fmt=fmt)
 
     def __eq__(self, __value: Any) -> bool:
         if isinstance(__value, str):
             return self.text == __value
         return super().__eq__(__value)
-    
+
     def __len__(self) -> int:
         return len(self.text)
-    
+
     def __str__(self) -> str:
         return self.text
 
@@ -109,12 +122,12 @@ class _Text(BaseText):
 class PlainText(_Text):
     def __init__(self, text: str) -> None:
         super().__init__(text=text)
-    
+
     def __add__(self, other: Any) -> BaseText:
         if isinstance(other, PlainText):
             return PlainText(self.text + other.text)
         return super().__add__(other)
-    
+
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
         result = []
         for p in self.text.split(sep, maxsplit):
@@ -167,7 +180,7 @@ class TextChain(BaseText, Sequence):
                 i = PlainText(i)
             contents.append(i)
         super().__init__(contents=contents)  # type: ignore
-    
+
     def to_drafty(self) -> Drafty:
         if not self.contents:
             return Drafty(txt=" ")
@@ -176,7 +189,7 @@ class TextChain(BaseText, Sequence):
         for i in it:
             base += i.to_drafty()
         return base
-    
+
     def split(self, /, sep: Optional[str] = None, maxsplit: SupportsIndex = -1) -> List[BaseText]:
         if not self:
             return []
@@ -186,7 +199,7 @@ class TextChain(BaseText, Sequence):
             content = self.contents[:maxsplit]
             content.append(self[maxsplit:])
             return content
-    
+
         result = []
         for i in self.contents:
             if maxsplit >= 0 and remain_count < 0:
@@ -196,10 +209,10 @@ class TextChain(BaseText, Sequence):
                 result.extend(sp)
                 remain_count -= len(sp) - 1
         return result
-    
+
     def take(self) -> BaseText:
         return self.contents[0] if len(self.contents) == 1 else self
-    
+
     @overload
     def __getitem__(self, key: SupportsIndex, /) -> BaseText: ...
     @overload
@@ -211,10 +224,10 @@ class TextChain(BaseText, Sequence):
 
     def __iter__(self) -> Generator[BaseText, None, None]:
         yield from self.contents
-    
+
     def __len__(self) -> int:
         return len(self.contents)
-    
+
     def __add__(self, other: Union[str, BaseText]) -> Self:
         if not other:
             return self
@@ -223,7 +236,7 @@ class TextChain(BaseText, Sequence):
         chain = self.model_copy()
         chain += other
         return chain
-    
+
     def __iadd__(self, other: Union[str, BaseText]) -> Self:
         if not other:  # filter empty text like PlainText('')
             return self
@@ -257,7 +270,7 @@ class TextChain(BaseText, Sequence):
         else:
             self.contents.append(other)
         return self
-    
+
     def __radd__(self, other: Union[str, BaseText]) -> Self:
         if not other:
             return self
@@ -274,7 +287,7 @@ class TextChain(BaseText, Sequence):
         return f"<{self.__class__.__name__} {self.contents}>"
 
     def __str__(self) -> str:
-        return ''.join(str(i) for i in self.contents)
+        return "".join(str(i) for i in self.contents)
 
 
 class _Container(BaseText):
@@ -282,21 +295,21 @@ class _Container(BaseText):
 
     type: InlineType
     content: BaseText
-    
+
     def to_drafty(self) -> Drafty:
         df = self.content.to_drafty()
         df.fmt.insert(0, DraftyFormat(at=0, len=len(df.txt), tp=self.type))
         return df
-    
+
     @classmethod
     def new(cls, text: Union[str, BaseText]) -> Self:
         if isinstance(text, str):
             text = PlainText(text)
         return cls(content=text)  # type: ignore
-    
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.content!r}>"
-    
+
     def __str__(self) -> str:
         return str(self.content)
 
@@ -376,17 +389,17 @@ class _ExtensionText(_Text):
     @abstractmethod
     def get_data(self) -> Dict[str, Any]:
         raise NotImplementedError
-    
+
     def to_drafty(self) -> Drafty:
         df = super().to_drafty()
         length = len(self)
         df.fmt.append(DraftyFormat(at=0 if length else -1, len=length))
         df.ent.append(DraftyExtend(tp=self.type, data=self.get_data()))
         return df
-    
+
     def __bool__(self) -> bool:
         return bool(self.text or self.get_data())
-    
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         tp = getattr(cls, "type", cls.model_fields["type"].default)
@@ -427,7 +440,7 @@ class Button(_ExtensionText):
 
     def get_data(self) -> Dict[str, Any]:
         return self.model_dump(include={"name", "val", "act", "ref"}, exclude_none=True)
-    
+
     def __repr__(self) -> str:
         if self.name is None:
             return f"<button {self.text!r}>"
@@ -460,13 +473,7 @@ class _Attachment(_ExtensionText):
 
     @classmethod
     def from_bytes(
-            cls,
-            content: bytes,
-            *,
-            mime: Optional[str] = None,
-            name: Optional[str] = None,
-            ref: Optional[str] = None,
-            **kwds: Any
+        cls, content: bytes, *, mime: Optional[str] = None, name: Optional[str] = None, ref: Optional[str] = None, **kwds: Any
     ) -> Self:
         return cls(
             mime=mime or "text/plain",
@@ -474,46 +481,29 @@ class _Attachment(_ExtensionText):
             ref=ref,
             raw_val=content,  # type: ignore
             size=len(content),
-            **kwds
+            **kwds,
         )
 
     @classmethod
-    def from_url(
-            cls,
-            url: str,
-            *,
-            mime: Optional[str] = None,
-            name: Optional[str] = None,
-            **kwds: Any
-    ) -> Self:
-        return cls(
-            mime=mime or "text/plain",
-            name=name,
-            ref=url,
-            **kwds
-        )
+    def from_url(cls, url: str, *, mime: Optional[str] = None, name: Optional[str] = None, **kwds: Any) -> Self:
+        return cls(mime=mime or "text/plain", name=name, ref=url, **kwds)
 
     @classmethod
     async def from_file(
-            cls,
-            path: Union[str, os.PathLike],
-            *,
-            mime: Optional[str] = None,
-            name: Optional[str] = None,
-            ref: Optional[str] = None,
-            **kwds: Any
+        cls,
+        path: Union[str, os.PathLike],
+        *,
+        mime: Optional[str] = None,
+        name: Optional[str] = None,
+        ref: Optional[str] = None,
+        **kwds: Any,
     ) -> Self:
         if mime is None:
             loop = asyncio.get_running_loop()
             mime = await loop.run_in_executor(None, from_file, path, True)
         async with aio_open(path, "rb") as f:
-            return cls.from_bytes(
-                await f.read(),
-                mime=mime, name=name or os.path.basename(path),
-                ref=ref,
-                **kwds
-            )
-    
+            return cls.from_bytes(await f.read(), mime=mime, name=name or os.path.basename(path), ref=ref, **kwds)
+
     @classmethod
     async def analyze_bytes(cls, data: bytes, *, name: Optional[str] = None) -> Dict[str, Any]:
         return await cls.analyze_file(BytesIO(data), name=name)
@@ -523,7 +513,7 @@ class _Attachment(_ExtensionText):
         loop = asyncio.get_running_loop()
         mime = await loop.run_in_executor(None, from_stream, fp, True, name)
         return {"mime": mime}
-    
+
     async def save(self, path: Union[str, os.PathLike, None] = None) -> None:
         path = path or self.name
         if path is None:
@@ -573,7 +563,7 @@ class _Attachment(_ExtensionText):
 
 class File(_Attachment):
     type: Final[ExtendType] = "EX"
-    
+
     mime: str = "text/plain"
 
 
@@ -591,10 +581,11 @@ class Image(_Attachment):
         size = await loop.run_in_executor(None, cls._get_image_size, fp)
         data.update(width=size[0], height=size[1])
         return data
-    
+
     @staticmethod
     def _get_image_size(fp: Union[str, os.PathLike, BinaryIO]) -> Tuple[int, int]:
         from PIL.Image import open as img_open
+
         return img_open(fp).size
 
 
@@ -602,8 +593,8 @@ class Audio(_Attachment):
     type: Final[ExtendType] = "AU"
 
     mime: str = "audio/aac"
-    duration: int   # duration of the record in milliseconds
-    preview: str    # base64-encoded array of bytes to generate a visual preview
+    duration: int  # duration of the record in milliseconds
+    preview: str  # base64-encoded array of bytes to generate a visual preview
 
     VISUALIZATION_BARS: ClassVar = 96
     MAX_SAMPLES_PER_BAR: ClassVar = 10
@@ -617,9 +608,7 @@ class Audio(_Attachment):
         return data
 
     @classmethod
-    def _get_audio_duration_and_preview(
-        cls, fp: Union[str, os.PathLike, BinaryIO]
-    ) -> Tuple[int, str]:
+    def _get_audio_duration_and_preview(cls, fp: Union[str, os.PathLike, BinaryIO]) -> Tuple[int, str]:
         import soundfile as sf
         import numpy as np
 
@@ -649,7 +638,7 @@ class Audio(_Attachment):
             buffer = 100 * buffer / max_val
         return (
             data.shape[0] * 1000 // sample_rate,  # type: ignore
-            b64encode(buffer.tobytes()).decode("ascii")
+            b64encode(buffer.tobytes()).decode("ascii"),
         )
 
 

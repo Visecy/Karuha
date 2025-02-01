@@ -16,25 +16,25 @@ class GRPCServer(BaseServer, type="grpc"):
         await super().start()
         if is_running:  # pragma: no cover
             return
-        
+
         self.queue = Queue()
         self.channel = self._get_channel()
         stream = get_stream(self.channel)
         self.client: grpc.aio.StreamStreamCall[pb.ClientMsg, pb.ServerMsg] = stream(self._message_generator())
-    
+
     async def stop(self) -> None:
         is_running = self._running
         await super().stop()
         if not is_running:  # pragma: no cover
             return
-        
+
         if hasattr(self, "channel"):
             await self.channel.close()
-    
+
     async def send(self, msg: pb.ClientMsg) -> None:
         self._ensure_running()
         await self.queue.put(msg)
-    
+
     async def __anext__(self) -> pb.ServerMsg:
         self._ensure_running()
         try:
@@ -61,14 +61,14 @@ class GRPCServer(BaseServer, type="grpc"):
         if not secure:
             self.logger.info(f"connecting to server at {host}")
             return grpc.aio.insecure_channel(host)
-        opts = (('grpc.ssl_target_name_override', ssl_host),) if ssl_host else None
+        opts = (("grpc.ssl_target_name_override", ssl_host),) if ssl_host else None
         self.logger.info(f"connecting to secure server at {host} SNI={ssl_host or host}")
         return grpc.aio.secure_channel(host, grpc.ssl_channel_credentials(), opts)
 
 
 def get_stream(channel: grpc.aio.Channel, /) -> grpc.aio.StreamStreamMultiCallable:  # pragma: no cover
     return channel.stream_stream(
-        '/pbx.Node/MessageLoop',
+        "/pbx.Node/MessageLoop",
         request_serializer=pb.ClientMsg.SerializeToString,
-        response_deserializer=pb.ServerMsg.FromString
+        response_deserializer=pb.ServerMsg.FromString,
     )

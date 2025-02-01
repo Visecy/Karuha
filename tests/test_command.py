@@ -1,6 +1,7 @@
 from inspect import signature
 from pathlib import Path
 from typing import List, Optional
+from pydantic import TypeAdapter, ValidationError
 from typing_extensions import Annotated
 from unittest import TestCase
 
@@ -8,10 +9,18 @@ from pydantic_core import to_json
 
 from karuha.bot import Bot
 from karuha.text import PlainText, Drafty, Message, Head
+from karuha.session import BaseSession
 from karuha.command.rule import rule
-from karuha.command.collection import (add_sub_collection, get_collection, new_collection, remove_sub_collection,
-                                       reset_collection, set_collection,
-                                       set_collection_factory, set_prefix)
+from karuha.command.collection import (
+    add_sub_collection,
+    get_collection,
+    new_collection,
+    remove_sub_collection,
+    reset_collection,
+    set_collection,
+    set_collection_factory,
+    set_prefix,
+)
 from karuha.command.command import FunctionCommand
 from karuha.command.parser import SimpleCommandParser
 from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
@@ -27,18 +36,15 @@ class TestCommand(TestCase):
         simple_parser = SimpleCommandParser(["!"])
         message0 = new_test_message(b"!test")
         self.assertEqual(simple_parser.parse(message0), ("test", []))
-        message1 = new_test_message(b"\"!test\"")
+        message1 = new_test_message(b'"!test"')
         self.assertEqual(simple_parser.parse(message1), ("test", []))
-        message2 = new_test_message(b"{\"txt\": \"test\"}")
+        message2 = new_test_message(b'{"txt": "test"}')
         self.assertIsNone(simple_parser.parse(message2))
-        message3 = new_test_message(b"\"!!test test test test\"")
-        self.assertEqual(
-            simple_parser.parse(message3),
-            ("!test", [PlainText("test"), PlainText("test"), PlainText("test")])
-        )
-        message4 = new_test_message(b"\"!\"")
-        self.assertEqual(simple_parser.parse(message4), ('', []))
-        message5 = new_test_message(b"\"\"")
+        message3 = new_test_message(b'"!!test test test test"')
+        self.assertEqual(simple_parser.parse(message3), ("!test", [PlainText("test"), PlainText("test"), PlainText("test")]))
+        message4 = new_test_message(b'"!"')
+        self.assertEqual(simple_parser.parse(message4), ("", []))
+        message5 = new_test_message(b'""')
         self.assertIsNone(simple_parser.parse(message5))
 
     def test_invoker(self) -> None:
@@ -52,6 +58,12 @@ class TestCommand(TestCase):
         with self.assertRaises(KaruhaHandlerInvokerError):
             invoker.call_handler(lambda foo, bar, unknown: foo + bar + unknown)
 
+        invoker = DictHandlerInvoker({"args": ("foo", "bar")})
+        self.assertEqual(invoker.call_handler(lambda *args: args), ("foo", "bar"))
+
+        invoker = DictHandlerInvoker({"kwds": {"foo": 114, "bar": 514}})
+        self.assertEqual(invoker.call_handler(lambda **kwds: kwds), {"foo": 114, "bar": 514})
+
     def test_cmd_invoker(self) -> None:
         def cmd_meta(
             bot: Bot,
@@ -61,7 +73,7 @@ class TestCommand(TestCase):
             content: bytes,
             argc: int,
             argv: List[str],
-            undefined: None = None
+            undefined: None = None,
         ) -> int:
             return 114
 
@@ -69,22 +81,14 @@ class TestCommand(TestCase):
         msg = new_test_command_message()
         args, kwargs = msg.extract_handler_params(sig)
         self.assertEqual(args, [bot_mock, msg])
-        self.assertEqual(
-            kwargs,
-            {
-                "user_id": TEST_UID, "content": b"\"test\"",
-                "argc": 0, "argv": [], "undefined": None
-            }
-        )
+        self.assertEqual(kwargs, {"user_id": TEST_UID, "content": b'"test"', "argc": 0, "argv": [], "undefined": None})
 
         def cmd_head(undefined: Head[None], test: Head[Optional[int]] = None) -> None:
             self.assertEqual(test, 1)
             self.assertIsNone(undefined)
-        msg = Message.new(bot_mock, "test", "usr_test", 0, {"test": "1"}, b"\"test\"")
-        msg.call_handler(cmd_head)
 
-        with self.assertRaises(KaruhaHandlerInvokerError):
-            msg.call_handler(lambda *message: ...)
+        msg = Message.new(bot_mock, "test", "usr_test", 0, {"test": "1"}, b'"test"')
+        msg.call_handler(cmd_head)
 
         def cmd_text(text: PlainText, raw_text: Drafty) -> None:
             pass
@@ -92,7 +96,7 @@ class TestCommand(TestCase):
         with self.assertRaises(KaruhaHandlerInvokerError):
             msg.call_handler(cmd_text)
         sig = signature(cmd_text)
-        args, kwargs = new_test_command_message(b"{\"txt\": \"test\"}").extract_handler_params(sig)
+        args, kwargs = new_test_command_message(b'{"txt": "test"}').extract_handler_params(sig)
         self.assertEqual(args, [])
         self.assertEqual(kwargs, {"text": PlainText("test"), "raw_text": Drafty(txt="test")})
 
@@ -100,7 +104,7 @@ class TestCommand(TestCase):
             pass
 
         sig = signature(cmd_plain_text)
-        args, kwargs = new_test_command_message(b"{\"txt\": \"test\"}").extract_handler_params(sig)
+        args, kwargs = new_test_command_message(b'{"txt": "test"}').extract_handler_params(sig)
         self.assertEqual(args, [])
         self.assertEqual(kwargs, {"text": "test", "raw_text": "test"})
 
@@ -108,9 +112,9 @@ class TestCommand(TestCase):
             pass
 
         sig = signature(cmd_no_annotation)
-        args, kwargs = new_test_command_message(b"{\"txt\": \"test\"}").extract_handler_params(sig)
+        args, kwargs = new_test_command_message(b'{"txt": "test"}').extract_handler_params(sig)
         self.assertEqual(args, [PlainText("test")])
-        self.assertEqual(kwargs, {"raw_text": Drafty(txt="test"), "content": b"{\"txt\": \"test\"}", "undefined": None})
+        self.assertEqual(kwargs, {"raw_text": Drafty(txt="test"), "content": b'{"txt": "test"}', "undefined": None})
 
     def test_function_command(self) -> None:
         with new_collection() as clt:
@@ -144,19 +148,19 @@ class TestCommand(TestCase):
 
     def test_collection(self) -> None:
         reset_collection()
-        set_prefix('/', '#')
+        set_prefix("/", "#")
         c = new_collection()
         self.assertFalse(c.activated)
         self.assertIsInstance(c.name_parser, SimpleCommandParser)
-        self.assertEqual(c.name_parser.prefixs, ('/', '#'))  # type: ignore
+        self.assertEqual(c.name_parser.prefixs, ("/", "#"))  # type: ignore
         cd = get_collection()
         self.assertTrue(cd.activated)
         self.assertNotEqual(c, cd)
         with self.assertRaises(RuntimeError):
-            set_prefix('!')
+            set_prefix("!")
 
         reset_collection()
-        set_prefix('/')
+        set_prefix("/")
         set_collection_factory(lambda: c)
 
         @self.addCleanup
@@ -188,7 +192,7 @@ class TestCommand(TestCase):
         cd1 = get_collection()
         self.assertIsNot(cd, cd1)
         self.assertEqual(cd1.sub_collections, [c])
-    
+
     def test_rule(self) -> None:
         msg = new_test_command_message(to_json("Hello World!"))
         rk = rule(keyword="Hello")
@@ -216,10 +220,11 @@ class TestCommand(TestCase):
             "usr",
             1,
             {"reply": "114"},
-            to_json(TextChain(
-                Quote(content=TextChain(Mention(text="@user", val=TEST_UID), NewLine, "Quote content ...")),
-                "Hello world!"
-            ).to_drafty())
+            to_json(
+                TextChain(
+                    Quote(content=TextChain(Mention(text="@user", val=TEST_UID), NewLine, "Quote content ...")), "Hello world!"
+                ).to_drafty()
+            ),
         )
         self.assertEqual(rq.match(msg), 1.0)
         rq1 = rule(quote=114)
@@ -238,7 +243,7 @@ class TestCommand(TestCase):
         self.assertEqual(rh.match(msg), 1.0)
         rh1 = rule(has_head="quote")
         self.assertEqual(rh1.match(msg), 0.0)
-    
+
     def test_argument(self) -> None:
         arg = Arg[str, "-v", "--version"]
         arg_ins = get_argument(arg)
@@ -249,34 +254,55 @@ class TestCommand(TestCase):
         arg = Arg[str, "-v", "--version", {}]
         self.assertEqual(get_argument(arg), arg_ins)
 
-        arg = Arg[str, "-v", "--version", Argument()]
+        arg = Arg[str, "-v", "--version", Argument(type=str)]
         self.assertEqual(get_argument(arg), arg_ins)
 
         arg = Annotated[str, Argument("-v", "--version", type=str)]
         self.assertEqual(get_argument(arg), arg_ins)
-    
+
+    def test_argument_validate(self) -> None:
+        ta = TypeAdapter(Argument)
+        self.assertEqual(ta.validate_python(Argument("-v", "--version", type=str)), Argument("-v", "--version", type=str))
+        with self.assertRaises(ValidationError):
+            ta.validate_python("str")
+
+        ta = TypeAdapter(Arg[str, "-v", "--version"])
+        with self.assertRaises(ValidationError):
+            ta.validate_python(Argument("-v", "--version", type=str))
+        self.assertEqual(ta.validate_python("str"), "str")
+
+        def example(
+            path: Arg[str, Argument(help="Input path")],
+            timeout: Arg[int, "-t"] = 10,  # noqa: F821
+            *,
+            force: Arg[bool, "-f", "--force"] = False,  # noqa: F821
+        ) -> str:
+            self.assertEqual(timeout, 20)
+            self.assertTrue(force)
+            return path
+
+        invoker = DictHandlerInvoker({"argv": ("/tmp", "-t", "20", "-f"), "session": BaseSession(bot_mock, TEST_TOPIC)})
+        self.assertEqual(invoker.call_handler(example), "/tmp")
+
     def test_build_parser(self) -> None:
         def example(
             path: Arg[str, Argument(help="Input path")],
-            timeout: Arg[int, "--timeout"] = 10,
+            timeout: Arg[int, "--timeout"] = 10,  # noqa: F821
             *,
             force: bool = False,
         ) -> None: ...
 
-        parser = build_parser(example)
+        parser = build_parser(example, unannotated_mode="autoconvert")
         self.assertEqual(
             parser.parse_known_args(["/tmp", "--force", "--timeout", "20"])[0].__dict__,
-            {"path": "/tmp", "force": True, "timeout": 20}
+            {"path": "/tmp", "force": True, "timeout": 20},
         )
 
         with self.assertRaises(TypeError):
             build_parser(example, unannotated_mode="strict")
-        
+
         parser = build_parser(example, unannotated_mode="ignore")
-        self.assertEqual(
-            parser.parse_known_args(["/tmp", "--force"])[0].__dict__,
-            {"path": "/tmp", "timeout": 10}
-        )
+        self.assertEqual(parser.parse_known_args(["/tmp", "--force"])[0].__dict__, {"path": "/tmp", "timeout": 10})
 
         def example2(
             path: Arg[str, Argument(help="Input path", type=Path)],
@@ -285,6 +311,5 @@ class TestCommand(TestCase):
 
         parser = build_parser(example2, unannotated_mode="strict")
         self.assertEqual(
-            parser.parse_known_args(["/tmp", "foo", "bar"])[0].__dict__,
-            {"path": Path("/tmp"), "args": ["foo", "bar"]}
+            parser.parse_known_args(["/tmp", "foo", "bar"])[0].__dict__, {"path": Path("/tmp"), "args": ["foo", "bar"]}
         )

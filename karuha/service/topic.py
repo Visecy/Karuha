@@ -18,6 +18,7 @@ class TopicService(_BaseInfoService[BaseTopic]):
     """
     Service for managing topics.
     """
+
     __slots__ = []
 
     async def new_topic(
@@ -45,17 +46,14 @@ class TopicService(_BaseInfoService[BaseTopic]):
                 if desc.public is None:
                     desc.public = {}
                 desc.public["fn"] = fn
-        
+
         # bot.subscribe do not return topic id,
         # so we need to catch the event
         with EventCatcher(SubscribeEvent) as catcher:
             tid, _ = await self.bot.subscribe(
                 "nch" if is_chan else "new",
                 get="desc sub",
-                set=pb.SetQuery(
-                    desc=dict2msg(desc, pb.SetDesc) if desc is not None else desc,
-                    tags=tags
-                )
+                set=pb.SetQuery(desc=dict2msg(desc, pb.SetDesc) if desc is not None else desc, tags=tags),
             )
             while True:
                 ev = await catcher.catch_event()
@@ -75,7 +73,7 @@ class TopicService(_BaseInfoService[BaseTopic]):
     ) -> BaseTopic:
         async with self._run_proxy_bot(use_proxy, proxy_bot) as bot:
             return await get_topic(bot, topic_id, skip_cache=skip_cache)
-    
+
     async def del_topic(self, topic: Union[str, BaseTopic], /, hard: bool = False) -> None:
         id = topic.id if isinstance(topic, BaseTopic) else topic
         await self.bot.delete("topic", topic=id, hard=hard)

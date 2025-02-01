@@ -11,7 +11,7 @@ class TestService(AsyncBotOnlineTestCase):
             self.assertEqual(await svc.get_fn(uid), "Test")
         finally:
             await svc.del_user(uid, hard=True)
-    
+
     async def test_set_desc(self) -> None:
         svc = UserService(self.bot)
         uid, _ = await svc.new_user("test", "test123", fn="Test")
@@ -25,7 +25,7 @@ class TestService(AsyncBotOnlineTestCase):
             self.assertEqual(await svc.get_comment(uid, skip_cache=True), "Test User")
         finally:
             await svc.del_user(uid, hard=True)
-    
+
     async def test_set_me_desc(self) -> None:
         svc = UserService(self.bot)
         user = await svc.get_user("me")

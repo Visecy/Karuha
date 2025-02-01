@@ -4,16 +4,30 @@ import warnings
 from abc import abstractmethod
 from collections import deque
 from inspect import Parameter, isabstract
-from typing import (Any, ClassVar, Deque, Dict, Generic, Iterable, Iterator,
-                    List, Literal, Optional, Tuple, Type, TypeVar, Union, cast,
-                    overload)
+from typing import (
+    Any,
+    ClassVar,
+    Deque,
+    Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 from weakref import WeakKeyDictionary, WeakSet
 
 from aiofiles import open as aio_open
 from aiofiles import os as aio_os
 from aiofiles import ospath as aio_ospath
-from pydantic import (BaseModel, Field, StrictInt, StrictStr, TypeAdapter,
-                      model_validator)
+from pydantic import BaseModel, Field, StrictInt, StrictStr, TypeAdapter, model_validator
 from typing_extensions import Annotated, Self, get_args, get_origin
 
 import karuha
@@ -44,9 +58,7 @@ class DataModel(BaseModel, validate_assignment=True):
     data_store: Annotated[Optional["AbstractDataStore[Self]"], Field(exclude=True)] = None
 
     def set_data_store(self, store: "AbstractDataStore[Self]", /) -> Self:
-        assert (
-            self.data_store is None or store is self.data_store
-        ), "data store already set"
+        assert self.data_store is None or store is self.data_store, "data store already set"
         self.data_store = store
         return self
 
@@ -80,9 +92,7 @@ class DataModel(BaseModel, validate_assignment=True):
         self.update()
         return self
 
-    def __init_subclass__(
-        cls, *, pk: Optional[Iterable[str]] = None, **kwds: Any
-    ) -> None:
+    def __init_subclass__(cls, *, pk: Optional[Iterable[str]] = None, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)
         if isinstance(pk, str):
             pk = [pk]
@@ -99,12 +109,8 @@ class DataModel(BaseModel, validate_assignment=True):
                 if not is_pk_annotation(ann):
                     cls.__annotations__[name] = PrimaryKey[ann]
         else:
-            pk = [
-                name
-                for name, annotation in cls.__annotations__.items()
-                if is_pk_annotation(annotation)
-            ]
-        
+            pk = [name for name, annotation in cls.__annotations__.items() if is_pk_annotation(annotation)]
+
         pk_inherited = []
         for c in cls.__bases__:
             if issubclass(c, DataModel) and c.__primary_key__ is not None:
@@ -146,11 +152,7 @@ class AbstractDataStore(HandlerInvokerDependency, Generic[T_Data]):
     @classmethod
     def resolve_dependency(cls, /, invoker: AbstractHandlerInvoker, param: Parameter, **kwds: Any) -> Any:
         identifier = kwds.get("identifier", None)
-        name = (
-            f"dependency-{param.name}"
-            if identifier is None
-            else f"dependency-{identifier}-{param.name}"
-        )
+        name = f"dependency-{param.name}" if identifier is None else f"dependency-{identifier}-{param.name}"
         data_type = getattr(cls, "__store_type__", None)
         if data_type is None:
             args = get_args(param.annotation)
@@ -250,9 +252,7 @@ class AbstractDataStore(HandlerInvokerDependency, Generic[T_Data]):
     def __len__(self) -> int:
         return len(tuple(self.get_all()))
 
-    def __init_subclass__(
-        cls, *, store_type: Optional[str] = None, **kwds: Any
-    ) -> None:
+    def __init_subclass__(cls, *, store_type: Optional[str] = None, **kwds: Any) -> None:
         super().__init_subclass__(**kwds)
         if store_type:
             assert not isabstract(cls), "cannot specify store_type for abstract class"
@@ -299,9 +299,7 @@ class AbstractCachedDataStore(AbstractDataStore[T_Data]):
     def update_data(self) -> None:
         raise NotImplementedError
 
-    def get(
-        self, key: Any, /, default: Optional[T_Data] = None, *, sync: bool = True
-    ) -> Optional[T_Data]:
+    def get(self, key: Any, /, default: Optional[T_Data] = None, *, sync: bool = True) -> Optional[T_Data]:
         if sync:
             self.prepare_data()
         return self._indexd_data.get(key, default)
@@ -408,16 +406,12 @@ class MemoryStore(AbstractCachedDataStore[T_Data], store_type="memory"):
 class LruStore(AbstractDataStore[T_Data], store_type="lru"):
     __slots__ = ["_cache", "_index"]
 
-    def __init__(
-        self, name: StrictStr, maxlen: int = 128, *, data_type: Optional[Type[T_Data]] = None
-    ) -> None:
+    def __init__(self, name: StrictStr, maxlen: int = 128, *, data_type: Optional[Type[T_Data]] = None) -> None:
         super().__init__(name, data_type=data_type)
         self._cache: Deque[T_Data] = deque(maxlen=maxlen)
         self._index: Dict[Any, T_Data] = {}
-    
-    def get(
-        self, key: Any, /, default: Optional[T_Data] = None
-    ) -> Optional[T_Data]:
+
+    def get(self, key: Any, /, default: Optional[T_Data] = None) -> Optional[T_Data]:
         item = self._index.get(key, default)
         if item is not None:
             self.move_to_end(item)
@@ -434,13 +428,13 @@ class LruStore(AbstractDataStore[T_Data], store_type="lru"):
         data.set_data_store(self)
         if data.__primary_key__ is not None:
             self._index[data.get_primary_key()] = data
-    
+
     def update(self, data: T_Data) -> None:
         self.move_to_end(data)
-    
+
     def get_all(self) -> List[T_Data]:
         return list(self._cache)
-    
+
     def discard(self, data: T_Data, /) -> bool:
         try:
             self._cache.remove(data)
@@ -449,28 +443,28 @@ class LruStore(AbstractDataStore[T_Data], store_type="lru"):
         if data.__primary_key__ is not None:
             self._index.pop(data.get_primary_key())
         return True
-    
+
     def remove(self, data: T_Data) -> None:
         self._cache.remove(data)
         if data.__primary_key__ is not None:
             del self._index[data.get_primary_key()]
-    
+
     def clear(self) -> None:
         self._cache.clear()
         self._index.clear()
-    
+
     def move_to_end(self, data: T_Data, /) -> None:
         if data not in self._cache:
             raise ValueError("data not in store")
         self._cache.remove(data)
         self._cache.append(data)
-    
+
     def keys(self) -> Iterable[Any]:
         return self._index.keys()
-    
+
     def values(self) -> Iterable[T_Data]:
         return self._index.values()
-    
+
     def items(self) -> Iterable[Tuple[Any, T_Data]]:
         return self._index.items()
 
@@ -479,12 +473,12 @@ class LruStore(AbstractDataStore[T_Data], store_type="lru"):
         maxlen = self._cache.maxlen
         assert maxlen is not None
         return maxlen
-    
+
     def __getitem__(self, __key: Any) -> T_Data:
         item = self._index[__key]
         self.move_to_end(item)
         return item
-    
+
     def __contains__(self, __key: Any) -> bool:
         if isinstance(__key, DataModel):
             if __key.__primary_key__ is not None:
@@ -495,7 +489,7 @@ class LruStore(AbstractDataStore[T_Data], store_type="lru"):
 
     def __iter__(self) -> Iterator[T_Data]:
         return iter(self._cache)
-    
+
     def __len__(self) -> StrictInt:
         return len(self._cache)
 
@@ -505,15 +499,11 @@ class AbstractAsyncCachedStore(AbstractCachedDataStore[T_Data]):
 
     enable_async_backend: ClassVar[bool] = greenback is not None
 
-    def __init__(
-        self, name: StrictStr, *, data_type: Optional[Type[T_Data]] = None
-    ) -> None:
+    def __init__(self, name: StrictStr, *, data_type: Optional[Type[T_Data]] = None) -> None:
         super().__init__(name, data_type=data_type)
         self._load_tasks: WeakSet[asyncio.Task] = WeakSet()
         self._save_tasks: WeakSet[asyncio.Task] = WeakSet()
-        self._wait_list: WeakKeyDictionary[asyncio.Task, WeakSet[asyncio.Task]] = (
-            WeakKeyDictionary()
-        )
+        self._wait_list: WeakKeyDictionary[asyncio.Task, WeakSet[asyncio.Task]] = WeakKeyDictionary()
         self._loaded = False
 
         try:
@@ -551,15 +541,11 @@ class AbstractAsyncCachedStore(AbstractCachedDataStore[T_Data]):
     def wait_tasks_sync(self, *, load: bool = True, save: bool = True) -> None:
         if not self._should_wait(load=load, save=save):
             return
-        assert (
-            greenback is not None
-        ), "greenback is not installed, please installing it first"
+        assert greenback is not None, "greenback is not installed, please installing it first"
         greenback.await_(self.wait_tasks(load=load, save=save))
 
     def _should_wait(self, *, load: bool = True, save: bool = True) -> bool:
-        return (load and any(not t.done() for t in self._load_tasks)) or (
-            save and any(not t.done() for t in self._save_tasks)
-        )
+        return (load and any(not t.done() for t in self._load_tasks)) or (save and any(not t.done() for t in self._save_tasks))
 
     async def _wait_tasks(self, wait_tasks: Iterable[asyncio.Task]) -> None:
         task = asyncio.current_task()
@@ -746,6 +732,4 @@ def get_store(
     data_type: Optional[Type[T_Data]] = None,
     **kwds: Any,
 ) -> AbstractDataStore[T_Data]:
-    return AbstractDataStore.__store_collection__[store_type].get_store(
-        name, *args, data_type=data_type, **kwds
-    )
+    return AbstractDataStore.__store_collection__[store_type].get_store(name, *args, data_type=data_type, **kwds)

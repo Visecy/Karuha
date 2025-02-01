@@ -6,9 +6,21 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import IntEnum
-from typing import (Any, BinaryIO, Callable, Coroutine, Dict,
-                    Generator, Iterable, List, Literal, Optional, Tuple, Union,
-                    overload)
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    Coroutine,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    overload,
+)
 from weakref import WeakSet, ref
 
 from aiofiles import open as aio_open
@@ -43,35 +55,31 @@ class Bot(object):
 
     Provides many low-level API interfaces.
     """
-    
+
     __slots__ = [
-        "state", "logger", "config", "server", "server_info", "account_info",
-        "_wait_list", "_tid_counter", "_tasks", "_loop_task_ref", "_server_config"
+        "state",
+        "logger",
+        "config",
+        "server",
+        "server_info",
+        "account_info",
+        "_wait_list",
+        "_tid_counter",
+        "_tasks",
+        "_loop_task_ref",
+        "_server_config",
     ]
 
     initialize_event_callback: Callable[[Self], Any]
     finalize_event_callback: Callable[[Self], Coroutine]
-    server_event_callbacks: Dict[
-        str,
-        List[
-            Callable[[Self, Message], Any]
-        ]
-    ] = defaultdict(list)
+    server_event_callbacks: Dict[str, List[Callable[[Self, Message], Any]]] = defaultdict(list)
     client_event_callbacks: Dict[
         str,
-        List[
-            Callable[[Self, Message, Optional[Message], Optional[pb.ClientExtra]], Any]
-        ],
+        List[Callable[[Self, Message, Optional[Message], Optional[pb.ClientExtra]], Any]],
     ] = defaultdict(list)
 
     @overload
-    def __init__(
-        self,
-        config: BotConfig,
-        /, *,
-        server: Union[ServerConfig, Any, None] = None,
-        log_level: Level = ...
-    ) -> None:
+    def __init__(self, config: BotConfig, /, *, server: Union[ServerConfig, Any, None] = None, log_level: Level = ...) -> None:
         """
         :param config: the bot configuration
         :type config: :class:`BotConfig`
@@ -84,12 +92,14 @@ class Bot(object):
 
     @overload
     def __init__(
-        self, name: str, /,
+        self,
+        name: str,
+        /,
         scheme: Literal["basic", "token", "cookie"],
         secret: str,
         *,
         server: Union[ServerConfig, Any, None] = None,
-        log_level: Level = ...
+        log_level: Level = ...,
     ) -> None:
         """
         :param name: the bot name
@@ -111,7 +121,7 @@ class Bot(object):
         secret: Optional[str] = None,
         *,
         server: Union[ServerConfig, Any, None] = None,
-        log_level: Optional[Level] = None
+        log_level: Optional[Level] = None,
     ) -> None:
         if isinstance(name, BotConfig):
             self.config = name
@@ -137,27 +147,21 @@ class Bot(object):
         This message must be the first that the client sends to the server.
         Server responds with a {ctrl} which contains server build build, wire protocol version ver,
         session ID sid in case of long polling, as well as server constraints, all in ctrl.params.
-        
+
         :param lang: the language of the chatbot
         :type lang: str
         :return: tid and server info
         :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
-        user_agent = ' '.join((
-            f"KaruhaBot/{APP_VERSION}",
-            f"({platform.system()}/{platform.release()});",
-            f"{self.server.type}-python/{LIB_VERSION}"
-        ))
-        ctrl = await self.send_message(
-            tid,
-            hi=pb.ClientHi(
-                id=tid,
-                user_agent=user_agent,
-                ver=LIB_VERSION,
-                lang=lang
+        user_agent = " ".join(
+            (
+                f"KaruhaBot/{APP_VERSION}",
+                f"({platform.system()}/{platform.release()});",
+                f"{self.server.type}-python/{LIB_VERSION}",
             )
         )
+        ctrl = await self.send_message(tid, hi=pb.ClientHi(id=tid, user_agent=user_agent, ver=LIB_VERSION, lang=lang))
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
             err_text = f"fail to init chatbot: {ctrl.text}"
@@ -172,17 +176,17 @@ class Bot(object):
         return tid, params
 
     async def account(
-            self,
-            user_id: str,
-            scheme: Optional[str] = None,
-            secret: Optional[bytes] = None,
-            *,
-            state: Optional[str] = None,
-            do_login: bool = True,
-            desc: Optional[pb.SetDesc] = None,
-            tags: Iterable[str] = (),
-            cred: Iterable[pb.ClientCred] = (),
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        user_id: str,
+        scheme: Optional[str] = None,
+        secret: Optional[bytes] = None,
+        *,
+        state: Optional[str] = None,
+        do_login: bool = True,
+        desc: Optional[pb.SetDesc] = None,
+        tags: Iterable[str] = (),
+        cred: Iterable[pb.ClientCred] = (),
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Message {acc} creates users or updates tags or authentication credentials scheme and secret of exiting users.
@@ -228,7 +232,7 @@ class Bot(object):
                 tags=tags,
                 cred=cred,
             ),
-            extra=extra
+            extra=extra,
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
@@ -240,21 +244,14 @@ class Bot(object):
     async def login(self) -> Tuple[str, Dict[str, Any]]:
         """
         Login is used to authenticate the current session.
-        
+
         :return: tid and params
         :rtype: Tuple[str, Dict[str, Any]]
         """
         tid = self._get_tid()
         scheme, secret = await self._eval_secret()
-        
-        ctrl = await self.send_message(
-            tid,
-            login=pb.ClientLogin(
-                id=tid,
-                scheme=scheme,
-                secret=secret
-            )
-        )
+
+        ctrl = await self.send_message(tid, login=pb.ClientLogin(id=tid, scheme=scheme, secret=secret))
         assert isinstance(ctrl, pb.ServerCtrl)
         # Check for 409 "already authenticated".
         if ctrl.code == 409:  # pragma: no cover
@@ -275,14 +272,16 @@ class Bot(object):
         return tid, params
 
     async def subscribe(
-        self, /, topic: str,
+        self,
+        /,
+        topic: str,
         *,
         mode: Optional[str] = None,
         get: Optional[Union[pb.GetQuery, str]] = None,
         set: Optional[pb.SetQuery] = None,
         get_since: Optional[int] = None,
         limit: int = 24,
-        extra: Optional[pb.ClientExtra] = None
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         The {sub} packet serves the following functions:
@@ -291,7 +290,7 @@ class Bot(object):
         - subscribing user to an existing topic
         - attaching session to a previously subscribed topic
         - fetching topic data
-        
+
         :param topic: topic to subscribe
         :type topic: str
         :param get: get query
@@ -308,32 +307,13 @@ class Bot(object):
         tid = self._get_tid()
         if get_since is not None:
             assert get is None, "get_since and get cannot be used at the same time"
-            get = pb.GetQuery(
-                data=pb.GetOpts(
-                    since_id=get_since,
-                    limit=limit
-                ),
-                what="data"
-            )
+            get = pb.GetQuery(data=pb.GetOpts(since_id=get_since, limit=limit), what="data")
         elif isinstance(get, str):
-            get = pb.GetQuery(
-                what=get
-            )
+            get = pb.GetQuery(what=get)
         if mode is not None:
             assert set is None, "mode and set cannot be used at the same time"
-            set = pb.SetQuery(
-                sub=pb.SetSub(mode=mode)
-            )
-        ctrl = await self.send_message(
-            tid,
-            sub=pb.ClientSub(
-                id=tid,
-                topic=topic,
-                get_query=get,
-                set_query=set
-            ),
-            extra=extra
-        )
+            set = pb.SetQuery(sub=pb.SetSub(mode=mode))
+        ctrl = await self.send_message(tid, sub=pb.ClientSub(id=tid, topic=topic, get_query=get, set_query=set), extra=extra)
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
             err_text = f"fail to subscribe topic {topic}: {ctrl.text}"
@@ -365,7 +345,7 @@ class Bot(object):
 
         - leaving the topic without unsubscribing (unsub=false)
         - unsubscribing (unsub=true)
-        
+
         Server responds to {leave} with a {ctrl} packet. Leaving without unsubscribing affects just the current session.
         Leaving with unsubscribing will affect all user's sessions.
 
@@ -384,7 +364,7 @@ class Bot(object):
                 topic=topic,
                 unsub=unsub,
             ),
-            extra=extra
+            extra=extra,
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:
@@ -396,13 +376,13 @@ class Bot(object):
         return tid, decode_mapping(ctrl.params)
 
     async def publish(
-            self,
-            /,
-            topic: str,
-            text: Union[str, dict],
-            *,
-            head: Optional[Dict[str, Any]] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        text: Union[str, dict],
+        *,
+        head: Optional[Dict[str, Any]] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         The message is used to distribute content to topic subscribers.
@@ -423,15 +403,7 @@ class Bot(object):
             head["auto"] = b"true"
         tid = self._get_tid()
         ctrl = await self.send_message(
-            tid,
-            pub=pb.ClientPub(
-                id=tid,
-                topic=topic,
-                no_echo=True,
-                head=head,
-                content=to_json(text)
-            ),
-            extra=extra
+            tid, pub=pb.ClientPub(id=tid, topic=topic, no_echo=True, head=head, content=to_json(text)), extra=extra
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
@@ -452,9 +424,9 @@ class Bot(object):
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
         Query topic for description.
-        
+
         NOTE: only one of `what` can be specified at a time
-        
+
         :param topic: topic to get
         :type topic: str
         :param what: fields to get
@@ -479,9 +451,9 @@ class Bot(object):
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
         Query topic for subscriptions.
-        
+
         NOTE: only one of `what` can be specified at a time
-        
+
         :param topic: topic to get
         :type topic: str
         :param what: fields to get
@@ -506,9 +478,9 @@ class Bot(object):
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
         Query topic for data.
-        
+
         NOTE: only one of `what` can be specified at a time
-        
+
         :param topic: topic to get
         :type topic: str
         :param what: fields to get
@@ -532,9 +504,9 @@ class Bot(object):
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
         Query topic for tags.
-        
+
         NOTE: only one of `what` can be specified at a time
-        
+
         :param topic: topic to get
         :type topic: str
         :param what: fields to get
@@ -571,15 +543,15 @@ class Bot(object):
 
     @overload
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["desc", "sub", "data", "tags", "cred"]] = None,
-            *,
-            desc: Optional[pb.GetOpts] = None,
-            sub: Optional[pb.GetOpts] = None,
-            data: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["desc", "sub", "data", "tags", "cred"]] = None,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+        sub: Optional[pb.GetOpts] = None,
+        data: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         """
         Query topic for metadata, such as description or a list of subscribers, or query message history.
@@ -605,15 +577,15 @@ class Bot(object):
         """
 
     async def get(
-            self,
-            /,
-            topic: str,
-            what: Optional[Literal["desc", "sub", "data", "tags", "cred"]] = None,
-            *,
-            desc: Optional[pb.GetOpts] = None,
-            sub: Optional[pb.GetOpts] = None,
-            data: Optional[pb.GetOpts] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        what: Optional[Literal["desc", "sub", "data", "tags", "cred"]] = None,
+        *,
+        desc: Optional[pb.GetOpts] = None,
+        sub: Optional[pb.GetOpts] = None,
+        data: Optional[pb.GetOpts] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Optional[pb.ServerMeta]]:
         tid = self._get_tid()
         if what is None:
@@ -630,17 +602,8 @@ class Bot(object):
                 raise ValueError("what must be specified")
         meta = await self.send_message(
             tid,
-            get=pb.ClientGet(
-                id=tid,
-                topic=topic,
-                query=pb.GetQuery(
-                    what=what,
-                    desc=desc,
-                    sub=sub,
-                    data=data
-                )
-            ),
-            extra=extra
+            get=pb.ClientGet(id=tid, topic=topic, query=pb.GetQuery(what=what, desc=desc, sub=sub, data=data)),
+            extra=extra,
         )
         if isinstance(meta, pb.ServerCtrl):  # pragma: no cover
             if meta.code == 204:  # no content
@@ -660,7 +623,7 @@ class Bot(object):
         desc: Optional[pb.GetOpts] = None,
         sub: Optional[pb.GetOpts] = None,
         data: Optional[pb.GetOpts] = None,
-        extra: Optional[pb.ClientExtra] = None
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, None]:
         """
         get data from a topic
@@ -682,30 +645,20 @@ class Bot(object):
         """
         tid = self._get_tid()
         await self.send_message(
-            get=pb.ClientGet(
-                id=tid,
-                topic=topic,
-                query=pb.GetQuery(
-                    what=what,
-                    desc=desc,
-                    sub=sub,
-                    data=data
-                )
-            ),
-            extra=extra
+            get=pb.ClientGet(id=tid, topic=topic, query=pb.GetQuery(what=what, desc=desc, sub=sub, data=data)), extra=extra
         )
         return tid, None
 
     async def set(
-            self,
-            /,
-            topic: str,
-            *,
-            desc: Optional[pb.SetDesc] = None,
-            sub: Optional[pb.SetSub] = None,
-            tags: Optional[Iterable[str]] = None,
-            cred: Optional[pb.ClientCred] = None,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        /,
+        topic: str,
+        *,
+        desc: Optional[pb.SetDesc] = None,
+        sub: Optional[pb.SetSub] = None,
+        tags: Optional[Iterable[str]] = None,
+        cred: Optional[pb.ClientCred] = None,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Update topic metadata, delete messages or topic.
@@ -731,17 +684,8 @@ class Bot(object):
         tid = self._get_tid()
         ctrl = await self.send_message(
             tid,
-            set=pb.ClientSet(
-                id=tid,
-                topic=topic,
-                query=pb.SetQuery(
-                    desc=desc,
-                    sub=sub,
-                    tags=tags,
-                    cred=cred
-                )
-            ),
-            extra=extra
+            set=pb.ClientSet(id=tid, topic=topic, query=pb.SetQuery(desc=desc, sub=sub, tags=tags, cred=cred)),
+            extra=extra,
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
@@ -752,13 +696,13 @@ class Bot(object):
 
     @overload
     async def delete(
-            self,
-            what: Literal["msg"],
-            *,
-            topic: str,
-            del_seq: Iterable[pb.SeqRange] = (),
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        what: Literal["msg"],
+        *,
+        topic: str,
+        del_seq: Iterable[pb.SeqRange] = (),
+        hard: bool = False,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         User can soft-delete hard=false (default) or hard-delete hard=true messages.
@@ -787,17 +731,12 @@ class Bot(object):
 
     @overload
     async def delete(
-            self,
-            what: Literal["topic"],
-            *,
-            topic: str,
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self, what: Literal["topic"], *, topic: str, hard: bool = False, extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Deleting a topic deletes the topic including all subscriptions, and all messages.
         Only the owner can delete a topic.
-        
+
         :param what: delete type, defaults to "topic"
         :type what: Literal["topic"]
         :param topic: topic to delete
@@ -813,13 +752,7 @@ class Bot(object):
 
     @overload
     async def delete(
-            self,
-            what: Literal["sub"],
-            *,
-            topic: str,
-            user_id: str,
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self, what: Literal["sub"], *, topic: str, user_id: str, hard: bool = False, extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Deleting a subscription removes specified user from topic subscribers.
@@ -844,16 +777,11 @@ class Bot(object):
 
     @overload
     async def delete(
-            self,
-            what: Literal["user"],
-            *,
-            user_id: str,
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self, what: Literal["user"], *, user_id: str, hard: bool = False, extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Deleting a user is a very heavy operation. Use caution.
-        
+
         :param what: delete type, defaults to "user"
         :type what: Literal["user"]
         :param user_id: user ID to delete
@@ -869,18 +797,13 @@ class Bot(object):
 
     @overload
     async def delete(
-            self,
-            what: Literal["cred"],
-            *,
-            cred: pb.ClientCred,
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self, what: Literal["cred"], *, cred: pb.ClientCred, hard: bool = False, extra: Optional[pb.ClientExtra] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Delete credential.
         Validated credentials and those with no attempts at validation are hard-deleted.
         Credentials with failed attempts at validation are soft-deleted which prevents their reuse by the same user.
-        
+
         :param what: delete type, defaults to "cred"
         :type what: Literal["cred"]
         :param cred: credential to delete
@@ -896,15 +819,15 @@ class Bot(object):
 
     @overload
     async def delete(
-            self,
-            what: Literal["msg", "topic", "sub", "user", "cred"],
-            *,
-            topic: Optional[str] = None,
-            del_seq: Iterable[pb.SeqRange] = (),
-            user_id: Optional[str] = None,
-            cred: Optional[pb.ClientCred] = None,
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        what: Literal["msg", "topic", "sub", "user", "cred"],
+        *,
+        topic: Optional[str] = None,
+        del_seq: Iterable[pb.SeqRange] = (),
+        user_id: Optional[str] = None,
+        cred: Optional[pb.ClientCred] = None,
+        hard: bool = False,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Delete messages, subscriptions, topics, users.
@@ -929,26 +852,31 @@ class Bot(object):
         """
 
     async def delete(
-            self,
-            what: Literal["msg", "topic", "sub", "user", "cred"],
-            *,
-            topic: Optional[str] = None,
-            del_seq: Iterable[pb.SeqRange] = (),
-            user_id: Optional[str] = None,
-            cred: Optional[pb.ClientCred] = None,
-            hard: bool = False,
-            extra: Optional[pb.ClientExtra] = None
+        self,
+        what: Literal["msg", "topic", "sub", "user", "cred"],
+        *,
+        topic: Optional[str] = None,
+        del_seq: Iterable[pb.SeqRange] = (),
+        user_id: Optional[str] = None,
+        cred: Optional[pb.ClientCred] = None,
+        hard: bool = False,
+        extra: Optional[pb.ClientExtra] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         tid = self._get_tid()
         ctrl = await self.send_message(
-            tid, extra=extra, **{"del": pb.ClientDel(
-                id=tid, what=getattr(pb.ClientDel.What, what.upper()),
-                topic=topic,
-                del_seq=del_seq,
-                user_id=user_id,
-                cred=cred,
-                hard=hard
-            )}
+            tid,
+            extra=extra,
+            **{
+                "del": pb.ClientDel(
+                    id=tid,
+                    what=getattr(pb.ClientDel.What, what.upper()),
+                    topic=topic,
+                    del_seq=del_seq,
+                    user_id=user_id,
+                    cred=cred,
+                    hard=hard,
+                )
+            },
         )
         assert isinstance(ctrl, pb.ServerCtrl)
         if ctrl.code < 200 or ctrl.code >= 400:  # pragma: no cover
@@ -960,7 +888,7 @@ class Bot(object):
     async def note_kp(self, /, topic: str) -> None:
         """key press, i.e. a typing notification.
         The client should use it to indicate that the user is composing a new message.
-        
+
         :param topic: topic to note
         :type topic: str
         """
@@ -969,7 +897,7 @@ class Bot(object):
     async def note_recv(self, /, topic: str, seq: int) -> None:
         """mark a text as received
         a {data} message is received by the client software but may not yet seen by user.
-        
+
         :param topic: topic to mark
         :type topic: str
         :param seq: sequence id
@@ -989,9 +917,7 @@ class Bot(object):
         await self.send_message(note=pb.ClientNote(topic=topic, what=pb.READ, seq_id=seq))
 
     async def upload(
-            self,
-            path: Union[str, os.PathLike, BinaryIO],
-            filename: Optional[str] = None
+        self, path: Union[str, os.PathLike, BinaryIO], filename: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         upload a file
@@ -1008,11 +934,7 @@ class Bot(object):
         params = await self.server.upload(path, f"{scheme} {secret}", tid=tid, filename=filename)
         return tid, params
 
-    async def download(
-            self,
-            url: str,
-            path: Union[str, os.PathLike, BinaryIO]
-    ) -> Tuple[str, int]:
+    async def download(self, url: str, path: Union[str, os.PathLike, BinaryIO]) -> Tuple[str, int]:
         """
         download a file
 
@@ -1063,11 +985,7 @@ class Bot(object):
         """
 
     async def send_message(
-            self,
-            wait_tid: Optional[str] = None,
-            /, *,
-            extra: Optional[pb.ClientExtra] = None,
-            **kwds: Optional[Message]
+        self, wait_tid: Optional[str] = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]
     ) -> Optional[Message]:
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
@@ -1105,7 +1023,7 @@ class Bot(object):
             raise KaruhaBotError(f"fail to run bot {self.name} (state: {self.state})", bot=self)
         self.state = BotState.running
         self._loop_task_ref = ref(asyncio.current_task())
-        
+
         wait_time = 0
         while self.state == BotState.running:
             self.logger.info(f"starting the bot {self.name}")
@@ -1145,7 +1063,7 @@ class Bot(object):
 
                 for t in self._tasks:
                     t.cancel()
-                
+
                 if wait_time:
                     await asyncio.sleep(wait_time)
 
@@ -1162,11 +1080,7 @@ class Bot(object):
         except Exception:
             if self._server_config is None:
                 raise ValueError("server not specified") from None
-            init_config(
-                server=self._server_config,
-                bots=[self.config],
-                log_level=self.logger.level
-            )
+            init_config(server=self._server_config, bots=[self.config], log_level=self.logger.level)
         try:
             asyncio.run(self.async_run())
         except KeyboardInterrupt:
@@ -1212,11 +1126,7 @@ class Bot(object):
                     break
             else:
                 raise ValueError(f"bot '{name}' is not in the configuration list")
-        return cls(
-            name,
-            server=config.server,
-            log_level=config.log_level
-        )
+        return cls(name, server=config.server, log_level=config.log_level)
 
     @property
     def name(self) -> str:
@@ -1225,7 +1135,7 @@ class Bot(object):
     @property
     def user_id(self) -> str:
         return self.account_info["user"]
-    
+
     @property
     def authlvl(self) -> Optional[str]:
         acc_info = getattr(self, "account_info", None)
@@ -1278,14 +1188,11 @@ class Bot(object):
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         return task
-    
+
     async def _eval_secret(self) -> Tuple[str, bytes]:
         try:
             scheme, secret = self.config.scheme, self.config.secret
-            if self.token is not None and (
-                self.token_expires is None
-                or self.token_expires > datetime.now(timezone.utc)
-            ):
+            if self.token is not None and (self.token_expires is None or self.token_expires > datetime.now(timezone.utc)):
                 scheme, secret = "token", base64.b64decode(self.token.encode())
             elif scheme == "cookie":
                 scheme, secret = await read_auth_cookie(self.config.secret)
@@ -1314,7 +1221,7 @@ class Bot(object):
             try:
                 await self.login()
             except (asyncio.TimeoutError, KaruhaBotError):
-                self.logger.warning(f"login failed, retrying {i+1} times")
+                self.logger.warning(f"login failed, retrying {i + 1} times")
             else:
                 break
         else:
@@ -1324,10 +1231,7 @@ class Bot(object):
                 self.logger.error("login failed, cancel the bot")
                 self.cancel()
 
-        await self.subscribe(
-            "me",
-            get="sub desc tags cred"
-        )
+        await self.subscribe("me", get="sub desc tags cred")
 
     async def _recv_loop(self, server: BaseServer) -> None:
         async for message in server:
@@ -1336,16 +1240,12 @@ class Bot(object):
                     e(self, msg)
 
     @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: GetCoreSchemaHandler
-    ) -> CoreSchema:
-        return core_schema.no_info_plain_validator_function(
-            lambda x: x if isinstance(x, source_type) else cls(x)
-        )
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+        return core_schema.no_info_plain_validator_function(lambda x: x if isinstance(x, source_type) else cls(x))
 
     def __repr__(self) -> str:
         state = self.state.name
-        uid = getattr(self, "user_id", 'unknown uid')
+        uid = getattr(self, "user_id", "unknown uid")
         return f"<bot {self.name} ({uid}) {state}>"
 
 
@@ -1353,12 +1253,13 @@ class ProxyBot(Bot):
     """
     the bot that runs on the `extra.on_behalf_of` proxy
     """
+
     __slots__ = ["on_behalf_of"]
 
     def __init__(self, *args: Any, on_behalf_of: str, **kwds: Any) -> None:
         super().__init__(*args, **kwds)
         self.on_behalf_of = on_behalf_of
-    
+
     @classmethod
     def from_bot(cls, bot: Bot, /, on_behalf_of: str, name: Optional[str] = None) -> Self:
         config = bot.config.model_copy()
@@ -1367,7 +1268,7 @@ class ProxyBot(Bot):
         else:
             config.name = name
         return cls(config, bot._server_config, bot.logger.level, on_behalf_of=on_behalf_of)
-    
+
     @overload
     async def send_message(
         self,
@@ -1389,11 +1290,7 @@ class ProxyBot(Bot):
     ) -> None: ...
 
     async def send_message(
-            self,
-            wait_tid: Optional[str] = None,
-            /, *,
-            extra: Optional[pb.ClientExtra] = None,
-            **kwds: Optional[Message]
+        self, wait_tid: Optional[str] = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]
     ) -> Optional[Message]:
         """set messages to Tinode server
 
@@ -1416,11 +1313,11 @@ class ProxyBot(Bot):
         elif extra.on_behalf_of != self.on_behalf_of:
             raise KaruhaBotError(f"on_behalf_of mismatch: {extra.on_behalf_of} != {self.on_behalf_of}", bot=self)
         return await super().send_message(wait_tid, extra=extra, **kwds)
-    
+
     @property
     def user_id(self) -> str:
         return self.on_behalf_of
-    
+
     uid = user_id
 
     @property
@@ -1430,12 +1327,12 @@ class ProxyBot(Bot):
 
 async def read_auth_cookie(cookie_file_name: Union[str, bytes, os.PathLike]) -> Tuple[str, Union[str, bytes]]:
     """Read authentication token from a file"""
-    async with aio_open(cookie_file_name, 'r') as cookie:
+    async with aio_open(cookie_file_name, "r") as cookie:
         params = from_json(await cookie.read())
     scheme = params.get("scheme")
-    secret = params.get('secret')
+    secret = params.get("secret")
     if scheme is None or secret is None:
         raise ValueError("invalid cookie file")
-    if scheme == 'token':
+    if scheme == "token":
         secret = base64.b64decode(secret)
     return scheme, secret
