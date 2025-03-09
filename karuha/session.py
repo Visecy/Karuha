@@ -1,11 +1,12 @@
 import asyncio
-from collections import deque
 import os
 import re
 import weakref
+from collections import deque
 from functools import partialmethod
 from io import IOBase
-from typing import Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional, Tuple, Union, overload
+from typing import (Any, BinaryIO, Dict, Iterable, List, NoReturn, Optional,
+                    Tuple, Union, overload)
 
 from aiofiles import open as aio_open
 from aiofiles.ospath import getsize
@@ -315,6 +316,7 @@ class BaseSession(object):
         self._ensure_status()
         return await karuha.data.get_user(self.bot, user_id, skip_cache=skip_cache)
 
+    @deprecated("use `TopicService` instead")
     async def get_topic(self, topic: Optional[str] = None, *, skip_cache: bool = False) -> "karuha.data.BaseTopic":
         """Get the topic data from the specified topic ID.
 
@@ -479,7 +481,8 @@ from .event.message import MessageDispatcher, get_message_lock
 from .text import textchain
 from .text.drafty import Drafty
 from .text.message import Message
-from .text.textchain import BaseText, Bold, Button, Form, NewLine, PlainText, TextChain, _Attachment
+from .text.textchain import (BaseText, Bold, Button, Form, NewLine, PlainText,
+                             TextChain, _Attachment)
 from .utils.dispatcher import FutureDispatcher
 
 

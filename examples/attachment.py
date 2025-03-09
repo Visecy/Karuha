@@ -15,6 +15,8 @@ async def asr(session: MessageSession, reply: Head[Optional[int]] = None) -> Non
         await session.finish("No an audio")
     buffer = BytesIO()
     await session.download_attachment(message.text, buffer)
+    
+    buffer.seek(0)
     try:
         data, samplerate = read(buffer)
         await session.send(f"{data.shape[0]} samples, {samplerate} Hz")

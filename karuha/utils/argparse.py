@@ -89,20 +89,24 @@ class Argument:
     :param kwargs: Keyword arguments for the argument.
 
     Usage:
-        >>> version: Arg[
-        ...     str,
-        ...     "-v", "--version",
-        ...     {"action": "version", "version": "0.1.0"}
-        ... ]
-        # Or using Annotated
-        >>> version: Annotated[
-        ...     str,
-        ...     Argument(
-        ...         "-v", "--version",
-        ...         action="version",
-        ...         version="0.1.0"
-        ...     )
-        ... ]
+
+    ```py
+    version: Arg[
+        str,
+        "-v", "--version",
+        {"action": "version", "version": "0.1.0"}
+    ]
+
+    # Or using Annotated
+    version: Annotated[
+        str,
+        Argument(
+            "-v", "--version",
+            action="version",
+            version="0.1.0"
+        )
+    ]
+    ```
     """
 
     __slots__ = ["args", "kwargs", "dest"]
@@ -318,13 +322,16 @@ def build_parser(
     :return: Configured `ArgumentParser`.
 
     Usage:
-        def example(
-            path: Arg[str, "--path", Argument(help="Input path")],
-            force: Arg[bool, "--force", Argument(action="store_true")],
-            timeout: int = 10,
-        ) -> None: ...
+    ```py
+    def example(
+        path: Arg[str, "--path", Argument(help="Input path")],
+        force: Arg[bool, "--force", Argument(action="store_true")],
+        *,
+        timeout: int = 10,
+    ) -> None: ...
 
-        parser = build_parser(example, unannotated_mode="autoconvert")
+    parser = build_parser(example, unannotated_mode="autoconvert")
+    ```
     """
     if isinstance(func, Signature):  # pragma: no cover
         sig = func

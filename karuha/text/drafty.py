@@ -4,7 +4,7 @@ Tinode Drafty Message Support
 For details see: https://github.com/tinode/chat/blob/master/docs/drafty.md
 """
 
-from pydantic import BaseModel, NonNegativeInt
+from pydantic import BaseModel, NonNegativeInt, field_validator
 from typing import Any, Dict, List, Literal, Optional, Union
 from typing_extensions import Self
 
@@ -37,6 +37,13 @@ class Drafty(BaseModel):
     txt: str = ""
     fmt: List[DraftyFormat] = []
     ent: List[DraftyExtend] = []
+
+    @field_validator("fmt", "ent", mode="before")
+    @classmethod
+    def validate_fmt_ent(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        return value
 
     @classmethod
     def from_str(cls, string: str) -> Self:
