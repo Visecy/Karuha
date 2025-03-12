@@ -1,7 +1,9 @@
 import asyncio
 import sys
-from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Set, TypeVar, Union, overload
+from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Set, Tuple, TypeVar, Union, overload
 from typing_extensions import ParamSpec
+
+from karuha.text.textchain import BaseText
 
 from ..utils.context import _ContextHelper
 from ..logger import logger
@@ -29,19 +31,19 @@ class CommandCollection(_ContextHelper):
         self.sub_collections = []
         self._dispatcher = None
         self.rule = rule
-    
+
     def add_command(self, command: AbstractCommand, /) -> None:
         self._check_name(command.__name__)
         self.commands[command.__name__] = command
         for alias in command.alias:
             self._check_name(alias)
             self.commands[alias] = command
-    
+
     def get_command(self, name: str, default: Optional[AbstractCommand] = None, /) -> Optional[AbstractCommand]:
         for c in self._get_commands(name):
             return c
         return default
-        
+
     @overload
     def on_command(
         self,
@@ -74,25 +76,36 @@ class CommandCollection(_ContextHelper):
             cmd = FunctionCommand.from_function(func, name=name, **kwds)
             self.add_command(cmd)
             return cmd
-    
+
         if isinstance(func_or_name, str) or func_or_name is None:
             return inner
         return inner(func_or_name)
-    
-    async def run(self, message: Message) -> None:
+
+    def infer_command_and_argv(
+        self, message: Message
+    ) -> Tuple[Optional[str], Optional[Tuple[AbstractCommand, List[Union[str, BaseText]]]]]:
         result = self.name_parser.parse(message)
         if result is None:
-            return
-        
+            return None, None
+
         name, argv = result
         for command in self._get_commands(name):
             if command.rule is None or command.rule.match(message):
-                break
-        else:
+                return name, (command, argv)
+        return name, None
+
+    async def run(self, message: Message) -> None:
+        name, result = self.infer_command_and_argv(message)
+        if name is None:
+            return
+
+        if result is None:
             CommandNotFoundEvent.new(self, name)
             logger.error(f"command {name} not found")
             return
-        
+
+        command, argv = result
+
         try:
             await command.call_command(CommandMessage.from_message(message, command, self, name, argv))
         except KaruhaException:
@@ -102,40 +115,40 @@ class CommandCollection(_ContextHelper):
                 f"unexpected error while running command from message {message}",
                 exc_info=sys.exc_info()
             )
-    
+
     def activate(self) -> None:
         if self._dispatcher is not None:  # pragma: no cover
             return
         self._dispatcher = CommandDispatcher(self)
         self._dispatcher.activate()
-    
+
     def deactivate(self) -> None:
         assert self._dispatcher is not None
         self._dispatcher.deactivate()
         self._dispatcher = None
-    
+
     def __getitem__(self, name: str, /) -> AbstractCommand:
         command = self.get_command(name)
         if command is not None:
             return command
         raise KaruhaCommandError(f"command {name} is not registered", name=name, collection=self)
-    
+
     @property
     def activated(self) -> bool:
         return self._dispatcher is not None
-    
+
     def _get_commands(self, name: str, /) -> Generator[AbstractCommand, None, None]:
         if name in self.commands:
             yield self.commands[name]
         for i in self.sub_collections:
             yield from i._get_commands(name)
-    
+
     def _check_name(self, name: str) -> None:
         if name in self.commands:
             raise ValueError(f"command {name} is already registered")
         if not self.name_parser.check_name(name):
             raise ValueError(f"command {name} is not valid")
-    
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} with {len(self.commands)} commands at 0x{id(self):016x}>"
 
@@ -144,14 +157,18 @@ class CommandDispatcher(MessageRuleDispatcher):
     __slots__ = ["collection"]
 
     def __init__(self, collection: CommandCollection, *, once: bool = False) -> None:
-        super().__init__(collection.rule or NoopRule(), 0.8, once=once)
+        super().__init__(collection.rule or NoopRule(), float("inf"), once=once)
         self.collection = collection
-    
+
     def match(self, message: Message, /) -> float:
+        name, result = self.collection.infer_command_and_argv(message)
+        if name is None or result is None:
+            return 0
+
         if self.collection.name_parser.precheck(message):
             return super().match(message)
         return 0
-    
+
     def run(self, message: Message) -> asyncio.Task:
         return asyncio.create_task(self.collection.run(message))
 
