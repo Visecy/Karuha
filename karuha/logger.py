@@ -1,16 +1,38 @@
 import logging
 import os
-from logging import LogRecord
+import sys
+from logging import LogRecord, StreamHandler
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from copy import copy
-from typing import Union
+from typing import IO, Any, TextIO, Union
+
+try:
+    from rich.logging import RichHandler
+except ImportError:
+    RichHandler = None
 
 from . import WORKDIR
 
 
 Level = Union[int, str]
 formatter = logging.Formatter("[%(asctime)s %(name)s][%(levelname)s] %(message)s")
+
+
+class _StderrHandler(StreamHandler):
+    """
+    This class is like a StreamHandler using sys.stderr, but always uses
+    whatever sys.stderr is currently set to rather than the value of
+    sys.stderr at handler construction time.
+    """
+    def __init__(self, level: Level = logging.NOTSET) -> None:
+        """
+        Initialize the handler.
+        """
+        super(StreamHandler, self).__init__(level)
+
+    @property
+    def stream(self) -> Union[TextIO, IO[Any]]:
+        return sys.stderr
 
 
 class NameFilter(logging.Filter):
@@ -43,10 +65,11 @@ def get_sub_logger(name: str) -> logging.Logger:
 
 logger = logging.getLogger("Karuha")
 logger.setLevel(logging.INFO)
-console_handler = copy(logging.lastResort)
-if console_handler is not None:
+if RichHandler is not None:
+    console_handler = RichHandler()
+else:
+    console_handler = _StderrHandler()
     console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
 add_log_dir(logger, WORKDIR / "log")
 
 

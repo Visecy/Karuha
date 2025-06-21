@@ -9,7 +9,6 @@ puremagic>=1.20
 soundfile>=0.12
 numpy>=1.21
 
-greenback
-
-prompt_toolkit>=3.0
 pillow>=10.0
+
+ptcmd>=0.1.1
