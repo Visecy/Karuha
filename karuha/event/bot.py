@@ -7,7 +7,7 @@ from tinode_grpc import pb
 
 from .. import bot
 from ..session import BaseSession
-from ..utils.proxy_propery import ProxyProperty
+from ..utils.proxy_property import ProxyProperty
 from ..utils.invoker import Dependency, depend_property
 from .base import Event, handler_runner
 

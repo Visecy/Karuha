@@ -1,5 +1,4 @@
 import asyncio
-import os
 import warnings
 from abc import abstractmethod
 from collections import deque
@@ -12,27 +11,16 @@ from typing import (
     Dict,
     Generic,
     Iterable,
-    Iterator,
     List,
-    Literal,
     Optional,
     Tuple,
     Type,
     TypeVar,
-    Union,
     cast,
-    overload,
 )
-from weakref import WeakKeyDictionary, WeakSet
 
-from aiofiles import open as aio_open
-from aiofiles import os as aio_os
-from aiofiles import ospath as aio_ospath
-from pydantic import BaseModel, Field, StrictInt, StrictStr, TypeAdapter, model_validator
+from pydantic import BaseModel, Field, StrictStr
 from typing_extensions import Annotated, Self, get_args, get_origin
-
-import karuha
-from karuha import store
 
 from .invoker import AbstractHandlerInvoker, HandlerInvokerDependency
 
@@ -115,7 +103,7 @@ class AbstractModelDB(HandlerInvokerDependency, Generic[T_Data]):
         raise NotImplementedError
     
     @abstractmethod
-    def all(self) -> Iterator[T_Data]:
+    def all(self) -> Iterable[T_Data]:
         raise NotImplementedError
     
     @abstractmethod
@@ -277,6 +265,9 @@ class _BaseCachedModelDB(AbstractModelDB[T_Data], Generic[T_Data]):
             return True
         return False
     
+    def all(self) -> List[T_Data]:
+        return self._data + list(self._indexd_data.values())
+    
     def purge(self) -> None:
         self._indexd_data.clear()
         self._data.clear()
@@ -316,3 +307,22 @@ class LruModelDB(_BaseCachedModelDB[T_Data], store_type="lru"):
         self._cache.remove(data)
         self._cache.append(data)
         return True
+
+
+class _BaseAsyncCachedModelDB(AbstractAsyncModelDB[T_Data], _BaseCachedModelDB[T_Data]):
+    __slots__ = []
+    
+    async def get(self, key: Any, /, default: Optional[T_Data] = None) -> Optional[T_Data]:
+        return super(AbstractAsyncModelDB, self).get(key, default=default)
+
+    async def set(self, data: T_Data, /, copy: bool = False) -> None:
+        return super(AbstractAsyncModelDB, self).set(data, copy=copy)
+
+    async def remove(self, key_or_model: Any, /) -> bool:
+        return super(AbstractAsyncModelDB, self).remove(key_or_model)
+
+    async def all(self) -> Iterable[T_Data]:
+        return super(AbstractAsyncModelDB, self).all()
+    
+    async def purge(self) -> None:
+        return super(AbstractAsyncModelDB, self).purge()

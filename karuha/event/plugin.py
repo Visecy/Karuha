@@ -8,7 +8,7 @@ from typing_extensions import Self
 from ..session import BaseSession
 from ..bot import Bot
 from ..logger import logger
-from ..utils.proxy_propery import ProxyProperty
+from ..utils.proxy_property import ProxyProperty
 from ..utils.invoker import depend_property, Dependency
 from ..runner import get_all_bots, _get_running_loop
 from . import on

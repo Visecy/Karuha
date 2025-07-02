@@ -24,6 +24,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Communications :: Chat",
 ]
@@ -45,9 +46,12 @@ lint = ["ruff>=0.9.0"]
 image = ["pillow>=10.0"]
 audio = ["soundfile>=0.12", "numpy>=1.21"]
 attachment = ["KaruhaBot[image]", "KaruhaBot[audio]"]
-cli = ["ptcmd>=0.1.1"]
+cli = ["ptcmd>=0.1.4"]
 all = ["KaruhaBot[attachment]", "KaruhaBot[cli]"]
 dev = ["KaruhaBot[all]", "KaruhaBot[lint]", "pytest", "pytest-asyncio", "coverage"]
+
+[project.scripts]
+karuha-cli = "karuha.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -6,6 +6,7 @@ from typing_extensions import Annotated
 from unittest import TestCase
 
 from pydantic_core import to_json
+from ptcmd.argument import build_parser, get_argument
 
 from karuha.bot import Bot
 from karuha.text import PlainText, Drafty, Message, Head
@@ -26,7 +27,7 @@ from karuha.command.parser import SimpleCommandParser
 from karuha.exception import KaruhaCommandError, KaruhaHandlerInvokerError
 from karuha.text.textchain import Mention, NewLine, Quote, TextChain
 from karuha.utils.invoker import ChainHandlerInvoker, DictHandlerInvoker
-from karuha.utils.argparse import Argument, Arg, get_argument, build_parser
+from karuha.utils.argparse import Argument, Arg
 
 from .utils import TEST_TOPIC, TEST_UID, bot_mock, new_test_message, new_test_command_message
 

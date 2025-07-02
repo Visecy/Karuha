@@ -70,6 +70,7 @@ if RichHandler is not None:
 else:
     console_handler = _StderrHandler()
     console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 add_log_dir(logger, WORKDIR / "log")
 
 

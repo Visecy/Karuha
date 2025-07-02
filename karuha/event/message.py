@@ -9,7 +9,7 @@ from ..text import BaseText, Drafty
 from ..text.message import Message
 from ..utils.dispatcher import AbstractDispatcher
 from ..utils.locks import Lock
-from ..utils.proxy_propery import ProxyProperty
+from ..utils.proxy_property import ProxyProperty
 from . import on
 from .bot import BotEvent, DataEvent, ensure_text_len
 
