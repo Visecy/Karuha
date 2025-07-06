@@ -2,15 +2,17 @@ import asyncio
 import contextlib
 import signal
 import threading
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import AsyncGenerator, Dict, List, Optional, Union, cast
+
+from .exception import KaruhaBotError
 
 from .config import get_config, reset_config
 from .bot import Bot, BotState
 from .event.sys import SystemStartEvent, SystemStopEvent
-from .event.bot import BotReadyEvent
+from .event.bot import BotFinishEvent, BotReadyEvent
 from .logger import logger
 from .utils.gathering import DynamicGatheringFuture
-from .utils.event_catcher import EventCatcher
+from .utils.event_catcher import MultiEventCatcher
 
 
 _bot_cache: Dict[str, Bot] = {}
@@ -65,7 +67,9 @@ def try_remove_bot(bot: Bot) -> bool:
     return True
 
 
-def remove_bot(bot: Bot) -> None:
+def remove_bot(bot: Union[Bot, str]) -> None:
+    if isinstance(bot, str):
+        bot = get_bot(bot)
     if bot.name not in _bot_cache:
         raise ValueError(f"bot {bot.name} not found")
     if bot.state == BotState.running:
@@ -82,7 +86,7 @@ def cancel_all_bots() -> bool:
 
 
 @contextlib.asynccontextmanager
-async def run_bot(bot: Bot, *, ensure_state: bool = True) -> AsyncGenerator[Bot, None]:
+async def run_bot(bot: Bot, *, ensure_ready: bool = True) -> AsyncGenerator[Bot, None]:
     """run bot temporarily
 
     :param bot: bot to run
@@ -93,11 +97,8 @@ async def run_bot(bot: Bot, *, ensure_state: bool = True) -> AsyncGenerator[Bot,
     :rtype: Generator[Bot, None, None]
     """
     add_bot(bot)
-    if ensure_state:
-        with EventCatcher(BotReadyEvent) as catcher:
-            ev = await catcher.catch_event()
-            while ev.bot is not bot:
-                ev = await catcher.catch_event()
+    if ensure_ready:
+        await _ensure_bot_ready(bot)
     try:
         yield bot
     finally:
@@ -113,6 +114,18 @@ def _get_running_loop() -> asyncio.AbstractEventLoop:
 def _handle_sigterm() -> None:  # pragma: no cover
     if _gathering_future is not None:
         _gathering_future.cancel()
+
+
+async def _ensure_bot_ready(bot: Bot, *, cleanup_on_failure: bool = True) -> None:
+    with MultiEventCatcher(BotReadyEvent, BotFinishEvent) as catcher:
+        try:
+            ev = await catcher.catch_event(pred=lambda ev: cast(Union[BotReadyEvent, BotFinishEvent], ev).bot is bot)
+            if isinstance(ev, BotFinishEvent):
+                raise KaruhaBotError(f"bot {bot.name} has finished before running", bot=bot)
+        except:
+            if cleanup_on_failure:
+                remove_bot(bot)
+            raise
 
 
 async def async_run() -> None:

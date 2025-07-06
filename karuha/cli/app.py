@@ -18,9 +18,10 @@ STYLE = {
 
 
 class App(Cmd):
-    __slots__ = ["bot", "message_session", "_runner_task", "_current_task"]
+    __slots__ = ["_bot", "message_session", "_runner_task", "_current_task"]
 
     DEFAULT_PROMPT = "[prompt.host]karuha-cli[/prompt.host]$ "
+    DEFAULT_PROMPT_WITH_BOT = "[prompt.host]{user_id}@karuha-cli[/prompt.host]$ "
     DEFAULT_THEME = Theme(STYLE)
 
     def __init__(
@@ -32,7 +33,7 @@ class App(Cmd):
         **kwds: Any
     ) -> None:
         super().__init__(stdin, stdout, **kwds)
-        self.bot = bot
+        self._bot = bot
         self.message_session: Optional[MessageSession] = None
         self._runner_task = None
         self._update_prompt()
@@ -48,17 +49,24 @@ class App(Cmd):
         task = self._runner_task
         self._runner_task = self._current_task = None
         task.cancel()
+    
+    async def emptyline(self) -> Optional[bool]:
+        return
 
     @property
-    def running(self) -> bool:
-        return self._runner_task is not None and not self._runner_task.done()
+    def bot(self) -> Optional[Bot]:
+        return self._bot
+    
+    @bot.setter
+    def bot(self, bot: Optional[Bot]) -> None:
+        self._bot = bot
+        self._update_prompt()
 
     def _update_prompt(self) -> None:
-        if self.bot is None:
+        if self._bot is None:
             self.prompt = self.DEFAULT_PROMPT
             return
-        user_id = self.bot.user_id
-        self.prompt = f"[prompt.bot]{user_id}[/prompt.bot]@{self.DEFAULT_PROMPT}"
+        self.prompt = self.DEFAULT_PROMPT_WITH_BOT.format(user_id=self._bot.user_id)
     
     def _task_callback(self, task: asyncio.Task) -> None:
         if self._runner_task is None:

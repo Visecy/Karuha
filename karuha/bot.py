@@ -63,6 +63,7 @@ class Bot(object):
         "server",
         "server_info",
         "account_info",
+        "on_behalf_of",
         "_wait_list",
         "_tid_counter",
         "_tasks",
@@ -120,6 +121,7 @@ class Bot(object):
         scheme: Optional[Literal["basic", "token", "cookie"]] = None,
         secret: Optional[str] = None,
         *,
+        on_behalf_of: Optional[str] = None,
         server: Union[ServerConfig, Any, None] = None,
         log_level: Optional[Level] = None,
     ) -> None:
@@ -135,6 +137,9 @@ class Bot(object):
             self.logger.setLevel(log_level)
         if server is not None and not isinstance(server, ServerConfig):
             server = ServerConfig.model_validate(server)
+        self.on_behalf_of = on_behalf_of
+        if self.on_behalf_of is None:
+            self.on_behalf_of = self.config.on_behalf_of
         self._server_config = server
         self._wait_list: Dict[str, asyncio.Future] = {}
         self._tid_counter = 100
@@ -989,6 +994,21 @@ class Bot(object):
     ) -> Optional[Message]:
         if self.state != BotState.running:
             raise KaruhaBotError("bot is not running", bot=self)
+        
+        # handle on_behalf_of
+        if self.on_behalf_of is not None:
+            exclude_msg = {"hi", "login"}
+            keys = set(kwds)
+            if exclude_keys := keys & exclude_msg:
+                if len(exclude_keys) != len(keys):
+                    raise KaruhaBotError("cannot mix message types", bot=self)
+            elif extra is None:
+                extra = pb.ClientExtra(on_behalf_of=self.on_behalf_of)
+            elif not extra.on_behalf_of:
+                extra.on_behalf_of = self.on_behalf_of
+            elif extra.on_behalf_of != self.on_behalf_of:
+                raise KaruhaBotError(f"on_behalf_of mismatch: {extra.on_behalf_of} != {self.on_behalf_of}", bot=self)
+        
         client_msg = pb.ClientMsg(**kwds, extra=extra)  # type: ignore
         ret = None
         if wait_tid is None:
@@ -1004,6 +1024,31 @@ class Bot(object):
             for cb in self.client_event_callbacks[k]:
                 cb(self, v, ret, extra)
         return ret
+    
+    def proxy_to(self, user_id: str, name: Optional[str] = None) -> Self:
+        """
+        Create a proxy bot instance that will run on behalf of the specified user.
+
+        :param user_id: User ID to run the bot on behalf of.
+        :type user_id: str
+        :param name: Optional name for the proxy bot. If not provided, it will be derived from the original bot's name.
+        :type name: Optional[str]
+        :return: A new Bot instance configured to run as a proxy.
+        :rtype: Bot
+        """
+        new_config = self.config.model_copy()
+        new_config.on_behalf_of = user_id
+        
+        if name:
+            new_config.name = name
+        else:
+            new_config.name = f"{self.name}_proxy_{user_id}"
+            
+        return self.__class__(
+            new_config,
+            server=self.server_config,
+            log_level=self.logger.level
+        )
 
     async def async_run(self, _server_config: Optional[ServerConfig] = None) -> None:  # pragma: no cover
         """
@@ -1133,8 +1178,21 @@ class Bot(object):
         return self.config.name
 
     @property
-    def user_id(self) -> str:
+    def is_proxy(self) -> bool:
+        """Whether the bot is acting on behalf of another user"""
+        return self.config.on_behalf_of is not None
+
+    @property
+    def login_user_id(self) -> str:
+        """The user ID used to login"""
         return self.account_info["user"]
+
+    @property
+    def user_id(self) -> str:
+        """The user ID of the bot"""
+        if self.on_behalf_of is not None:
+            return self.on_behalf_of
+        return self.login_user_id
 
     @property
     def authlvl(self) -> Optional[str]:
@@ -1230,6 +1288,7 @@ class Bot(object):
             except (asyncio.TimeoutError, KaruhaBotError):
                 self.logger.error("login failed, cancel the bot")
                 self.cancel()
+                return
 
         await self.subscribe("me", get="sub desc tags cred")
 
@@ -1249,18 +1308,20 @@ class Bot(object):
         return f"<bot {self.name} ({uid}) {state}>"
 
 
+@deprecated("ProxyBot is deprecated, use Bot.create_proxy() instead")
 class ProxyBot(Bot):
     """
     the bot that runs on the `extra.on_behalf_of` proxy
     """
 
-    __slots__ = ["on_behalf_of"]
+    __slots__ = []
 
     def __init__(self, *args: Any, on_behalf_of: str, **kwds: Any) -> None:
         super().__init__(*args, **kwds)
         self.on_behalf_of = on_behalf_of
 
     @classmethod
+    @deprecated("use Bot.create_proxy() instead")
     def from_bot(cls, bot: Bot, /, on_behalf_of: str, name: Optional[str] = None) -> Self:
         config = bot.config.model_copy()
         if name is None:
@@ -1268,61 +1329,6 @@ class ProxyBot(Bot):
         else:
             config.name = name
         return cls(config, bot._server_config, bot.logger.level, on_behalf_of=on_behalf_of)
-
-    @overload
-    async def send_message(
-        self,
-        wait_tid: str,
-        /,
-        *,
-        extra: Optional[pb.ClientExtra] = None,
-        **kwds: Optional[Message],
-    ) -> Message: ...
-
-    @overload
-    async def send_message(
-        self,
-        wait_tid: None = None,
-        /,
-        *,
-        extra: Optional[pb.ClientExtra] = None,
-        **kwds: Optional[Message],
-    ) -> None: ...
-
-    async def send_message(
-        self, wait_tid: Optional[str] = None, /, *, extra: Optional[pb.ClientExtra] = None, **kwds: Optional[Message]
-    ) -> Optional[Message]:
-        """set messages to Tinode server
-
-        :param wait_tid: if set, it willl wait until a response message with the same tid is received, defaults to None
-        :type wait_tid: Optional[str], optional
-        :param extra: extra fields, defaults to None
-        :type extra: Optional[pb.ClientExtra], optional
-        :return: message which has the same tid
-        :rtype: Optional[Message]
-        """
-        exclude_msg = {"hi", "login"}
-        keys = set(kwds)
-        if exclude_keys := keys & exclude_msg:
-            if len(exclude_keys) != len(keys):
-                raise KaruhaBotError("cannot mix message types", bot=self)
-        elif extra is None:
-            extra = pb.ClientExtra(on_behalf_of=self.on_behalf_of)
-        elif not extra.on_behalf_of:
-            extra.on_behalf_of = self.on_behalf_of
-        elif extra.on_behalf_of != self.on_behalf_of:
-            raise KaruhaBotError(f"on_behalf_of mismatch: {extra.on_behalf_of} != {self.on_behalf_of}", bot=self)
-        return await super().send_message(wait_tid, extra=extra, **kwds)
-
-    @property
-    def user_id(self) -> str:
-        return self.on_behalf_of
-
-    uid = user_id
-
-    @property
-    def login_user_id(self) -> str:
-        return super().user_id
 
 
 async def read_auth_cookie(cookie_file_name: Union[str, bytes, os.PathLike]) -> Tuple[str, Union[str, bytes]]:

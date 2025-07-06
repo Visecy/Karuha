@@ -51,7 +51,23 @@ class EventCatcher(Generic[T_Event], _ContextHelper):
         self.event_type.remove_handler(self)
 
     async def __call__(self, event: T_Event) -> None:
-        if self.future:
+        if self.future and not self.future.done():
             self.future.set_result(event)
         else:
             self.events.append(event)
+
+
+class MultiEventCatcher(EventCatcher[Event]):
+    __slots__ = ["event_types"]
+
+    def __init__(self, *event_types: Type[Event]) -> None:
+        super().__init__(Event)
+        self.event_types = event_types
+
+    def activate(self) -> None:
+        for event_type in self.event_types:
+            event_type.add_handler(self)
+
+    def deactivate(self) -> None:
+        for event_type in self.event_types:
+            event_type.remove_handler(self)

@@ -36,7 +36,7 @@ class BotInitEvent(BotEvent):
 
     async def __default_handler__(self) -> None:
         prepare_task = self.bot._create_task(self.bot._prepare_account())
-        prepare_task.add_done_callback(lambda _: BotReadyEvent.new(self.bot))
+        prepare_task.add_done_callback(lambda _: BotReadyEvent.new(self.bot) if self.bot.state == bot.BotState.running else None)
 
 
 class BotReadyEvent(BotEvent):

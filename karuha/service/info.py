@@ -3,7 +3,7 @@ from typing import Any, AsyncGenerator, Generic, Iterable, Literal, Mapping, Opt
 from tinode_grpc import pb
 from pydantic_core import to_json
 
-from ..bot import Bot, ProxyBot
+from ..bot import Bot
 from ..runner import run_bot
 from ..data.cache import get_group_desc, get_user_desc, get_sub
 from ..data.model import BaseInfo
@@ -158,7 +158,7 @@ class _BaseInfoService(BaseService, Generic[T_Info]):
         elif isinstance(proxy_bot, Bot):
             yield proxy_bot
         else:
-            async with run_bot(ProxyBot.from_bot(self.bot, proxy_bot)) as bot:
+            async with run_bot(self.bot.proxy_to(proxy_bot)) as bot:
                 yield bot
 
 

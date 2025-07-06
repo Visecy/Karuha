@@ -24,6 +24,7 @@ class Bot(BaseModel):
     name: str = "chatbot"
     scheme: Union[Literal["basic", "token", "cookie"], str]
     secret: str
+    on_behalf_of: Optional[str] = None
     auto_login: bool = True
     auto_subscribe_new_user: bool = False
     connect_mode: Optional[str] = None

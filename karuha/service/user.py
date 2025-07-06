@@ -1,7 +1,7 @@
-from typing import Any, Dict, Iterable, Mapping, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Mapping, Optional, Tuple, Union, overload
 
 from tinode_grpc import pb
-
+from ..config import Bot as BotConfig
 from ..data.model import ClientDesc, DefaultAccess
 
 from .info import _BaseInfoService
@@ -18,10 +18,46 @@ class UserService(_BaseInfoService[BaseUser]):
 
     __slots__ = []
 
+    @overload
+    async def new_user(
+        self,
+        config: BotConfig, 
+        /,
+        *,
+        fn: Optional[str] = None,
+        default_acs: Optional[DefaultAccess] = None,
+        public: Optional[Dict[str, Any]] = None,
+        trusted: Optional[Dict[str, Any]] = None,
+        private: Optional[Dict[str, Any]] = None,
+        desc: Optional[ClientDescType] = None,
+        tags: Iterable[str] = (),
+        cred: Iterable[ClientCredType] = (),
+        state: Optional[UserStateType] = None,
+    ) -> Tuple[str, Optional[str]]: ...
+
+    @overload
     async def new_user(
         self,
         uname: str,
         password: str,
+        /,
+        *,
+        fn: Optional[str] = None,
+        default_acs: Optional[DefaultAccess] = None,
+        public: Optional[Dict[str, Any]] = None,
+        trusted: Optional[Dict[str, Any]] = None,
+        private: Optional[Dict[str, Any]] = None,
+        desc: Optional[ClientDescType] = None,
+        tags: Iterable[str] = (),
+        cred: Iterable[ClientCredType] = (),
+        state: Optional[UserStateType] = None,
+    ) -> Tuple[str, Optional[str]]: ...
+    
+    async def new_user(
+        self,
+        config_or_uname: Union[BotConfig, str],
+        password: Optional[str] = None,
+        /,
         *,
         fn: Optional[str] = None,
         default_acs: Optional[DefaultAccess] = None,
@@ -33,7 +69,14 @@ class UserService(_BaseInfoService[BaseUser]):
         cred: Iterable[ClientCredType] = (),
         state: Optional[UserStateType] = None,
     ) -> Tuple[str, Optional[str]]:
-        secret = f"{uname}:{password}"
+        if isinstance(config_or_uname, BotConfig):
+            scheme = config_or_uname.scheme
+            secret = config_or_uname.secret
+        else:
+            if password is None:
+                raise ValueError("Password is required when using username authentication")
+            scheme = "basic"
+            secret = f"{config_or_uname}:{password}"
         if any((fn, default_acs, public, trusted, private)):
             if desc is not None:
                 raise ValueError("cannot specify desc with other description fields")
@@ -49,7 +92,7 @@ class UserService(_BaseInfoService[BaseUser]):
                 desc.public["fn"] = fn
         _, params = await self.bot.account(
             "new",
-            "basic",
+            scheme,
             secret.encode(),
             do_login=False,
             desc=dict2msg(desc, pb.SetDesc) if desc is not None else desc,

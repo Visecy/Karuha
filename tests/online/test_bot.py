@@ -3,7 +3,7 @@ from io import BytesIO
 from tinode_grpc import pb
 
 from karuha import BaseSession, MessageSession, on_rule
-from karuha.bot import ProxyBot
+from karuha.bot import Bot
 from karuha.runner import run_bot
 from ..utils import AsyncBotOnlineTestCase
 
@@ -55,8 +55,8 @@ class TestBotClient(AsyncBotOnlineTestCase):
         )
         uid = params["user"]
         try:
-            async with run_bot(ProxyBot.from_bot(self.bot, on_behalf_of=uid)) as agent_bot:
-                assert isinstance(agent_bot, ProxyBot)
+            async with run_bot(self.bot.proxy_to(uid)) as agent_bot:
+                assert isinstance(agent_bot, Bot)
                 self.assertEqual(agent_bot.user_id, uid)
                 self.assertEqual(agent_bot.login_user_id, self.bot.user_id)
 

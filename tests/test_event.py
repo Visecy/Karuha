@@ -54,6 +54,12 @@ class TestEvent(AsyncBotTestCase):
             self.assertTrue(catcher.caught)
             self.assertIs(catcher.catch_event_nowait(), e)
             self.assertFalse(catcher.caught)
+        
+        with EventCatcher(Event) as catcher:
+            task = asyncio.create_task(catcher.catch_event())
+            await asyncio.sleep(0)  # Yield to allow the task to start
+            task.cancel()
+            assert catcher.future is None
 
         self.assertEqual(len(Event.__handlers__), hdl_num)
 
